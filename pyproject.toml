@@ -1,0 +1,40 @@
+[project]
+name = "stationeers-ic10"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  #
+  "ordered-set>=4.1.0",
+  "rich>=14.0.0",
+]
+
+[dependency-groups]
+dev = [
+  #
+  "autoflake>=2.3.1",
+  "basedpyright>=1.31.0",
+  "black>=25.1.0",
+  "ipython>=9.4.0",
+  "pyright>=1.1.403",
+]
+
+[tool.black]
+line-length = 120
+
+[tool.isort]
+profile = "black"
+line_length = 120
+treat_all_comments_as_code = true
+
+[tool.pyright]
+exclude = [".venv"]
+typeCheckingMode = "strict"
+
+reportPrivateUsage = false
+reportUnusedParameter = false
+
+reportUnusedImport = "warning"
+reportUnusedFunction = "warning"
+reportUnusedVariable = "warning"
