@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+from contextlib import AbstractContextManager
 from typing import Any
 from typing import Final
 from typing import Protocol
@@ -198,7 +199,7 @@ def branch(cond: Bool, on_true: ValLabel, on_false: ValLabel) -> None:
     return _f.branch(_get(cond), _get(on_true), _get(on_false))
 
 
-def if_(cond: Bool):
+def if_(cond: Bool) -> AbstractContextManager[None]:
     return trace_if(_get(cond))
 
 

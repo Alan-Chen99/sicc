@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 from typing import Callable
 from typing import ClassVar
+from typing import Iterable
+from typing import Self
 from typing import TypedDict
 from typing import Unpack
 from typing import overload
@@ -11,12 +13,14 @@ from typing import override
 
 from rich.text import Text
 
+from ._core import AnyLoc
 from ._core import BoundInstr
 from ._core import InstrBase
 from ._core import InteralBool
 from ._core import InternalFloat
 from ._core import InternalValLabel
 from ._core import Label
+from ._core import LocationBase
 from ._core import TypeList
 from ._core import Value
 from ._core import Var
@@ -32,8 +36,13 @@ class EmitLabel(InstrBase):
 
     jumps = False
 
+    @override
     def format_with_args(self, l: Label) -> Text:
         return format_val(l) + ":"
+
+    @override
+    def modifies(self, instr: BoundInstr[Self]) -> Iterable[LocationBase]:
+        return []
 
 
 @dataclass(frozen=True)
@@ -135,6 +144,14 @@ class BlackBox[T: VarT](AsmInstrBase):
         self.in_types = (typ,)
         self.out_types = (typ,)
 
+    @override
+    def reads(self, instr: BoundInstr[Self]) -> LocationBase:
+        return AnyLoc()
+
+    @override
+    def modifies(self, instr: BoundInstr[Self]) -> LocationBase:
+        return AnyLoc()
+
 
 ################################################################################
 
@@ -203,6 +220,7 @@ class Not(PredicateBase):
 
 class Branch(InstrBase):
     def __init__(self, pred: PredicateBase):
+        assert pred.out_types == (bool,)
         self.base = pred
 
         self.in_types: TypeList[  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -211,6 +229,7 @@ class Branch(InstrBase):
         self.out_types = ()
         self.continues = False
 
+    @override
     def format_with_args(self, l_t: InternalValLabel, l_f: InternalValLabel, *args: Value) -> Text:
         ans = Text()
         ans.append(type(self).__name__, "ic10.jump")
@@ -221,6 +240,22 @@ class Branch(InstrBase):
             ans += " "
             ans += format_val(x)
         return ans
+
+
+class CJump(InstrBase):
+    """
+    tracing does not emit this; only used after optimize when concating blocks
+    """
+
+    def __init__(self, pred: PredicateBase):
+        assert pred.out_types == (bool,)
+        self.base = pred
+
+        self.in_types: TypeList[  # pyright: ignore[reportIncompatibleVariableOverride]
+            tuple[InternalValLabel, *tuple[Value, ...]]
+        ] = TypeList((Label, *pred.in_types))
+        self.out_types = ()
+        self.continues = True
 
 
 ################################################################################

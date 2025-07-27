@@ -3,13 +3,12 @@ import networkx as nx
 from .._core import Fragment
 from .._tracing import internal_transform
 from .._utils import cast_unchecked_val
-from .label_provenance import LabelProvenanceRes
 from .label_provenance import build_instr_flow_graph
 from .label_provenance import external
 
 
 @internal_transform
-def check_vars_defined(f: Fragment) -> LabelProvenanceRes:
+def check_vars_defined(f: Fragment) -> None:
     """
     check that vars are always defined before use, using the graph.
 
@@ -52,5 +51,3 @@ def check_vars_defined(f: Fragment) -> LabelProvenanceRes:
                 err.note("defined here:", v.v.debug)
                 for d in v.defs:
                     err.note("initialized here, but may occur after use:", d.debug)
-
-    return res

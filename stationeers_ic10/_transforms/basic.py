@@ -5,6 +5,7 @@ from .._core import Block
 from .._core import BoundInstr
 from .._core import Fragment
 from .._core import Label
+from .._core import MapInstrsRes
 from .._core import MVar
 from .._core import ReadMVar
 from .._core import Var
@@ -14,6 +15,8 @@ from .._instructions import Jump
 from .._tracing import ck_val
 from .._tracing import internal_transform
 from .._tracing import mk_internal_label
+from .._utils import Cell
+from .utils import internal_looping_transform
 
 
 @dataclass
@@ -105,16 +108,19 @@ def get_basic_index(f: Fragment) -> BasicIndex:
             l = get_label(arg)
             l.defs.append(instr)
 
-    for x in res_vars.values():
-        assert len(x.defs) == 1
+    # note: we dont add private_mvar members that are no longer relavant
+    for x in res_mvars.values():
+        if x.v in f.scope.private_mvars:
+            x.private = True
 
-    for x in f.scope.private_mvars:
-        get_mvar(x).private = True
-
-    for x in f.scope.private_labels:
-        get_label(x).private = True
+    for x in res_labels.values():
+        if x.v in f.scope.private_labels:
+            x.private = True
 
     # sanity checks
+
+    for x in res_vars.values():
+        assert len(x.defs) == 1
 
     # private labels actually emitted
     for l in res_labels.values():
@@ -127,6 +133,8 @@ def get_basic_index(f: Fragment) -> BasicIndex:
 def split_blocks(f: Fragment) -> None:
     """
     split blocks based on "continues"
+
+    ensures that there is no labels in the middle of any block
     """
 
     def handle_block(b: Block):
@@ -163,3 +171,24 @@ def split_blocks(f: Fragment) -> None:
         blocks += list(handle_block(b))
 
     f.blocks = {b.label: b for b in blocks}
+
+
+@internal_looping_transform
+def remove_unused_side_effect_free(f: Fragment) -> bool:
+    index = get_basic_index(f)
+
+    ans = Cell(False)
+
+    @f.map_instrs
+    def _(instr: BoundInstr) -> MapInstrsRes:
+        if instr.isinst(EmitLabel) or instr.does_jump() or not instr.instr.continues:
+            return None
+        if not instr.is_side_effect_free():
+            return None
+        for x in instr.ouputs:
+            if len(index.vars[x].uses) > 0:
+                return None
+        ans.value = True
+        return []
+
+    return ans.value

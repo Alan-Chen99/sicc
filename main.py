@@ -33,8 +33,8 @@ def main():
 
         with if_(y < 5):
             y.value = 1
-            black_box(x < y)
-            black_box("test")
+            with if_(x < y):
+                black_box("test")
             black_box(BatchMode.MEAN)
             jump(z)
 
@@ -51,4 +51,7 @@ if __name__ == "__main__":
     #     for x in b.contents:
     #         print(x)
 
+    print()
+    print()
+    print()
     print(ans)

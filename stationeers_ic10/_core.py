@@ -11,9 +11,11 @@ from typing import Iterable
 from typing import Iterator
 from typing import Never
 from typing import Protocol
+from typing import Self
 from typing import TypeGuard
 from typing import TypeVar
 from typing import overload
+from typing import override
 from typing import runtime_checkable
 
 from ordered_set import OrderedSet
@@ -86,6 +88,35 @@ class Label(ByIdMixin):
 
     def __repr__(self) -> str:
         return self.name
+
+
+@runtime_checkable
+class LocationBase(Protocol):
+    def known_distinct(self, other: Self) -> bool: ...
+
+
+class AnyLoc(LocationBase):
+    def known_distinct(self, other: Self) -> bool:
+        assert False
+
+
+def known_distinct(x: LocationBase, y: LocationBase) -> bool:
+    """
+    whether self and other are completely unrelated.
+
+    if returns true, both read and write operation on self may be reordered with operation on other
+    """
+    if isinstance(x, AnyLoc) or isinstance(y, AnyLoc):
+        return False
+    tx = type(x)
+    ty = type(y)
+    # call the method on the more specific class
+    if issubclass(tx, ty):  # tx is child
+        return x.known_distinct(y)
+    if issubclass(ty, tx):
+        return y.known_distinct(x)
+
+    return True
 
 
 VarT = bool | int | float | str | Label | AsLiteral
@@ -210,6 +241,17 @@ class InstrBase(abc.ABC):
 
     format_with_args: Callable[..., Text] = _default_format
 
+    # impure operations MUST override reads and/or modifies
+    def reads(self, instr: BoundInstr[Any], /) -> LocationBase | Iterable[LocationBase]:
+        return []
+
+    def modifies(self, instr: BoundInstr[Any], /) -> LocationBase | Iterable[LocationBase]:
+        if len(self.out_types) == 0 and not instr.does_jump():
+            raise NotImplementedError(
+                f"{type(self)} returns nothing, so it must override 'modifies'"
+            )
+        return []
+
     ################################################################################
     # stub methods for static typing
     ################################################################################
@@ -264,13 +306,7 @@ class InstrBase(abc.ABC):
 
     ################################################################################
 
-    # def get_pure(self) -> bool:
-    #     return False
-
-    # def get_side_effect_free(self) -> bool:
-    #     return False
-
-    def check_inputs(self, *args: Value):
+    def check_inputs(self, *args: Value) -> None:
         for x in args:
             _ck_val(x)
         in_types = self.in_types
@@ -278,7 +314,7 @@ class InstrBase(abc.ABC):
         if not can_cast_implicit_many(arg_types, in_types):
             raise TypeError(f"not possible to use {arg_types} as {in_types}")
 
-    def check_outputs(self, *args: Var):
+    def check_outputs(self, *args: Var) -> None:
         for x in args:
             _ck_val(x)
         out_types = self.out_types
@@ -409,6 +445,26 @@ class BoundInstr(Generic[B_co], ByIdMixin):
         new_inputs = tuple(rep if v == x else x for x in self.inputs)
         return BoundInstr(get_id(), self.instr, new_inputs, self.ouputs, debug_info())
 
+    def reads(self) -> list[LocationBase]:
+        assert isinstance(self.instr, InstrBase)
+        ans = self.instr.reads(self)
+        if isinstance(ans, LocationBase):
+            return [ans]
+        return list(ans)
+
+    def modifies(self) -> list[LocationBase]:
+        assert isinstance(self.instr, InstrBase)
+        ans = self.instr.modifies(self)
+        if isinstance(ans, LocationBase):
+            return [ans]
+        return list(ans)
+
+    def is_pure(self) -> bool:
+        return (not self.reads()) and (not self.modifies())
+
+    def is_side_effect_free(self) -> bool:
+        return not self.modifies()
+
 
 ################################################################################
 
@@ -435,6 +491,14 @@ class MVar[T: VarT = Any](ByIdMixin):
         return Text() + ans
 
 
+@dataclass(frozen=True)
+class LocationMvar(LocationBase):
+    s: MVar
+
+    def known_distinct(self, other: Self) -> bool:
+        return self.s == other.s
+
+
 class ReadMVar[T: VarT = Any](InstrBase):
     s: MVar[T]
 
@@ -445,8 +509,13 @@ class ReadMVar[T: VarT = Any](InstrBase):
         self.in_types = ()
         self.out_types = (s.type,)
 
+    @override
     def format_with_args(self) -> Text:
         return self.s._format()
+
+    @override
+    def reads(self, instr: BoundInstr[Any], /) -> LocationBase:
+        return LocationMvar(self.s)
 
 
 class WriteMVar[T: VarT = Any](InstrBase):
@@ -459,8 +528,13 @@ class WriteMVar[T: VarT = Any](InstrBase):
         self.in_types = (s.type,)
         self.out_types = ()
 
+    @override
     def format_with_args(self, val: Value[T]) -> Text:
         return self.s._format() + " = " + format_val(val)
+
+    @override
+    def modifies(self, instr: BoundInstr[Any], /) -> LocationBase:
+        return LocationMvar(self.s)
 
 
 ################################################################################
@@ -646,6 +720,22 @@ class Fragment:
         for x in self.blocks.values():
             x.map_instrs(fn)
         self.basic_check()
+
+    def replace_instr(self, instr: BoundInstr) -> Callable[[Callable[[], MapInstrsRes]], None]:
+
+        def inner(fn: Callable[[], MapInstrsRes]) -> None:
+            found = Cell(False)
+
+            def inner2(x: BoundInstr) -> MapInstrsRes:
+                if x == instr:
+                    assert not found.value
+                    found.value = True
+                    return fn()
+
+            self.map_instrs(inner2)
+            assert found.value
+
+        return inner
 
     def get_vars(self) -> None:
         pass
