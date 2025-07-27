@@ -1,25 +1,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, TypedDict, Unpack, overload, override
+from typing import Any
+from typing import Callable
+from typing import ClassVar
+from typing import TypedDict
+from typing import Unpack
+from typing import overload
+from typing import override
 
 from rich.text import Text
 
-from ._core import (
-    Bool,
-    BoundInstr,
-    Float,
-    InstrBase,
-    Label,
-    TypeList,
-    ValLabel,
-    Value,
-    Var,
-    VarT,
-    VarTS,
-    format_val,
-    get_types,
-)
+from ._core import BoundInstr
+from ._core import InstrBase
+from ._core import InteralBool
+from ._core import InternalFloat
+from ._core import InternalValLabel
+from ._core import Label
+from ._core import TypeList
+from ._core import Value
+from ._core import Var
+from ._core import VarT
+from ._core import VarTS
+from ._core import format_val
+from ._core import get_types
 
 
 class EmitLabel(InstrBase):
@@ -48,7 +52,9 @@ class RawAsmOpts(TypedDict, total=False):
 
 
 @overload
-def raw_asm[T: VarT](opcode: str, out_type: type[T], /, *args: Value, **kwargs: Unpack[RawAsmOpts]) -> Var[T]: ...
+def raw_asm[T: VarT](
+    opcode: str, out_type: type[T], /, *args: Value, **kwargs: Unpack[RawAsmOpts]
+) -> Var[T]: ...
 @overload
 def raw_asm(opcode: str, out_type: None, /, *args: Value, **kwargs: Unpack[RawAsmOpts]) -> None: ...
 
@@ -93,11 +99,7 @@ class AsmInstrBase(InstrBase):
 ################################################################################
 
 
-class Move[T: VarT](AsmInstrBase):
-    """
-    is only used when we lower MVar to Var
-    """
-
+class Move[T: VarT = Any](AsmInstrBase):
     jumps = False
 
     def __init__(self, typ: type[T]) -> None:
@@ -138,27 +140,26 @@ class BlackBox[T: VarT](AsmInstrBase):
 
 
 class PredicateBase(AsmInstrBase):
+    """
+    child classes must be pure
+    """
+
     out_types = (bool,)
 
     jumps = False
 
-    negate: ClassVar[
-        Callable[
-            ...,
-            tuple[tuple[Var[bool]], BoundInstr[Any, tuple[Var[bool]]]],
-        ]
-    ]
+    negate: ClassVar[Callable[..., tuple[tuple[Var[bool]], BoundInstr]]]
 
     def lower_neg(self, *args: Value) -> Var[bool]:
         (out_var,), bound = self.negate(*args)
         bound.emit()
         return out_var
 
-    def lower_cjump(self, *args: Value, label: ValLabel) -> None:
+    def lower_cjump(self, *args: Value, label: InternalValLabel) -> None:
         assert self.opcode.startswith("s")
         raw_asm("br" + self.opcode.removeprefix("s"), None, *args, label)
 
-    def lower_neg_cjump(self, *args: Value, label: ValLabel) -> None:
+    def lower_neg_cjump(self, *args: Value, label: InternalValLabel) -> None:
         (_out_var,), bound = self.negate()
         assert isinstance(bound.instr, PredicateBase)
         bound.instr.lower_cjump(*bound.inputs, label=label)
@@ -171,11 +172,13 @@ class PredVar(PredicateBase):
     in_types = (bool,)
 
     @override
-    def negate(self, a: Bool):
+    def negate(self, a: InteralBool):
         return Not().create_bind(a)
 
     @override
-    def lower_cjump(self, a: Bool, label: ValLabel) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
+    def lower_cjump(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, a: InteralBool, label: InternalValLabel
+    ) -> None:
         from ._instructions import PredLE
 
         PredLE().lower_cjump(1, a, label=label)
@@ -186,11 +189,13 @@ class Not(PredicateBase):
     in_types = (bool,)
 
     @override
-    def negate(self, a: Bool):
+    def negate(self, a: InteralBool):
         return PredVar().create_bind(a)
 
     @override
-    def lower_cjump(self, a: Bool, label: ValLabel) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
+    def lower_cjump(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, a: InteralBool, label: InternalValLabel
+    ) -> None:
         from ._instructions import PredLT
 
         PredLT().lower_cjump(a, 1, label=label)
@@ -201,12 +206,12 @@ class Branch(InstrBase):
         self.base = pred
 
         self.in_types: TypeList[  # pyright: ignore[reportIncompatibleVariableOverride]
-            tuple[ValLabel, ValLabel, *tuple[Value, ...]]
+            tuple[InternalValLabel, InternalValLabel, *tuple[Value, ...]]
         ] = TypeList((Label, Label, *pred.in_types))
         self.out_types = ()
         self.continues = False
 
-    def format_with_args(self, l_t: ValLabel, l_f: ValLabel, *args: Value) -> Text:
+    def format_with_args(self, l_t: InternalValLabel, l_f: InternalValLabel, *args: Value) -> Text:
         ans = Text()
         ans.append(type(self).__name__, "ic10.jump")
         ans += " ["
@@ -245,7 +250,7 @@ class PredLT(PredicateBase):
     in_types = (float, float)
 
     @override
-    def negate(self, a: Float, b: Float):
+    def negate(self, a: InternalFloat, b: InternalFloat):
         return PredLE().create_bind(b, a)
 
 
@@ -254,5 +259,5 @@ class PredLE(PredicateBase):
     in_types = (float, float)
 
     @override
-    def negate(self, a: Float, b: Float):
+    def negate(self, a: InternalFloat, b: InternalFloat):
         return PredLT().create_bind(b, a)

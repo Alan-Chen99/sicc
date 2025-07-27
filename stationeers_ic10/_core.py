@@ -2,40 +2,67 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Final, Generic, Iterator, Never, Protocol, TypeGuard, TypeVar, overload
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Callable
+from typing import Final
+from typing import Generic
+from typing import Iterable
+from typing import Iterator
+from typing import Never
+from typing import Protocol
+from typing import TypeGuard
+from typing import TypeVar
+from typing import overload
+from typing import runtime_checkable
 
 from ordered_set import OrderedSet
-from rich.console import Group, RenderableType
+from rich.console import Group
+from rich.console import RenderableType
 from rich.panel import Panel
 from rich.text import Text
 
-from ._diagnostic import DebugInfo, debug_info
-from ._utils import Cell, cast_unchecked, disjoint_union, late_fn, narrow_unchecked
+from ._diagnostic import DebugInfo
+from ._diagnostic import debug_info
+from ._diagnostic import override_debug_info
+from ._utils import ByIdMixin
+from ._utils import Cell
+from ._utils import cast_unchecked
+from ._utils import disjoint_union
+from ._utils import get_id
+from ._utils import narrow_unchecked
+
+if TYPE_CHECKING:
+    from ._api import UserValue
+    from ._api import Variable
 
 counter = Cell(0)
 
 
-def get_id() -> int:
-    ans = counter.value
-    counter.value = ans + 1
-    return ans
-
-
+@runtime_checkable
 class AsLiteral(Protocol):
     def as_literal(self) -> VarT: ...
 
 
-type VarT = bool | int | float | str | Label | AsLiteral
 type VarTS = tuple[type[VarT], ...]
 
 
-T_co = TypeVar("T_co", covariant=True, bound=VarT, default=VarT)
+T_co = TypeVar("T_co", covariant=True, bound="VarT", default="VarT")
 
 
-@dataclass(frozen=True)
-class Var(Generic[T_co]):
+@dataclass(frozen=True, eq=False)
+class Var(Generic[T_co], ByIdMixin):
+    """
+    internal varaible used by the compiler.
+    unlike Variable, equality and comparison is by variable id.
+
+    A Var must always be assigned in one place. A MVar may be assigned any number of times.
+    """
+
     type: type[T_co]
     id: int
+    #: internal check. user invalid uses should be caught when the Var is found not in _CUR_SCOPE
+    live: Cell[bool]
     debug: DebugInfo
 
     def check_type[T: VarT](self, typ: type[T]) -> Var[T]:
@@ -43,40 +70,13 @@ class Var(Generic[T_co]):
             raise TypeError(f"not possible to use {self.type} as {typ}")
         return cast_unchecked(self)
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Var) and other.id == self.id
-
-    def __hash__(self) -> int:
-        return hash(self.id)
-
     def __repr__(self) -> str:
         return f"%v{self.id}"
 
-    ##########
 
-    __add__ = late_fn(lambda: add)
-
-    def __lt__(self: Float, other: Float) -> Var[bool]:
-        return PredLT().call(self, other)
-
-    def __gt__(self: Float, other: Float) -> Var[bool]:
-        return PredLT().call(other, self)
-
-    def __le__(self: Float, other: Float) -> Var[bool]:
-        return PredLE().call(self, other)
-
-    def __ge__(self: Float, other: Float) -> Var[bool]:
-        return PredLE().call(other, self)
-
-    ##########
-
-
-def mk_var[T: VarT](typ: type[T]) -> Var[T]:
-    return Var(typ, get_id(), debug_info())
-
-
-@dataclass(frozen=True)
-class Label:
+@dataclass(frozen=True, eq=False)
+class Label(ByIdMixin):
+    id: int
     name: str
     debug: DebugInfo
 
@@ -84,48 +84,20 @@ class Label:
     #: they are always kept
     implicit: bool
 
-    def __eq__(self, other: object):
-        return isinstance(other, Label) and self.name == other.name
-
-    def __hash__(self):
-        return hash(self.name)
-
     def __repr__(self) -> str:
         return self.name
 
-    def _mark_private_here(self) -> None:
-        """mark self as private in the current tracing fragment"""
-        mark_label_private(self)
 
+VarT = bool | int | float | str | Label | AsLiteral
 
 LabelLike = Label | str
 
-
-def mk_label(l: LabelLike | None = None, *, implicit: bool = False) -> Label:
-    if isinstance(l, Label):
-        return l
-    if l is None:
-        if implicit:
-            l = f"_implicit_{get_id()}"
-        else:
-            l = f"anon_{get_id()}"
-    return Label(l, debug_info(), implicit=implicit)
-
-
-def mk_internal_label(prefix: str, id: int | None = None) -> Label:
-    if id is None:
-        id = get_id()
-    ans = mk_label(f"_{prefix}_{id}", implicit=True)
-    ans._mark_private_here()
-    return ans
-
-
 type Value[T: VarT = VarT] = Var[T] | T
 
-Bool = Value[bool]
-Int = Value[int]
-Float = Value[float]
-ValLabel = Value[Label]
+InteralBool = Value[bool]
+InternalInt = Value[int]
+InternalFloat = Value[float]
+InternalValLabel = Value[Label]
 
 
 def get_type[T: VarT](x: Value[T]) -> type[T]:
@@ -181,23 +153,33 @@ class InstrTypedWithArgs[I, O](Protocol):
     def _static_out_typing_helper(self) -> O: ...
 
 
+class InstrTypedWithArgs_api[I, O](Protocol):
+    def _static_in_typing_helper_api(self, x: I, /) -> None: ...
+    def _static_out_typing_helper_api(self) -> O: ...
+
+
 def _default_lower(self: InstrBase, *args: Value) -> Never:
     raise NotImplementedError(f"not implemented, or {type(self)} is not supposed to be lowered")
 
 
-FORMAT_CTX: Cell[Fragment] = Cell()
+FORMAT_CTX: Cell[Scope] = Cell()
+
+
+def get_style(typ: type[VarT]) -> str:
+    if issubclass(typ, (bool, int, float, str)):
+        return "ic10." + typ.__name__
+    if issubclass(typ, Label):
+        return "ic10.label"
+    return "ic10.other"
 
 
 def format_val(v: Value) -> Text:
     typ = get_type(v)
-    if typ in [bool, int, float, str]:
-        return Text(repr(v), "ic10." + typ.__name__)
-
     if issubclass(typ, Label):
         priv = (f := FORMAT_CTX.get()) and (v in f.private_labels)
         return Text(repr(v), "ic10.label_private" if priv else "ic10.label")
 
-    return Text(repr(v), "ic10.other")
+    return Text(repr(v), get_style(typ))
 
 
 def _default_format(self: InstrBase, *args: Value) -> Text:
@@ -232,12 +214,12 @@ class InstrBase(abc.ABC):
     # stub methods for static typing
     ################################################################################
 
-    def _marker[T](self, x: T, /) -> T: ...
-
     @overload
     def _static_out_typing_helper(self: _InstrTypedOut[tuple[()]]) -> tuple[()]: ...
     @overload
-    def _static_out_typing_helper[A: VarT](self: _InstrTypedOut[tuple[type[A]]]) -> tuple[Var[A]]: ...
+    def _static_out_typing_helper[A: VarT](
+        self: _InstrTypedOut[tuple[type[A]]],
+    ) -> tuple[Var[A]]: ...
     @overload
     def _static_out_typing_helper[T](self: _InstrTypedOut[TypeList[T]]) -> T: ...
     def _static_out_typing_helper(self: Any) -> Any: ...
@@ -245,7 +227,9 @@ class InstrBase(abc.ABC):
     @overload
     def _static_in_typing_helper(self: _InstrTypedIn[tuple[()]], x: tuple[()], /) -> None: ...
     @overload
-    def _static_in_typing_helper[A: VarT](self: _InstrTypedIn[tuple[type[A]]], x: tuple[Value[A]], /) -> None: ...
+    def _static_in_typing_helper[A: VarT](
+        self: _InstrTypedIn[tuple[type[A]]], x: tuple[Value[A]], /
+    ) -> None: ...
     @overload
     def _static_in_typing_helper[A: VarT, B: VarT](
         self: _InstrTypedIn[tuple[type[A], type[B]]], x: tuple[Value[A], Value[B]], /
@@ -253,6 +237,30 @@ class InstrBase(abc.ABC):
     @overload
     def _static_in_typing_helper[T](self: _InstrTypedIn[TypeList[T]], x: T, /) -> None: ...
     def _static_in_typing_helper(self: Any, x: Any, /) -> None: ...
+
+    ################################################################################
+    # equivalents, for use with the Variable class in _api.py
+    ################################################################################
+
+    @overload
+    def _static_out_typing_helper_api(self: _InstrTypedOut[tuple[()]]) -> None: ...
+    @overload
+    def _static_out_typing_helper_api[A: VarT](
+        self: _InstrTypedOut[tuple[type[A]]],
+    ) -> Variable[A]: ...
+    def _static_out_typing_helper_api(self: Any) -> Any: ...
+
+    @overload
+    def _static_in_typing_helper_api(self: _InstrTypedIn[tuple[()]], x: tuple[()], /) -> None: ...
+    @overload
+    def _static_in_typing_helper_api[A: VarT](
+        self: _InstrTypedIn[tuple[type[A]]], x: tuple[UserValue[A]], /
+    ) -> None: ...
+    @overload
+    def _static_in_typing_helper_api[A: VarT, B: VarT](
+        self: _InstrTypedIn[tuple[type[A], type[B]]], x: tuple[UserValue[A], UserValue[B]], /
+    ) -> None: ...
+    def _static_in_typing_helper_api(self: Any, x: Any, /) -> None: ...
 
     ################################################################################
 
@@ -263,34 +271,46 @@ class InstrBase(abc.ABC):
     #     return False
 
     def check_inputs(self, *args: Value):
+        for x in args:
+            _ck_val(x)
         in_types = self.in_types
         arg_types = get_types(*args)
         if not can_cast_implicit_many(arg_types, in_types):
             raise TypeError(f"not possible to use {arg_types} as {in_types}")
 
     def check_outputs(self, *args: Var):
+        for x in args:
+            _ck_val(x)
         out_types = self.out_types
         arg_types = get_types(*args)
         if not can_cast_implicit_many(out_types, arg_types):
             raise TypeError(f"not possible to use {out_types} as {arg_types}")
 
-    def bind[*I, O](self: InstrTypedWithArgs[tuple[*I], O], out_vars: O, /, *args: *I) -> BoundInstr[tuple[*I], O]:
+    def bind[*I, O](
+        self: InstrTypedWithArgs[tuple[*I], O], out_vars: O, /, *args: *I
+    ) -> BoundInstr:
         if TYPE_CHECKING:
             assert isinstance(self, InstrBase)
+            assert narrow_unchecked(args, tuple[Value, ...])
+            assert narrow_unchecked(out_vars, tuple[Var, ...])
 
-        self.check_inputs(*cast_unchecked(args))
-        self.check_outputs(*cast_unchecked(out_vars))
+        self.check_inputs(*args)
+        self.check_outputs(*out_vars)
+        return BoundInstr(get_id(), self, args, out_vars, debug_info())
 
-        return BoundInstr(self, args, out_vars, debug_info())
+    def create_bind[*I, O](
+        self: InstrTypedWithArgs[tuple[*I], O], *args: *I
+    ) -> tuple[O, BoundInstr]:
+        from ._tracing import mk_var
 
-    def create_bind[*I, O](self: InstrTypedWithArgs[tuple[*I], O], *args: *I) -> tuple[O, BoundInstr[tuple[*I], O]]:
         if TYPE_CHECKING:
             assert isinstance(self, InstrBase)
+            assert narrow_unchecked(args, tuple[Value, ...])
 
-        self.check_inputs(*cast_unchecked(args))
-        out_vars: O = cast_unchecked(tuple(mk_var(x) for x in self.out_types))
+        self.check_inputs(*args)
+        out_vars = tuple(mk_var(x) for x in self.out_types)
 
-        return out_vars, BoundInstr(self, args, out_vars, debug_info())
+        return cast_unchecked(out_vars), BoundInstr(get_id(), self, args, out_vars, debug_info())
 
     def emit[*I, O](self: InstrTypedWithArgs[tuple[*I], O], *args: *I) -> O:
         if TYPE_CHECKING:
@@ -316,14 +336,43 @@ class InstrBase(abc.ABC):
         assert False
 
 
-@dataclass(frozen=True)
-class BoundInstr[I = tuple[Value, ...], O = tuple[Var, ...]]:
-    instr: InstrTypedWithArgs[I, O]
-    inputs: I
-    ouputs: O
+def _ck_val(v: Value) -> None:
+    from ._tracing import ck_val
+
+    return ck_val(v)
+
+
+B_co = TypeVar("B_co", covariant=True, default=InstrBase)
+
+
+@dataclass(frozen=True, eq=False)
+class BoundInstr(Generic[B_co], ByIdMixin):
+    id: int
+    instr: B_co
+    inputs: tuple[Value, ...]
+    ouputs: tuple[Var, ...]
     debug: DebugInfo
 
-    def __rich__(self) -> RenderableType:
+    @property
+    def inputs_[I1, O1](self: BoundInstr[InstrTypedWithArgs[I1, O1]]) -> I1:
+        return cast_unchecked(self.inputs)
+
+    @property
+    def outputs_[I1, O1](self: BoundInstr[InstrTypedWithArgs[I1, O1]]) -> O1:
+        return cast_unchecked(self.ouputs)
+
+    def check_scope(self):
+        for x in self.inputs:
+            _ck_val(x)
+        for x in self.ouputs:
+            _ck_val(x)
+
+    def does_jump(self: BoundInstr) -> bool:
+        if not self.instr.jumps:
+            return False
+        return any(can_cast_val(x, Label) for x in self.inputs)
+
+    def __rich__(self) -> Text:
         assert narrow_unchecked(self, BoundInstr)
 
         ans = Text()
@@ -333,47 +382,60 @@ class BoundInstr[I = tuple[Value, ...], O = tuple[Var, ...]]:
                 ans += ", "
                 ans += format_val(x)
             ans += " = "
-        ans += self.instr_.format_with_args(*self.inputs)
+        ans += self.instr.format_with_args(*self.inputs)
         return ans
 
-    @staticmethod
-    def isinst[I1, O1](
-        me: BoundInstr[Any, Any], instr_type: type[InstrTypedWithArgs[I1, O1]]
-    ) -> TypeGuard[BoundInstr[I1, O1]]:
-        return isinstance(me.instr, instr_type)
+    def __repr__(self):
+        return repr(self.__rich__().plain)
 
-    def check[I1, O1](self, instr_type: type[InstrTypedWithArgs[I1, O1]]) -> BoundInstr[I1, O1]:
-        assert BoundInstr.isinst(self, instr_type)
-        return self
+    def isinst[T: InstrBase](self, instr_type: type[T]) -> BoundInstr[T] | None:
+        if isinstance(self.instr, instr_type):
+            return cast_unchecked(self)
+        return None
 
-    @property
-    def instr_(self) -> InstrBase:
-        assert isinstance(self.instr, InstrBase)
-        return self.instr
+    def check_type[T](self, instr_type: type[T] = InstrBase) -> BoundInstr[T]:
+        assert isinstance(self.instr, instr_type)
+        self.check_scope()
+        return cast_unchecked(self)
 
     def emit(self) -> None:
-        emit_bound(self)
+        from ._tracing import emit_bound
+
+        emit_bound(self.check_type())
+
+    def sub_input_var(self, v: Var, rep: Value, strict: bool = True) -> BoundInstr[B_co]:
+        if strict:
+            assert v in self.inputs
+        new_inputs = tuple(rep if v == x else x for x in self.inputs)
+        return BoundInstr(get_id(), self.instr, new_inputs, self.ouputs, debug_info())
 
 
 ################################################################################
 
 
-@dataclass(frozen=True)
-class MVar[T: VarT = Any]:
+@dataclass(frozen=True, eq=False)
+class MVar[T: VarT = Any](ByIdMixin):
     type: type[T]
     id: int
     debug: DebugInfo
 
-    @property
-    def value(self) -> Var[T]:
+    def read(self) -> Var[T]:
         return ReadMVar(self).call()
 
-    @value.setter
-    def value(self, v: Var[T]) -> None:
+    def write(self, v: Value[T]) -> None:
         () = WriteMVar(self).emit(v)
 
+    def __repr__(self) -> str:
+        return f"%s{self.id}"
 
-class ReadMVar[T: VarT](InstrBase):
+    def _format(self):
+        priv = (f := FORMAT_CTX.get()) and (self in f.private_mvars)
+        ans = Text("", "underline" if priv else "underline reverse")
+        ans.append(repr(self), get_style(self.type))
+        return Text() + ans
+
+
+class ReadMVar[T: VarT = Any](InstrBase):
     s: MVar[T]
 
     jumps = False
@@ -383,8 +445,11 @@ class ReadMVar[T: VarT](InstrBase):
         self.in_types = ()
         self.out_types = (s.type,)
 
+    def format_with_args(self) -> Text:
+        return self.s._format()
 
-class WriteMVar[T: VarT](InstrBase):
+
+class WriteMVar[T: VarT = Any](InstrBase):
     s: MVar[T]
 
     jumps = False
@@ -394,23 +459,31 @@ class WriteMVar[T: VarT](InstrBase):
         self.in_types = (s.type,)
         self.out_types = ()
 
+    def format_with_args(self, val: Value[T]) -> Text:
+        return self.s._format() + " = " + format_val(val)
+
 
 ################################################################################
 
+MapInstrsRes = BoundInstr | Iterable[BoundInstr] | None
+MapInstrsFn = Callable[[BoundInstr], MapInstrsRes]
 
-@dataclass
+
+@dataclass(eq=False)
 class Block:
     """
     Must start with a EmitLabel and end with something with continues=False
     """
 
+    # maybe replace with OrderedSet?
     contents: list[BoundInstr]
     debug: DebugInfo
 
     @property
     def label(self) -> Label:
+        from ._instructions import EmitLabel
 
-        (ans,) = self.contents[0].check(EmitLabel).inputs
+        (ans,) = self.contents[0].check_type(EmitLabel).inputs_
         # EmitLabel must be a constant Label
         assert isinstance(ans, Label)
         return ans
@@ -418,7 +491,7 @@ class Block:
     @property
     def end(self) -> BoundInstr:
         ans = self.contents[-1]
-        assert not ans.instr_.continues
+        assert not ans.instr.continues
         return ans
 
     @property
@@ -432,18 +505,20 @@ class Block:
         _ = self.body
 
     def __rich__(self) -> RenderableType:
+        from ._instructions import EmitLabel
+
         def content() -> Iterator[RenderableType]:
             prev_is_label = True
             prev_cont = True
             for x in self.contents:
                 sep = not prev_cont
-                if BoundInstr.isinst(x, EmitLabel):
+                if x.isinst(EmitLabel):
                     if not prev_is_label:
                         sep = True
                     prev_is_label = True
                 else:
                     prev_is_label = False
-                prev_cont = x.instr_.continues
+                prev_cont = x.instr.continues
 
                 if sep:
                     yield ""
@@ -457,25 +532,35 @@ class Block:
             # title_align="left",
         )
 
+    def map_instrs(self, fn: MapInstrsFn) -> None:
+        def get(x: BoundInstr) -> list[BoundInstr]:
+            with override_debug_info(x.debug):
+                ans = fn(x)
+            if ans is None:
+                return [x]
+            if isinstance(ans, BoundInstr):
+                return [ans]
+            ans = list(ans)
+            for y in ans:
+                assert isinstance(y, BoundInstr)
 
-@dataclass
-class Fragment:
+            return ans
+
+        def gen() -> Iterator[BoundInstr]:
+            for x in self.contents:
+                yield from get(x)
+
+        self.contents = list(gen())
+
+
+@dataclass(eq=False)
+class Scope:
     """
-    a set of blocks.
-
-    there is no default entry or exit;
-    the fragment is enterred if jumped to a tag in it, and exitted if jumpped out.
-
-    all Var is private and must not be outside.
-    MVar that is not in private_mvars may be used outside.
+    items here may be dead; we dont require compiler to explicitly remove vars
     """
 
-    #: declares the fragment to have completed tracing
-    #: it should no longer be modified afterwards
-    finished_init: bool
-
-    #: body of the fragment
-    blocks: dict[Label, Block]
+    #: all vars are private
+    vars: OrderedSet[Var]
 
     #: private to this fragment
     private_mvars: OrderedSet[MVar]
@@ -487,6 +572,38 @@ class Fragment:
     #:
     private_labels: OrderedSet[Label]
 
+    def merge_child(self, child: Scope) -> None:
+        self.vars = disjoint_union(self.vars, child.vars)
+        self.private_mvars = disjoint_union(self.private_mvars, child.private_mvars)
+        self.private_labels = disjoint_union(self.private_labels, child.private_labels)
+
+
+@dataclass(eq=False)
+class Fragment:
+    """
+    a set of blocks.
+    Analysis and optimization generally runs on a Fragment
+
+    Fragment is generally used mutably, unless specified otherwise
+
+    there is no default entry or exit;
+    the fragment is enterred if jumped to a tag in it, and exitted if jumpped out.
+
+    all Var are private:
+    assigned exactly once in the fragement, and must not be used/read outside.
+
+    MVar that is not in private_mvars may be used outside.
+    """
+
+    #: declares the fragment to have completed tracing
+    finished_init: bool
+
+    #: body of the fragment
+    blocks: dict[Label, Block]
+
+    #: Var in this fragment
+    scope: Scope
+
     def __rich__(self) -> RenderableType:
         def content() -> Iterator[RenderableType]:
             if not self.finished_init:
@@ -495,7 +612,7 @@ class Fragment:
                 # eagerly, so that FORMAT_CTX takes effect
                 yield b.__rich__()
 
-        with FORMAT_CTX.bind(self):
+        with FORMAT_CTX.bind(self.scope):
             return Panel(
                 Group(*content()),
                 title=Text(type(self).__name__, "ic10.title"),
@@ -521,13 +638,17 @@ class Fragment:
         assert len(blocks) == len(self.blocks) + len(child.blocks)
         self.blocks = blocks
 
-        self.private_mvars = disjoint_union(self.private_mvars, child.private_mvars)
+        self.scope.merge_child(child.scope)
 
-        self.private_labels = disjoint_union(self.private_labels, child.private_labels)
+    ################################################################################
+
+    def map_instrs(self, fn: MapInstrsFn) -> None:
+        for x in self.blocks.values():
+            x.map_instrs(fn)
+        self.basic_check()
+
+    def get_vars(self) -> None:
+        pass
 
 
 ################################################################################
-
-from ._instructions import EmitLabel, PredLE, PredLT
-from ._tracing import emit_bound, mark_label_private
-from .functions import add
