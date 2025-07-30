@@ -7,6 +7,8 @@ from ._instructions import Jump
 from ._instructions import PredVar
 from ._instructions import UnreachableChecked
 
+# register_exclusion(__file__)
+
 jump = Jump().call
 unreachable_checked = UnreachableChecked().call
 # lt = PredLT().call

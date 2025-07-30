@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
+from dataclasses import field
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -25,8 +26,8 @@ from rich.panel import Panel
 from rich.text import Text
 
 from ._diagnostic import DebugInfo
+from ._diagnostic import add_debug_info
 from ._diagnostic import debug_info
-from ._diagnostic import override_debug_info
 from ._utils import ByIdMixin
 from ._utils import Cell
 from ._utils import cast_unchecked
@@ -37,6 +38,8 @@ from ._utils import narrow_unchecked
 if TYPE_CHECKING:
     from ._api import UserValue
     from ._api import Variable
+
+# register_exclusion(__file__)
 
 counter = Cell(0)
 
@@ -78,8 +81,7 @@ class Var(Generic[T_co], ByIdMixin):
 
 @dataclass(frozen=True, eq=False)
 class Label(ByIdMixin):
-    id: int
-    name: str
+    id: str
     debug: DebugInfo
 
     #: Non-implicit labels are generally user created
@@ -87,7 +89,7 @@ class Label(ByIdMixin):
     implicit: bool
 
     def __repr__(self) -> str:
-        return self.name
+        return self.id
 
 
 @runtime_checkable
@@ -193,7 +195,12 @@ def _default_lower(self: InstrBase, *args: Value) -> Never:
     raise NotImplementedError(f"not implemented, or {type(self)} is not supposed to be lowered")
 
 
-FORMAT_CTX: Cell[Scope] = Cell()
+def _default_annotate(x: BoundInstr) -> str:
+    return ""
+
+
+FORMAT_SCOPE_CONTEXT: Cell[Scope] = Cell()
+FORMAT_ANNOTATE: Cell[Callable[[BoundInstr], str | Text]] = Cell(_default_annotate)
 
 
 def get_style(typ: type[VarT]) -> str:
@@ -207,7 +214,7 @@ def get_style(typ: type[VarT]) -> str:
 def format_val(v: Value) -> Text:
     typ = get_type(v)
     if issubclass(typ, Label):
-        priv = (f := FORMAT_CTX.get()) and (v in f.private_labels)
+        priv = (f := FORMAT_SCOPE_CONTEXT.get()) and (v in f.private_labels)
         return Text(repr(v), "ic10.label_private" if priv else "ic10.label")
 
     return Text(repr(v), get_style(typ))
@@ -224,11 +231,14 @@ def _default_format(self: InstrBase, *args: Value) -> Text:
     return ans
 
 
+LowerRes = tuple[Var, ...] | Var | None
+
+
 class InstrBase(abc.ABC):
     # required overrides
     in_types: VarTS
     out_types: VarTS
-    lower: Callable[..., Any] = _default_lower
+    lower: Callable[..., LowerRes] = _default_lower
 
     # optional overrides
 
@@ -346,7 +356,8 @@ class InstrBase(abc.ABC):
         self.check_inputs(*args)
         out_vars = tuple(mk_var(x) for x in self.out_types)
 
-        return cast_unchecked(out_vars), BoundInstr(get_id(), self, args, out_vars, debug_info())
+        ans = BoundInstr(get_id(), self, args, out_vars, debug_info())
+        return cast_unchecked(out_vars), ans
 
     def emit[*I, O](self: InstrTypedWithArgs[tuple[*I], O], *args: *I) -> O:
         if TYPE_CHECKING:
@@ -386,7 +397,7 @@ class BoundInstr(Generic[B_co], ByIdMixin):
     id: int
     instr: B_co
     inputs: tuple[Value, ...]
-    ouputs: tuple[Var, ...]
+    outputs: tuple[Var, ...]
     debug: DebugInfo
 
     @property
@@ -395,12 +406,12 @@ class BoundInstr(Generic[B_co], ByIdMixin):
 
     @property
     def outputs_[I1, O1](self: BoundInstr[InstrTypedWithArgs[I1, O1]]) -> O1:
-        return cast_unchecked(self.ouputs)
+        return cast_unchecked(self.outputs)
 
     def check_scope(self):
         for x in self.inputs:
             _ck_val(x)
-        for x in self.ouputs:
+        for x in self.outputs:
             _ck_val(x)
 
     def does_jump(self: BoundInstr) -> bool:
@@ -409,16 +420,31 @@ class BoundInstr(Generic[B_co], ByIdMixin):
         return any(can_cast_val(x, Label) for x in self.inputs)
 
     def __rich__(self) -> Text:
+        from ._instructions import RawInstr
+
         assert narrow_unchecked(self, BoundInstr)
 
+        if me := self.isinst(RawInstr):
+            return me.instr.format_with_args_outputs(self.outputs, *self.inputs)
+
         ans = Text()
-        if len(self.ouputs) > 0:
-            ans += format_val(self.ouputs[0])
-            for x in self.ouputs[1:]:
+        if len(self.outputs) > 0:
+            ans += format_val(self.outputs[0])
+            for x in self.outputs[1:]:
                 ans += ", "
                 ans += format_val(x)
             ans += " = "
         ans += self.instr.format_with_args(*self.inputs)
+
+        loc_info = self.debug.location_info()
+        if loc_info:
+            ans.append("  # " + loc_info, "ic10.comment")
+
+        annotation = FORMAT_ANNOTATE.value(self)
+        if annotation:
+            ans.append("  # ", "ic10.comment")
+            ans.append(annotation)
+
         return ans
 
     def __repr__(self):
@@ -439,11 +465,26 @@ class BoundInstr(Generic[B_co], ByIdMixin):
 
         emit_bound(self.check_type())
 
-    def sub_input_var(self, v: Var, rep: Value, strict: bool = True) -> BoundInstr[B_co]:
-        if strict:
-            assert v in self.inputs
-        new_inputs = tuple(rep if v == x else x for x in self.inputs)
-        return BoundInstr(get_id(), self.instr, new_inputs, self.ouputs, debug_info())
+    def sub_val(
+        self, v: Value, rep: Value, inputs: bool = False, outputs: bool = False, strict: bool = True
+    ) -> BoundInstr[B_co]:
+        assert inputs or outputs
+        if inputs:
+            if strict:
+                assert v in self.inputs
+            new_inputs = tuple(rep if v == x else x for x in self.inputs)
+        else:
+            new_inputs = self.inputs
+        if outputs:
+            assert isinstance(v, Var)
+            assert isinstance(rep, Var)
+            if strict:
+                assert v in self.outputs
+            new_outputs = tuple(rep if v == x else x for x in self.outputs)
+        else:
+            new_outputs = self.outputs
+
+        return BoundInstr(get_id(), self.instr, new_inputs, new_outputs, debug_info())
 
     def reads(self) -> list[LocationBase]:
         assert isinstance(self.instr, InstrBase)
@@ -485,7 +526,7 @@ class MVar[T: VarT = Any](ByIdMixin):
         return f"%s{self.id}"
 
     def _format(self):
-        priv = (f := FORMAT_CTX.get()) and (self in f.private_mvars)
+        priv = (f := FORMAT_SCOPE_CONTEXT.get()) and (self in f.private_mvars)
         ans = Text("", "underline" if priv else "underline reverse")
         ans.append(repr(self), get_style(self.type))
         return Text() + ans
@@ -543,7 +584,7 @@ MapInstrsRes = BoundInstr | Iterable[BoundInstr] | None
 MapInstrsFn = Callable[[BoundInstr], MapInstrsRes]
 
 
-@dataclass(eq=False)
+@dataclass
 class Block:
     """
     Must start with a EmitLabel and end with something with continues=False
@@ -551,7 +592,7 @@ class Block:
 
     # maybe replace with OrderedSet?
     contents: list[BoundInstr]
-    debug: DebugInfo
+    debug: DebugInfo = field(compare=False)
 
     @property
     def label(self) -> Label:
@@ -608,17 +649,17 @@ class Block:
 
     def map_instrs(self, fn: MapInstrsFn) -> None:
         def get(x: BoundInstr) -> list[BoundInstr]:
-            with override_debug_info(x.debug):
+            with add_debug_info(x.debug):
                 ans = fn(x)
-            if ans is None:
-                return [x]
-            if isinstance(ans, BoundInstr):
-                return [ans]
-            ans = list(ans)
-            for y in ans:
-                assert isinstance(y, BoundInstr)
+                if ans is None:
+                    return [x]
+                if isinstance(ans, BoundInstr):
+                    return [ans]
+                ans = list(ans)
+                for y in ans:
+                    assert isinstance(y, BoundInstr)
 
-            return ans
+                return ans
 
         def gen() -> Iterator[BoundInstr]:
             for x in self.contents:
@@ -642,7 +683,7 @@ class Scope:
     #: Labels that must not be explicity referenced outside this Fragment
     #:
     #: they may still be assigned to variables and used outside;
-    #: whether that happens is inferred in compute_label_provenance
+    #: whether that happens is inferred in compute_control_flow
     #:
     private_labels: OrderedSet[Label]
 
@@ -678,7 +719,7 @@ class Fragment:
     #: Var in this fragment
     scope: Scope
 
-    def __rich__(self) -> RenderableType:
+    def __rich__(self, title: str = "Fragment") -> RenderableType:
         def content() -> Iterator[RenderableType]:
             if not self.finished_init:
                 yield "(unfinished)"
@@ -686,10 +727,10 @@ class Fragment:
                 # eagerly, so that FORMAT_CTX takes effect
                 yield b.__rich__()
 
-        with FORMAT_CTX.bind(self.scope):
+        with FORMAT_SCOPE_CONTEXT.bind(self.scope):
             return Panel(
                 Group(*content()),
-                title=Text(type(self).__name__, "ic10.title"),
+                title=Text(title, "ic10.title"),
                 title_align="left",
             )
 
@@ -716,9 +757,16 @@ class Fragment:
 
     ################################################################################
 
+    def all_instrs(self) -> list[BoundInstr]:
+        return [x for b in self.blocks.values() for x in b.contents]
+
     def map_instrs(self, fn: MapInstrsFn) -> None:
+        ans: dict[Label, Block] = {}
         for x in self.blocks.values():
             x.map_instrs(fn)
+            assert x.label not in ans
+            ans[x.label] = x
+        self.blocks = ans
         self.basic_check()
 
     def replace_instr(self, instr: BoundInstr) -> Callable[[Callable[[], MapInstrsRes]], None]:

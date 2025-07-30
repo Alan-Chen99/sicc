@@ -17,11 +17,11 @@ from ordered_set import OrderedSet
 
 
 @final
-class _empty_t:
+class empty_t:
     pass
 
 
-_empty = _empty_t()
+empty = empty_t()
 
 
 ################################################################################
@@ -29,7 +29,7 @@ _empty = _empty_t()
 
 @dataclass
 class Cell[T]:
-    _value: T | _empty_t = _empty
+    _value: T | empty_t = empty
 
     @contextmanager
     def bind(self, val: T) -> Iterator[T]:
@@ -43,23 +43,23 @@ class Cell[T]:
     @contextmanager
     def bind_clear(self) -> Iterator[None]:
         old = self._value
-        self._value = _empty
+        self._value = empty
         try:
             yield None
         finally:
             self._value = old
 
     def get[D](self, default: D = None) -> T | D:
-        if not isinstance(self._value, _empty_t):
+        if not isinstance(self._value, empty_t):
             return self._value
         return default
 
-    def set(self, val: T | _empty_t = _empty):
+    def set(self, val: T | empty_t = empty):
         self._value = val
 
     @property
     def value(self) -> T:
-        assert not isinstance(self._value, _empty_t)
+        assert not isinstance(self._value, empty_t)
         return self._value
 
     @value.setter
@@ -155,3 +155,9 @@ class Singleton(ByIdMixin):
 
     def __repr__(self) -> str:
         return type(self).__name__
+
+
+def register_exclusion_():
+    from ._diagnostic import register_exclusion
+
+    register_exclusion(__file__)

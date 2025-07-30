@@ -29,6 +29,8 @@ from ._core import VarTS
 from ._core import format_val
 from ._core import get_types
 
+# register_exclusion(__file__)
+
 
 class EmitLabel(InstrBase):
     in_types = (Label,)
@@ -54,6 +56,23 @@ class RawInstr(InstrBase):
     continues: bool
     jumps: bool
 
+    def format_with_args_outputs(self, out_vars: tuple[Var, ...], *args: Value) -> Text:
+        ans = Text()
+        ans.append(self.opcode, "ic10.raw_opcode")
+        if len(out_vars) > 0:
+            ans += " ["
+            ans += format_val(out_vars[0])
+            for x in out_vars[1:]:
+                ans += ", "
+                ans += format_val(x)
+            ans += "]"
+
+        for x in args:
+            ans += " "
+            ans += format_val(x)
+
+        return ans
+
 
 class RawAsmOpts(TypedDict, total=False):
     continues: bool
@@ -75,13 +94,13 @@ def raw_asm[T: VarT](
     kwargs.setdefault("jumps", True)
 
     if out_type is None:
-        () = RawInstr(opcode, TypeList(), TypeList(get_types(*args)), **kwargs).emit(*args)
+        () = RawInstr(opcode, TypeList(get_types(*args)), TypeList(), **kwargs).emit(*args)
         return None
     else:
         (ans,) = RawInstr(
             opcode,
-            TypeList((out_type,)),
             TypeList(get_types(*args)),
+            TypeList((out_type,)),
             **kwargs,
         ).emit(*args)
         return ans.check_type(out_type)
@@ -98,8 +117,8 @@ class AsmInstrBase(InstrBase):
     def lower(self, *args: Value) -> tuple[Var, ...]:
         return RawInstr(
             self.opcode,
-            TypeList(self.out_types),
             TypeList(self.in_types),
+            TypeList(self.out_types),
             continues=self.continues,
             jumps=self.jumps,
         ).emit(*args)
@@ -174,10 +193,10 @@ class PredicateBase(AsmInstrBase):
 
     def lower_cjump(self, *args: Value, label: InternalValLabel) -> None:
         assert self.opcode.startswith("s")
-        raw_asm("br" + self.opcode.removeprefix("s"), None, *args, label)
+        raw_asm("b" + self.opcode.removeprefix("s"), None, *args, label)
 
     def lower_neg_cjump(self, *args: Value, label: InternalValLabel) -> None:
-        (_out_var,), bound = self.negate()
+        (_out_var,), bound = self.negate(*args)
         assert isinstance(bound.instr, PredicateBase)
         bound.instr.lower_cjump(*bound.inputs, label=label)
 
@@ -241,21 +260,51 @@ class Branch(InstrBase):
             ans += format_val(x)
         return ans
 
+    def lower(self, l_t: InternalValLabel, l_f: InternalValLabel, *args: Value) -> None:
+        CJump(self.base, jump_on=True).call(l_t, *args)
+        Jump().call(l_f)
+
+        # assert self.opcode.startswith("s")
+        # raw_asm("b" + self.opcode.removeprefix("s"), None, *args, label)
+
 
 class CJump(InstrBase):
     """
+    jumps to a label if pred evaluates equal to "jump_on"; otherwise continue
+
     tracing does not emit this; only used after optimize when concating blocks
     """
 
-    def __init__(self, pred: PredicateBase):
+    def __init__(self, pred: PredicateBase, jump_on: bool):
         assert pred.out_types == (bool,)
         self.base = pred
+        self.jump_on = jump_on
 
         self.in_types: TypeList[  # pyright: ignore[reportIncompatibleVariableOverride]
             tuple[InternalValLabel, *tuple[Value, ...]]
         ] = TypeList((Label, *pred.in_types))
         self.out_types = ()
         self.continues = True
+
+    @override
+    def format_with_args(self, target: InternalValLabel, *args: Value) -> Text:
+        ans = Text()
+        ans.append(type(self).__name__, "ic10.jump")
+        ans += " "
+        if self.jump_on == False:
+            ans.append("NOT", "ic10.jump")
+        ans += "["
+        ans += self.base.format_with_args(*args)
+        ans += "] "
+        ans += format_val(target)
+        return ans
+
+    @override
+    def lower(self, label: InternalValLabel, *args: Value) -> None:
+        if self.jump_on == True:
+            return self.base.lower_cjump(*args, label=label)
+        else:
+            return self.base.lower_neg_cjump(*args, label=label)
 
 
 ################################################################################

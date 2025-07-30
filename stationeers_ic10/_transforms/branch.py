@@ -1,15 +1,16 @@
-from .._core import Fragment
 from .._core import Var
 from .._instructions import Branch
 from .._instructions import PredicateBase
 from .._instructions import PredVar
 from .basic import get_basic_index
-from .utils import internal_looping_transform
+from .utils import LoopingTransform
+from .utils import TransformCtx
 
 
-@internal_looping_transform
-def inline_pred_to_branch(f: Fragment) -> bool:
-    index = get_basic_index(f)
+@LoopingTransform
+def inline_pred_to_branch(ctx: TransformCtx) -> bool:
+    f = ctx.frag
+    index = get_basic_index.call_cached(ctx)
 
     for b in f.blocks.values():
         if (instr := b.end.isinst(Branch)) and isinstance(instr.instr.base, PredVar):

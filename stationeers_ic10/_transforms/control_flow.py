@@ -1,19 +1,24 @@
 from dataclasses import dataclass
+from typing import Iterator
 
 import networkx as nx
+from ordered_set import OrderedSet
+from rich.text import Text
 
 from .._core import Block
 from .._core import BoundInstr
-from .._core import Fragment
 from .._core import Label
 from .._core import MVar
 from .._core import ReadMVar
 from .._core import Var
 from .._core import WriteMVar
-from .._tracing import internal_transform
+from .._instructions import Jump
 from .._utils import Singleton
-from .basic import BasicIndex
 from .basic import get_basic_index
+from .utils import CachedFn
+from .utils import LoopingTransform
+from .utils import Transform
+from .utils import TransformCtx
 
 
 class External(Singleton):
@@ -30,19 +35,43 @@ JumpTarget = Label | External
 
 @dataclass
 class LabelProvenanceRes:
-    index: BasicIndex  # reusable index since compute_label_provenance does not mutate
     instr_jumps: dict[BoundInstr, list[JumpTarget]]
 
+    #: set of internal labels accessible from outside
+    #: either bc it is public, or bc it is assigned to a varaible readable outside
+    leaked: OrderedSet[Label]
 
-@internal_transform
-def compute_label_provenance(f: Fragment) -> LabelProvenanceRes:
-    """does not mutate f"""
+    #: raw outputs
+    reaches_label: dict[_NodeT, list[JumpTarget]]
+
+    def annotate(self, instr: BoundInstr) -> Text:
+        # jumps = self.instr_jumps[instr]
+        jumps = self.reaches_label[instr]
+
+        ans = Text("{", "ic10.comment")
+        ans += Text(", ", "ic10.comment").join(
+            Text(repr(x), "ic10.label" if x in self.leaked else "ic10.label_private") for x in jumps
+        )
+        ans += Text("}", "ic10.comment")
+
+        return ans
+
+
+@CachedFn
+def compute_label_provenance(ctx: TransformCtx) -> LabelProvenanceRes:
+    """
+    this computes possible values varaibles with type Label can take.
+    this is required to build a control flow graph.
+
+    does not mutate f
+    """
     # TODO: side effect (storing label on the stack)
 
     # note: it may be faster to compute SCC of the graph first and use it to do this "one-shot"
     #   which is asymptotically faster
 
-    index = get_basic_index(f)
+    f = ctx.frag
+    index = get_basic_index.call_cached(ctx)
 
     G: nx.DiGraph[_NodeT] = nx.DiGraph()
 
@@ -70,7 +99,7 @@ def compute_label_provenance(f: Fragment) -> LabelProvenanceRes:
                 G.add_edge(preprocess(x), instr)
             if isinstance(x, Var):
                 G.add_edge(x, instr)
-        for x in instr.ouputs:
+        for x in instr.outputs:
             G.add_edge(instr, x)
 
         # mvars
@@ -90,12 +119,6 @@ def compute_label_provenance(f: Fragment) -> LabelProvenanceRes:
             # print(("adding:", external, l.v))
             G.add_edge(l.v, external)
 
-        # if not l.internal:
-        #     # we dont trace "external-listed" -> "var" from "external-listed"
-        #     # because from the perspective of the fragment, "external-listed" is just "external"
-        #     # so we add "external" -> "external-listed"
-        #     G.add_edge(external, l.v)
-
     for var in index.mvars.values():
         if not var.private:
             G.add_edge(external, var.v)
@@ -110,33 +133,42 @@ def compute_label_provenance(f: Fragment) -> LabelProvenanceRes:
         for x in res:
             reaches_label[x].append(l)
 
-    def handle_one(x: BoundInstr, ts: list[JumpTarget]) -> list[JumpTarget]:
-        if x.does_jump():
-            if external in ts:
-                # not useful to track/output a [jump instr] -> external -> internal
-                # as the internal is a possible entrypoint anyways
-                ts = [t for t in ts if (isinstance(t, External) or index.labels[t].private)]
-            return ts
-        return []
+    # print("reaches_label", reaches_label)
 
-    res = {x: handle_one(x, y) for x, y in reaches_label.items() if isinstance(x, BoundInstr)}
+    def handle_one(instr: BoundInstr) -> Iterator[JumpTarget]:
+        if instr.does_jump():
+            for x in instr.inputs:
+                if isinstance(x, Label):
+                    yield preprocess(x)
+                if isinstance(x, Var) and x.type == Label:
+                    yield from reaches_label[x]
+
+    res = {instr: sorted(set(handle_one(instr))) for instr in f.all_instrs()}
 
     # print(index)
 
+    def leaked():
+        for x in reaches_label[external]:
+            assert not isinstance(x, External)
+            yield x
+
     # print({x: y for x, y in res.items() if x.does_jump()})
     # print("res", res)
-    return LabelProvenanceRes(index, res)
+    return LabelProvenanceRes(
+        instr_jumps=res,
+        leaked=OrderedSet(leaked()),
+        reaches_label=reaches_label,
+    )
 
 
 CfgNode = BoundInstr | External
 
 
-@internal_transform
-def build_instr_flow_graph(
-    f: Fragment,
-) -> tuple["nx.DiGraph[CfgNode]", LabelProvenanceRes]:
-    res = compute_label_provenance(f)
-    index = res.index
+@CachedFn
+def build_control_flow_graph(ctx: TransformCtx) -> "nx.DiGraph[CfgNode]":
+    f = ctx.frag
+    index = get_basic_index.call_cached(ctx)
+    res = compute_label_provenance.call_cached(ctx)
 
     # # note: this creates extra labels
     # split_blocks(f)
@@ -156,16 +188,20 @@ def build_instr_flow_graph(
                 else:
                     G.add_edge(x, index.labels[t].def_instr)
 
-        for l in index.labels.values():
-            if l.internal and not l.private:
-                G.add_edge(external, l.def_instr)
+        # for l in index.labels.values():
+        #     if l.internal and not l.private:
+        #         G.add_edge(external, l.def_instr)
 
-    return G, res
+    for l in res.leaked:
+        G.add_edge(external, index.labels[l].def_instr)
+
+    return G
 
 
-@internal_transform
-def remove_unreachable_code(f: Fragment) -> None:
-    G, _res = build_instr_flow_graph(f)
+@Transform
+def remove_unreachable_code(ctx: TransformCtx) -> None:
+    f = ctx.frag
+    G = build_control_flow_graph.call_cached(ctx)
 
     live_instrs = nx.descendants(G, external)  # pyright: ignore[reportUnknownMemberType]
 
@@ -175,10 +211,34 @@ def remove_unreachable_code(f: Fragment) -> None:
             for x in b.contents:
                 if x in live_instrs:
                     ans.append(x)
-                else:
-                    x.debug.mark_unused()
 
             if len(ans) > 0:
                 yield Block(ans, b.debug)
 
     f.blocks = {x.label: x for x in process_block()}
+
+
+@LoopingTransform
+def handle_deterministic_var_jump(ctx: TransformCtx) -> bool:
+    f"""
+    replace a jump %var with only one possible target,
+    or a branch [...] %var label where var is always same as label
+
+    this mostly comes from subr calls that is only called once
+    """
+    f = ctx.frag
+    res = compute_label_provenance.call_cached(ctx)
+
+    @f.map_instrs
+    def _(instr: BoundInstr):
+        targets = res.instr_jumps[instr]
+        if len(targets) != 1:
+            return None
+        (target,) = targets
+        if isinstance(target, External):
+            return None
+        assert instr.is_pure()
+
+        return Jump().bind((), target)
+
+    return False

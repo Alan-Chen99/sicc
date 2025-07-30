@@ -10,10 +10,12 @@ theme = Theme(
         "ic10.other": "magenta red",
         #
         "ic10.opcode": "",
+        "ic10.raw_opcode": "green bold",
         "ic10.jump": "cyan bold",
         "ic10.label": "magenta bold italic",
         "ic10.label_private": "magenta italic",
         #
         "ic10.title": "cyan bold",
+        "ic10.comment": "white italic",
     }
 )

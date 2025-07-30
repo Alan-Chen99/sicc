@@ -1,14 +1,15 @@
 import networkx as nx
 
-from .._core import Fragment
-from .._tracing import internal_transform
 from .._utils import cast_unchecked_val
-from .label_provenance import build_instr_flow_graph
-from .label_provenance import external
+from .basic import get_basic_index
+from .control_flow import build_control_flow_graph
+from .control_flow import external
+from .utils import CachedFn
+from .utils import TransformCtx
 
 
-@internal_transform
-def check_vars_defined(f: Fragment) -> None:
+@CachedFn
+def check_vars_defined(ctx: TransformCtx) -> None:
     """
     check that vars are always defined before use, using the graph.
 
@@ -19,8 +20,8 @@ def check_vars_defined(f: Fragment) -> None:
 
     returns cached result from "build_instr_flow_graph"
     """
-    graph, res = build_instr_flow_graph(f)
-    index = res.index
+    index = get_basic_index.call_cached(ctx)
+    graph = build_control_flow_graph.call_cached(ctx)
 
     for v in index.vars.values():
         graph_ = cast_unchecked_val(graph)(
@@ -30,10 +31,16 @@ def check_vars_defined(f: Fragment) -> None:
         for u in v.uses:
             if u in reach:
                 err = u.debug.error(
-                    f"variable {v.v} ({v.v.type}) may not be initialized",
+                    f"variable {v.v} ({v.v.debug.describe}) may not be initialized",
                 )
                 err.note("defined here:", v.v.debug)
                 err.note("initialized here, but may occur after use:", v.def_instr.debug)
+
+
+@CachedFn
+def check_mvars_defined(ctx: TransformCtx) -> None:
+    index = get_basic_index.call_cached(ctx)
+    graph = build_control_flow_graph.call_cached(ctx)
 
     for v in index.mvars.values():
         if not v.private:
