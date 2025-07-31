@@ -34,10 +34,13 @@ from ._utils import cast_unchecked
 from ._utils import disjoint_union
 from ._utils import get_id
 from ._utils import narrow_unchecked
+from ._utils import safe_cast
 
 if TYPE_CHECKING:
     from ._api import UserValue
     from ._api import Variable
+    from ._instructions import EmitLabel
+
 
 # register_exclusion(__file__)
 
@@ -93,32 +96,42 @@ class Label(ByIdMixin):
 
 
 @runtime_checkable
-class LocationBase(Protocol):
-    def known_distinct(self, other: Self) -> bool: ...
+class EffectBase(Protocol):
+    """
+    represents a location that side-effectful statements changes.
 
+    subclass must have hash and equality
+    """
 
-class AnyLoc(LocationBase):
+    # return True if both read and write opts on self and other can be reordered
     def known_distinct(self, other: Self) -> bool:
-        assert False
+        return False
 
 
-def known_distinct(x: LocationBase, y: LocationBase) -> bool:
+type EffectRes = EffectBase | Iterable[EffectBase] | None
+
+
+def known_distinct(x: EffectBase, y: EffectBase) -> bool:
     """
     whether self and other are completely unrelated.
 
     if returns true, both read and write operation on self may be reordered with operation on other
     """
-    if isinstance(x, AnyLoc) or isinstance(y, AnyLoc):
-        return False
     tx = type(x)
     ty = type(y)
+
+    common_base = (set(tx.__mro__) & set(ty.__mro__)) - set(safe_cast(type, EffectBase).__mro__)
+
+    if len(common_base) == 0:
+        return True
+
     # call the method on the more specific class
     if issubclass(tx, ty):  # tx is child
         return x.known_distinct(y)
     if issubclass(ty, tx):
         return y.known_distinct(x)
 
-    return True
+    return False
 
 
 VarT = bool | int | float | str | Label | AsLiteral
@@ -249,17 +262,21 @@ class InstrBase(abc.ABC):
     #: if False, never jumps
     jumps: bool = True
 
-    format_with_args: Callable[..., Text] = _default_format
-
-    # impure operations MUST override reads and/or modifies
-    def reads(self, instr: BoundInstr[Any], /) -> LocationBase | Iterable[LocationBase]:
+    # if overriding this, "jumps" variable have no effect
+    def jumps_to(self, instr: BoundInstr[Any]) -> Iterable[InternalValLabel]:
+        if self.jumps:
+            return [x for x in instr.inputs if can_cast_val(x, Label)]
         return []
 
-    def modifies(self, instr: BoundInstr[Any], /) -> LocationBase | Iterable[LocationBase]:
-        if len(self.out_types) == 0 and not instr.does_jump():
-            raise NotImplementedError(
-                f"{type(self)} returns nothing, so it must override 'modifies'"
-            )
+    format_with_args: Callable[..., Text] = _default_format
+
+    # impure operations MUST override reads and/or writes
+    def reads(self, instr: BoundInstr[Any], /) -> EffectRes:
+        return []
+
+    def writes(self, instr: BoundInstr[Any], /) -> EffectRes:
+        if len(self.out_types) == 0 and len(instr.jumps_to()) == 0:
+            raise NotImplementedError(f"{type(self)} returns nothing, so it must override 'writes'")
         return []
 
     ################################################################################
@@ -414,10 +431,8 @@ class BoundInstr(Generic[B_co], ByIdMixin):
         for x in self.outputs:
             _ck_val(x)
 
-    def does_jump(self: BoundInstr) -> bool:
-        if not self.instr.jumps:
-            return False
-        return any(can_cast_val(x, Label) for x in self.inputs)
+    def jumps_to(self: BoundInstr) -> list[InternalValLabel]:
+        return list(self.instr.jumps_to(self))
 
     def __rich__(self) -> Text:
         from ._instructions import RawInstr
@@ -486,25 +501,29 @@ class BoundInstr(Generic[B_co], ByIdMixin):
 
         return BoundInstr(get_id(), self.instr, new_inputs, new_outputs, debug_info())
 
-    def reads(self) -> list[LocationBase]:
+    def reads(self) -> list[EffectBase]:
         assert isinstance(self.instr, InstrBase)
         ans = self.instr.reads(self)
-        if isinstance(ans, LocationBase):
+        if ans is None:
+            return []
+        if isinstance(ans, EffectBase):
             return [ans]
         return list(ans)
 
-    def modifies(self) -> list[LocationBase]:
+    def writes(self) -> list[EffectBase]:
         assert isinstance(self.instr, InstrBase)
-        ans = self.instr.modifies(self)
-        if isinstance(ans, LocationBase):
+        ans = self.instr.writes(self)
+        if ans is None:
+            return []
+        if isinstance(ans, EffectBase):
             return [ans]
         return list(ans)
 
     def is_pure(self) -> bool:
-        return (not self.reads()) and (not self.modifies())
+        return (not self.reads()) and (not self.writes())
 
     def is_side_effect_free(self) -> bool:
-        return not self.modifies()
+        return not self.writes()
 
 
 ################################################################################
@@ -533,11 +552,15 @@ class MVar[T: VarT = Any](ByIdMixin):
 
 
 @dataclass(frozen=True)
-class LocationMvar(LocationBase):
+class EffectMvar(EffectBase):
     s: MVar
 
     def known_distinct(self, other: Self) -> bool:
-        return self.s == other.s
+        return self.s != other.s
+
+
+class SubMVar:
+    pass
 
 
 class ReadMVar[T: VarT = Any](InstrBase):
@@ -555,8 +578,8 @@ class ReadMVar[T: VarT = Any](InstrBase):
         return self.s._format()
 
     @override
-    def reads(self, instr: BoundInstr[Any], /) -> LocationBase:
-        return LocationMvar(self.s)
+    def reads(self, instr: BoundInstr[Any], /) -> EffectBase:
+        return EffectMvar(self.s)
 
 
 class WriteMVar[T: VarT = Any](InstrBase):
@@ -574,8 +597,8 @@ class WriteMVar[T: VarT = Any](InstrBase):
         return self.s._format() + " = " + format_val(val)
 
     @override
-    def modifies(self, instr: BoundInstr[Any], /) -> LocationBase:
-        return LocationMvar(self.s)
+    def writes(self, instr: BoundInstr[Any], /) -> EffectBase:
+        return EffectMvar(self.s)
 
 
 ################################################################################
@@ -595,10 +618,14 @@ class Block:
     debug: DebugInfo = field(compare=False)
 
     @property
-    def label(self) -> Label:
+    def label_instr(self) -> BoundInstr[EmitLabel]:
         from ._instructions import EmitLabel
 
-        (ans,) = self.contents[0].check_type(EmitLabel).inputs_
+        return self.contents[0].check_type(EmitLabel)
+
+    @property
+    def label(self) -> Label:
+        (ans,) = self.label_instr.inputs_
         # EmitLabel must be a constant Label
         assert isinstance(ans, Label)
         return ans

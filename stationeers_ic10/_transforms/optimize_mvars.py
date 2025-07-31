@@ -3,14 +3,13 @@ from dataclasses import dataclass
 import networkx as nx
 from ordered_set import OrderedSet
 
-from .._core import BoundInstr
 from .._core import MVar
 from .._core import ReadMVar
 from .._core import Value
 from .._core import WriteMVar
 from .._instructions import Move
 from .._utils import cast_unchecked_val
-from .basic import get_basic_index
+from .basic import get_index
 from .control_flow import CfgNode
 from .control_flow import External
 from .control_flow import build_control_flow_graph
@@ -27,10 +26,9 @@ class MvarLifetimeRes:
     reachable: OrderedSet[CfgNode]
 
 
-def compute_mvar_lifetime(ctx: TransformCtx, v_: MVar):
-    f = ctx.frag
+def compute_mvar_lifetime(ctx: TransformCtx, v_: MVar) -> MvarLifetimeRes:
     graph = build_control_flow_graph.call_cached(ctx)
-    index = get_basic_index.call_cached(ctx)
+    index = get_index.call_cached(ctx)
 
     v = index.mvars[v_]
     assert v.private
@@ -50,6 +48,7 @@ def compute_mvar_lifetime(ctx: TransformCtx, v_: MVar):
 
     ########################################
 
+    # sort since set not deterministic
     return MvarLifetimeRes(v.v, reachable=OrderedSet(sorted(reachable)))
 
 
@@ -61,23 +60,13 @@ def elim_mvars_read_writes(ctx: TransformCtx) -> bool:
     """
     f = ctx.frag
     graph = build_control_flow_graph.call_cached(ctx)
-    index = get_basic_index.call_cached(ctx)
+    index = get_index.call_cached(ctx)
 
     for v in index.mvars.values():
         if not v.private:
             continue
 
-        # get the subgraph where a value set to v
-        # may get used
-        # "ancestors" call wraps around "external"
-
-        hide_defs = cast_unchecked_val(graph)(
-            nx.restricted_view(graph, v.defs, []),  # pyright: ignore[reportUnknownMemberType]
-        )
-        reachable: set[CfgNode] = set(v.uses)
-        # NOTE: this can be faster
-        for use in v.uses:
-            reachable |= nx.ancestors(hide_defs, use)  # pyright: ignore[reportUnknownMemberType]
+        reachable = compute_mvar_lifetime(ctx, v.v).reachable
 
         # remove defs that is not reachable
         for d in v.defs:

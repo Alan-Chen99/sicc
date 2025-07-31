@@ -1,7 +1,7 @@
 import networkx as nx
 
 from .._utils import cast_unchecked_val
-from .basic import get_basic_index
+from .basic import get_index
 from .control_flow import build_control_flow_graph
 from .control_flow import external
 from .utils import CachedFn
@@ -20,7 +20,7 @@ def check_vars_defined(ctx: TransformCtx) -> None:
 
     returns cached result from "build_instr_flow_graph"
     """
-    index = get_basic_index.call_cached(ctx)
+    index = get_index.call_cached(ctx)
     graph = build_control_flow_graph.call_cached(ctx)
 
     for v in index.vars.values():
@@ -39,7 +39,7 @@ def check_vars_defined(ctx: TransformCtx) -> None:
 
 @CachedFn
 def check_mvars_defined(ctx: TransformCtx) -> None:
-    index = get_basic_index.call_cached(ctx)
+    index = get_index.call_cached(ctx)
     graph = build_control_flow_graph.call_cached(ctx)
 
     for v in index.mvars.values():

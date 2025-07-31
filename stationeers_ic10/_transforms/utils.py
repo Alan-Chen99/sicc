@@ -26,7 +26,7 @@ class Transform[**P, R](ByIdMixin):
         self.id = id(fn)
 
     def __call__(self, frag: Fragment, /, *args: P.args, **kwargs: P.kwargs) -> R:
-        from .basic import get_basic_index
+        from .basic import get_index
 
         if not isinstance(self, CachedFn):
             before = copy.deepcopy(frag)
@@ -50,7 +50,7 @@ class Transform[**P, R](ByIdMixin):
                 # TODO: potentially reuse result of this call
                 # validate result
                 try:
-                    get_basic_index(frag)
+                    get_index(frag)
                 except Exception as e:
                     raise RuntimeError(f"Transform {self.fn} returned invalid fragment") from e
 

@@ -101,8 +101,15 @@ def late_fn[F](fn: Callable[[], F]) -> F:
     return cast_unchecked(inner)
 
 
-def set_in[T](x: T, s: set[T]) -> bool:
+def in_typed[T](x: T, s: set[T] | list[T] | OrderedSet[T]) -> bool:
     return x in s
+
+
+def is_eq_typed[T](x: T) -> Callable[[T], bool]:
+    def inner(y: T) -> bool:
+        return x == y
+
+    return inner
 
 
 ################################################################################

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any  # autoflake: ignore
 from typing import Callable
 from typing import ClassVar
 from typing import Iterable
@@ -13,14 +13,14 @@ from typing import override
 
 from rich.text import Text
 
-from ._core import AnyLoc
 from ._core import BoundInstr
+from ._core import EffectBase
 from ._core import InstrBase
 from ._core import InteralBool
 from ._core import InternalFloat
 from ._core import InternalValLabel
 from ._core import Label
-from ._core import LocationBase
+from ._core import MVar
 from ._core import TypeList
 from ._core import Value
 from ._core import Var
@@ -30,6 +30,15 @@ from ._core import format_val
 from ._core import get_types
 
 # register_exclusion(__file__)
+
+
+@dataclass(frozen=True)
+class EffectExternal(EffectBase):
+    # interacts with the outside world
+    pass
+
+
+################################################################################
 
 
 class EmitLabel(InstrBase):
@@ -43,7 +52,7 @@ class EmitLabel(InstrBase):
         return format_val(l) + ":"
 
     @override
-    def modifies(self, instr: BoundInstr[Self]) -> Iterable[LocationBase]:
+    def writes(self, instr: BoundInstr[Self]) -> Iterable[EffectBase]:
         return []
 
 
@@ -154,6 +163,10 @@ class UnreachableChecked(InstrBase):
     out_types = ()
     continues = False
 
+    @override
+    def writes(self, instr: BoundInstr[Self]) -> None:
+        return
+
 
 class BlackBox[T: VarT](AsmInstrBase):
     jumps = False
@@ -164,12 +177,12 @@ class BlackBox[T: VarT](AsmInstrBase):
         self.out_types = (typ,)
 
     @override
-    def reads(self, instr: BoundInstr[Self]) -> LocationBase:
-        return AnyLoc()
+    def reads(self, instr: BoundInstr[Self]) -> EffectBase:
+        return EffectExternal()
 
     @override
-    def modifies(self, instr: BoundInstr[Self]) -> LocationBase:
-        return AnyLoc()
+    def writes(self, instr: BoundInstr[Self]) -> EffectBase:
+        return EffectExternal()
 
 
 ################################################################################
@@ -266,6 +279,29 @@ class Branch(InstrBase):
 
         # assert self.opcode.startswith("s")
         # raw_asm("b" + self.opcode.removeprefix("s"), None, *args, label)
+
+
+class JumpAndLink(InstrBase):
+    """
+    contains link_reg, which is a mvar with reg preference to ra
+
+    takes (return_label, call_label)
+    equivalent to
+
+    link_reg := return_label
+    jump call_label
+
+    jump to label and set link_reg to
+    """
+
+    def __init__(self, link_reg: MVar):
+        self.link_reg = link_reg
+        self.in_types = (Label, Label)
+        self.out_types = ()
+
+    def jumps_to(self, instr: BoundInstr[Self]):
+        _return_label, call_label = instr.inputs_
+        yield call_label
 
 
 class CJump(InstrBase):

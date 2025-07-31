@@ -78,7 +78,9 @@ def main():
         x = black_box(1)
         x = Variable(helper2(x))
         with if_(x > 1):
-            x.value = helper2(x)
+            x.value = helper2(x + 1)
+        with if_(x > 2):
+            x.value = helper2(x + 11)
 
         black_box(x)
 

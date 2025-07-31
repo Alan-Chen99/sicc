@@ -1,12 +1,15 @@
 from .._core import Fragment
 from .basic import remove_unused_side_effect_free
-from .basic import rename_private
+from .basic import rename_private_labels
+from .basic import rename_private_mvars
+from .basic import rename_private_vars
 from .basic import split_blocks
 from .branch import inline_pred_to_branch
 from .check_defined import check_mvars_defined
 from .check_defined import check_vars_defined
 from .control_flow import handle_deterministic_var_jump
 from .control_flow import remove_unreachable_code
+from .forward_full_block import forward_remove_full_block
 from .fuse_blocks import fuse_blocks_all
 from .fuse_blocks import fuse_blocks_trivial_jumps
 from .fuse_blocks import remove_trivial_blocks
@@ -17,7 +20,9 @@ from .utils import run_phases
 
 
 def optimize_frag(f: Fragment) -> None:
-    rename_private(f)
+    rename_private_vars(f)
+    rename_private_labels(f)
+    rename_private_mvars(f)
     run_phases(
         f,
         check_vars_defined,
@@ -28,12 +33,13 @@ def optimize_frag(f: Fragment) -> None:
         remove_trivial_vars_,
         remove_trivial_blocks,
         #
-        inline_pred_to_branch,
+        # inline_pred_to_branch,
         remove_unused_side_effect_free,
         handle_deterministic_var_jump,
         fuse_blocks_trivial_jumps,
         #
         elim_mvars_read_writes,
+        forward_remove_full_block,
     )
 
 

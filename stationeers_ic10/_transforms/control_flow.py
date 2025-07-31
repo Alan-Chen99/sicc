@@ -3,18 +3,18 @@ from typing import Iterator
 
 import networkx as nx
 from ordered_set import OrderedSet
+from rich import print as print  # autoflake: skip
 from rich.text import Text
 
 from .._core import Block
 from .._core import BoundInstr
+from .._core import EffectBase
+from .._core import EffectMvar
 from .._core import Label
-from .._core import MVar
-from .._core import ReadMVar
 from .._core import Var
-from .._core import WriteMVar
 from .._instructions import Jump
 from .._utils import Singleton
-from .basic import get_basic_index
+from .basic import get_index
 from .utils import CachedFn
 from .utils import LoopingTransform
 from .utils import Transform
@@ -28,7 +28,7 @@ class External(Singleton):
 # represents outside the fragment
 external = External()
 
-_NodeT = Var | MVar | Label | BoundInstr | External
+_NodeT = Var | Label | BoundInstr | External | EffectBase
 
 JumpTarget = Label | External
 
@@ -65,13 +65,11 @@ def compute_label_provenance(ctx: TransformCtx) -> LabelProvenanceRes:
 
     does not mutate f
     """
-    # TODO: side effect (storing label on the stack)
-
     # note: it may be faster to compute SCC of the graph first and use it to do this "one-shot"
     #   which is asymptotically faster
 
     f = ctx.frag
-    index = get_basic_index.call_cached(ctx)
+    index = get_index.call_cached(ctx)
 
     G: nx.DiGraph[_NodeT] = nx.DiGraph()
 
@@ -102,14 +100,15 @@ def compute_label_provenance(ctx: TransformCtx) -> LabelProvenanceRes:
         for x in instr.outputs:
             G.add_edge(instr, x)
 
-        # mvars
-        if i := instr.isinst(ReadMVar):
-            G.add_edge(i.instr.s, instr)
-        if i := instr.isinst(WriteMVar):
-            G.add_edge(instr, i.instr.s)
+    for ef in index.effects.values():
+        for instr in ef.reads_instrs:
+            G.add_edge(ef.loc, instr)
+        for instr in ef.writes_instrs:
+            G.add_edge(instr, ef.loc)
 
-        # TODO: things with write effect?
-        #
+    for x, y in index.effect_conflicts.edges:
+        G.add_edge(x, y)
+        G.add_edge(y, x)
 
     for l in index.labels.values():
         if not l.private:
@@ -121,8 +120,8 @@ def compute_label_provenance(ctx: TransformCtx) -> LabelProvenanceRes:
 
     for var in index.mvars.values():
         if not var.private:
-            G.add_edge(external, var.v)
-            G.add_edge(var.v, external)
+            G.add_edge(external, EffectMvar(var.v))
+            G.add_edge(EffectMvar(var.v), external)
 
     # print(f)
 
@@ -136,12 +135,11 @@ def compute_label_provenance(ctx: TransformCtx) -> LabelProvenanceRes:
     # print("reaches_label", reaches_label)
 
     def handle_one(instr: BoundInstr) -> Iterator[JumpTarget]:
-        if instr.does_jump():
-            for x in instr.inputs:
-                if isinstance(x, Label):
-                    yield preprocess(x)
-                if isinstance(x, Var) and x.type == Label:
-                    yield from reaches_label[x]
+        for x in instr.jumps_to():
+            if isinstance(x, Label):
+                yield preprocess(x)
+            if isinstance(x, Var) and x.type == Label:
+                yield from reaches_label[x]
 
     res = {instr: sorted(set(handle_one(instr))) for instr in f.all_instrs()}
 
@@ -154,11 +152,16 @@ def compute_label_provenance(ctx: TransformCtx) -> LabelProvenanceRes:
 
     # print({x: y for x, y in res.items() if x.does_jump()})
     # print("res", res)
-    return LabelProvenanceRes(
+    res = LabelProvenanceRes(
         instr_jumps=res,
         leaked=OrderedSet(leaked()),
         reaches_label=reaches_label,
     )
+
+    # with FORMAT_ANNOTATE.bind(res.annotate):
+    #     print(f)
+
+    return res
 
 
 CfgNode = BoundInstr | External
@@ -167,7 +170,7 @@ CfgNode = BoundInstr | External
 @CachedFn
 def build_control_flow_graph(ctx: TransformCtx) -> "nx.DiGraph[CfgNode]":
     f = ctx.frag
-    index = get_basic_index.call_cached(ctx)
+    index = get_index.call_cached(ctx)
     res = compute_label_provenance.call_cached(ctx)
 
     # # note: this creates extra labels

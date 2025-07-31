@@ -1,6 +1,6 @@
 from .._core import BoundInstr
 from .._instructions import Move
-from .basic import get_basic_index
+from .basic import get_index
 from .utils import LoopingTransform
 from .utils import TransformCtx
 
@@ -8,7 +8,7 @@ from .utils import TransformCtx
 @LoopingTransform
 def remove_trivial_vars_(ctx: TransformCtx) -> bool:
     f = ctx.frag
-    index = get_basic_index.call_cached(ctx)
+    index = get_index.call_cached(ctx)
 
     for v in index.vars.values():
         if def_instr := v.def_instr.isinst(Move):

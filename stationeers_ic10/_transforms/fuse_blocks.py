@@ -5,7 +5,7 @@ from .._core import Var
 from .._instructions import Branch
 from .._instructions import CJump
 from .._instructions import Jump
-from .basic import get_basic_index
+from .basic import get_index
 from .control_flow import External
 from .control_flow import build_control_flow_graph
 from .utils import LoopingTransform
@@ -18,7 +18,7 @@ def remove_trivial_blocks(ctx: TransformCtx) -> bool:
     remove block that is just a jump
     """
     f = ctx.frag
-    index = get_basic_index.call_cached(ctx)
+    index = get_index.call_cached(ctx)
     for b in f.blocks.values():
         if (
             #
@@ -44,7 +44,7 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
         assert efficient_only
 
     f = ctx.frag
-    index = get_basic_index.call_cached(ctx)
+    index = get_index.call_cached(ctx)
     graph = build_control_flow_graph.call_cached(ctx)
 
     def attempt_fuse(cur: Block, target: Label) -> bool:
