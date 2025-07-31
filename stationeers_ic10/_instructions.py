@@ -5,6 +5,7 @@ from typing import Any  # autoflake: ignore
 from typing import Callable
 from typing import ClassVar
 from typing import Iterable
+from typing import Iterator
 from typing import Self
 from typing import TypedDict
 from typing import Unpack
@@ -26,8 +27,10 @@ from ._core import Value
 from ._core import Var
 from ._core import VarT
 from ._core import VarTS
+from ._core import WriteMVar
 from ._core import format_val
 from ._core import get_types
+from ._utils import safe_cast
 
 # register_exclusion(__file__)
 
@@ -48,8 +51,8 @@ class EmitLabel(InstrBase):
     jumps = False
 
     @override
-    def format_with_args(self, l: Label) -> Text:
-        return format_val(l) + ":"
+    def format(self, instr: BoundInstr[Self], /) -> Text:
+        return format_val(instr.inputs_[0]) + ":"
 
     @override
     def writes(self, instr: BoundInstr[Self]) -> Iterable[EffectBase]:
@@ -124,13 +127,14 @@ class AsmInstrBase(InstrBase):
 
     @override
     def lower(self, *args: Value) -> tuple[Var, ...]:
-        return RawInstr(
-            self.opcode,
-            TypeList(self.in_types),
-            TypeList(self.out_types),
-            continues=self.continues,
-            jumps=self.jumps,
-        ).emit(*args)
+        assert False
+        # return RawInstr(
+        #     self.opcode,
+        #     TypeList(self.in_types),
+        #     TypeList(self.out_types),
+        #     continues=self.continues,
+        #     jumps=self.jumps,
+        # ).emit(*args)
 
 
 ################################################################################
@@ -251,6 +255,12 @@ class Not(PredicateBase):
 
 
 class Branch(InstrBase):
+    in_types = (bool, Label, Label)
+    out_types = ()
+    continues = False
+
+
+class PredBranch(InstrBase):
     def __init__(self, pred: PredicateBase):
         assert pred.out_types == (bool,)
         self.base = pred
@@ -258,27 +268,33 @@ class Branch(InstrBase):
         self.in_types: TypeList[  # pyright: ignore[reportIncompatibleVariableOverride]
             tuple[InternalValLabel, InternalValLabel, *tuple[Value, ...]]
         ] = TypeList((Label, Label, *pred.in_types))
-        self.out_types = ()
-        self.continues = False
+        self.out_types = (bool,)
 
     @override
-    def format_with_args(self, l_t: InternalValLabel, l_f: InternalValLabel, *args: Value) -> Text:
-        ans = Text()
-        ans.append(type(self).__name__, "ic10.jump")
-        ans += " ["
-        ans += self.base.format_with_args(*args)
-        ans += "]"
-        for x in [l_t, l_f]:
-            ans += " "
-            ans += format_val(x)
-        return ans
+    def bundles(self, instr: BoundInstr[Self]) -> Iterator[BoundInstr]:
+        (pred_var,) = instr.outputs_
+        l_t, l_f, *args = instr.inputs_
+        yield self.base.bind((pred_var,), *args)  # pyright: ignore
+        yield Branch().bind((), pred_var, l_t, l_f)
 
-    def lower(self, l_t: InternalValLabel, l_f: InternalValLabel, *args: Value) -> None:
-        CJump(self.base, jump_on=True).call(l_t, *args)
-        Jump().call(l_f)
+    # @override
+    # def format_with_args(self, l_t: InternalValLabel, l_f: InternalValLabel, *args: Value) -> Text:
+    #     ans = Text()
+    #     ans.append(type(self).__name__, "ic10.jump")
+    #     ans += " ["
+    #     ans += self.base.format_with_args(*args)
+    #     ans += "]"
+    #     for x in [l_t, l_f]:
+    #         ans += " "
+    #         ans += format_val(x)
+    #     return ans
 
-        # assert self.opcode.startswith("s")
-        # raw_asm("b" + self.opcode.removeprefix("s"), None, *args, label)
+    # def lower(self, l_t: InternalValLabel, l_f: InternalValLabel, *args: Value) -> None:
+    #     CJump(self.base, jump_on=True).call(l_t, *args)
+    #     Jump().call(l_f)
+
+    #     # assert self.opcode.startswith("s")
+    #     # raw_asm("b" + self.opcode.removeprefix("s"), None, *args, label)
 
 
 class JumpAndLink(InstrBase):
@@ -299,22 +315,58 @@ class JumpAndLink(InstrBase):
         self.in_types = (Label, Label)
         self.out_types = ()
 
-    def jumps_to(self, instr: BoundInstr[Self]):
-        _return_label, call_label = instr.inputs_
-        yield call_label
+    @override
+    def bundles(self, instr: BoundInstr[Self]):
+        return_label, call_label = instr.inputs_
+        yield WriteMVar(self.link_reg).bind((), return_label)
+        yield Jump().bind((), call_label)
 
 
-class CJump(InstrBase):
+class CondJumpAndLink(InstrBase):
+    def __init__(self, pred: PredicateBase, link_reg: MVar):
+        self.link_reg = link_reg
+
+        assert pred.out_types == (bool,)
+        self.pred = pred
+
+        self.in_types = safe_cast(
+            TypeList[tuple[InternalValLabel, InternalValLabel, *tuple[Value, ...]]],
+            TypeList((Label, *pred.in_types)),
+        )
+        self.out_types = ()
+
+    def bundles(self, instr: BoundInstr[Self], /):
+        func_label, ret_label, *pred_args = instr.inputs_
+
+        yield WriteMVar(self.link_reg).bind((), ret_label)
+        yield CondJump(self.pred).bind((), func_label, *pred_args)
+        yield EmitLabel().bind((), ret_label)
+
+    # @override
+    # def format_with_args(self, target: InternalValLabel, *args: Value) -> Text:
+    #     ans = Text()
+    #     ans.append(type(self).__name__, "ic10.jump")
+    #     ans += " "
+    #     if self.jump_on == False:
+    #         ans.append("NOT", "ic10.jump")
+    #     ans += "["
+    #     ans += self.base.format_with_args(*args)
+    #     ans += "] "
+    #     ans += format_val(target)
+    #     return ans
+
+
+class CondJump(InstrBase):
     """
     jumps to a label if pred evaluates equal to "jump_on"; otherwise continue
 
     tracing does not emit this; only used after optimize when concating blocks
     """
 
-    def __init__(self, pred: PredicateBase, jump_on: bool):
+    def __init__(self, pred: PredicateBase):
         assert pred.out_types == (bool,)
         self.base = pred
-        self.jump_on = jump_on
+        # self.jump_on = jump_on
 
         self.in_types: TypeList[  # pyright: ignore[reportIncompatibleVariableOverride]
             tuple[InternalValLabel, *tuple[Value, ...]]
@@ -322,21 +374,22 @@ class CJump(InstrBase):
         self.out_types = ()
         self.continues = True
 
-    @override
-    def format_with_args(self, target: InternalValLabel, *args: Value) -> Text:
-        ans = Text()
-        ans.append(type(self).__name__, "ic10.jump")
-        ans += " "
-        if self.jump_on == False:
-            ans.append("NOT", "ic10.jump")
-        ans += "["
-        ans += self.base.format_with_args(*args)
-        ans += "] "
-        ans += format_val(target)
-        return ans
+    # @override
+    # def format_with_args(self, target: InternalValLabel, *args: Value) -> Text:
+    #     ans = Text()
+    #     ans.append(type(self).__name__, "ic10.jump")
+    #     ans += " "
+    #     if self.jump_on == False:
+    #         ans.append("NOT", "ic10.jump")
+    #     ans += "["
+    #     ans += self.base.format_with_args(*args)
+    #     ans += "] "
+    #     ans += format_val(target)
+    #     return ans
 
     @override
     def lower(self, label: InternalValLabel, *args: Value) -> None:
+        assert False
         if self.jump_on == True:
             return self.base.lower_cjump(*args, label=label)
         else:

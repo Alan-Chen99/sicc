@@ -1,7 +1,9 @@
 from .._core import Var
 from .._instructions import Branch
+from .._instructions import PredBranch
 from .._instructions import PredicateBase
 from .._instructions import PredVar
+from .._tracing import mk_var
 from .basic import get_index
 from .utils import LoopingTransform
 from .utils import TransformCtx
@@ -13,8 +15,8 @@ def inline_pred_to_branch(ctx: TransformCtx) -> bool:
     index = get_index.call_cached(ctx)
 
     for b in f.blocks.values():
-        if (instr := b.end.isinst(Branch)) and isinstance(instr.instr.base, PredVar):
-            l_t, l_f, v = instr.inputs_
+        if instr := b.end.isinst(Branch):
+            v, l_t, l_f = instr.inputs_
             if isinstance(v, Var):
                 v = v.check_type(bool)
                 if def_instr := index.vars[v].def_instr.isinst(PredicateBase):
@@ -22,7 +24,10 @@ def inline_pred_to_branch(ctx: TransformCtx) -> bool:
                     @f.replace_instr(instr)
                     def _():
                         assert def_instr is not None
-                        return Branch(def_instr.instr).bind((), l_t, l_f, *def_instr.inputs)
+                        new_v = mk_var(bool)
+                        return PredBranch(def_instr.instr).bind(
+                            (new_v,), l_t, l_f, *def_instr.inputs
+                        )
 
                     return True
 

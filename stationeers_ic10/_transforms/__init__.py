@@ -1,3 +1,5 @@
+from typing import Callable
+
 from .._core import Fragment
 from .basic import remove_unused_side_effect_free
 from .basic import rename_private_labels
@@ -18,29 +20,34 @@ from .optimize_mvars import elim_mvars_read_writes
 from .remove_trivial_vars import remove_trivial_vars_
 from .utils import run_phases
 
+FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
+    check_vars_defined,
+    split_blocks,
+    #
+    remove_unreachable_code,
+    # remove_trivial_mvars,
+    remove_trivial_vars_,
+    remove_trivial_blocks,
+    #
+    remove_unused_side_effect_free,
+    handle_deterministic_var_jump,
+    fuse_blocks_trivial_jumps,
+    #
+    elim_mvars_read_writes,
+    forward_remove_full_block,
+]
+
+GLOBAL_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
+    #
+    inline_pred_to_branch
+]
+
 
 def optimize_frag(f: Fragment) -> None:
     rename_private_vars(f)
     rename_private_labels(f)
     rename_private_mvars(f)
-    run_phases(
-        f,
-        check_vars_defined,
-        split_blocks,
-        #
-        remove_unreachable_code,
-        # remove_trivial_mvars,
-        remove_trivial_vars_,
-        remove_trivial_blocks,
-        #
-        # inline_pred_to_branch,
-        remove_unused_side_effect_free,
-        handle_deterministic_var_jump,
-        fuse_blocks_trivial_jumps,
-        #
-        elim_mvars_read_writes,
-        forward_remove_full_block,
-    )
+    run_phases(f, *FRAG_OPTS)
 
 
 def global_checks(f: Fragment):
@@ -51,6 +58,10 @@ def global_checks(f: Fragment):
 
     check_vars_defined(f)
     check_mvars_defined(f)
+
+
+def global_opts(f: Fragment):
+    run_phases(f, *GLOBAL_OPTS)
 
 
 def emit_asm(f: Fragment):

@@ -16,4 +16,4 @@ unreachable_checked = UnreachableChecked().call
 
 
 def branch(cond: InteralBool, on_true: InternalValLabel, on_false: InternalValLabel) -> None:
-    return Branch(PredVar()).call(on_true, on_false, cond)
+    return Branch().call(cond, on_true, on_false)

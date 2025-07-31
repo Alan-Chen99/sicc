@@ -205,7 +205,7 @@ def split_blocks(ctx: TransformCtx) -> None:
                 yield get()
 
             cur.append(x)
-            if not x.instr.continues:
+            if not x.continues:
                 ans = Block(cur, b.debug)
                 ans.basic_check()
                 yield ans
@@ -230,7 +230,7 @@ def remove_unused_side_effect_free(ctx: TransformCtx) -> bool:
 
     @f.map_instrs
     def _(instr: BoundInstr):
-        if instr.isinst(EmitLabel) or len(instr.jumps_to()) > 0 or not instr.instr.continues:
+        if instr.isinst(EmitLabel) or len(instr.jumps_to()) > 0 or not instr.continues:
             return None
         if not instr.is_side_effect_free():
             return None

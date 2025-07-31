@@ -233,17 +233,6 @@ def format_val(v: Value) -> Text:
     return Text(repr(v), get_style(typ))
 
 
-def _default_format(self: InstrBase, *args: Value) -> Text:
-    ans = Text()
-    mark = self.jumps and any(get_type(x) == Label for x in args)
-    mark |= not self.continues
-    ans.append(type(self).__name__, "ic10.jump" if mark else "ic10.opcode")
-    for x in args:
-        ans += " "
-        ans += format_val(x)
-    return ans
-
-
 LowerRes = tuple[Var, ...] | Var | None
 
 
@@ -255,29 +244,102 @@ class InstrBase(abc.ABC):
 
     # optional overrides
 
+    def bundles(self, instr: BoundInstr[Any], /) -> Iterator[BoundInstr] | None:
+        """
+        If not None, instr is a bundle of several instructions.
+
+        Every time its called, it should return instructions with a new/different id.
+        it should NOT return [instr]; caller would unpack recursively.
+
+        this features is added later; some code might not be aware of this and may make mistakes.
+        TODO:
+        (1) check EmitLabel. now this is no longer the only thing that can produce a label
+        """
+        return None
+
     #: continues to the next instruction
     continues: bool = True
+
+    def get_continues(self, instr: BoundInstr[Any], /) -> bool:
+        """if overriding this, "continues" variable have no effect"""
+        if instr.is_bundle():
+            return instr.unpack()[-1].continues
+        return self.continues
 
     #: if True, may jump to any label that is a input
     #: if False, never jumps
     jumps: bool = True
 
-    # if overriding this, "jumps" variable have no effect
-    def jumps_to(self, instr: BoundInstr[Any]) -> Iterable[InternalValLabel]:
-        if self.jumps:
-            return [x for x in instr.inputs if can_cast_val(x, Label)]
-        return []
+    def jumps_to(self, instr: BoundInstr[Any], /) -> Iterable[InternalValLabel]:
+        """if overriding this, "jumps" variable have no effect"""
+        if instr.is_bundle():
+            for part in instr.unpack():
+                yield from part.jumps_to()
+            return
 
-    format_with_args: Callable[..., Text] = _default_format
+        if self.jumps:
+            for x in instr.inputs:
+                if can_cast_val(x, Label):
+                    yield x
 
     # impure operations MUST override reads and/or writes
     def reads(self, instr: BoundInstr[Any], /) -> EffectRes:
-        return []
+        if instr.is_bundle():
+            for part in instr.unpack():
+                yield from part.reads()
+            return
 
     def writes(self, instr: BoundInstr[Any], /) -> EffectRes:
+        if instr.is_bundle():
+            for part in instr.unpack():
+                yield from part.writes()
+            return
+
         if len(self.out_types) == 0 and len(instr.jumps_to()) == 0:
             raise NotImplementedError(f"{type(self)} returns nothing, so it must override 'writes'")
-        return []
+
+    def format_expr_part(self, instr: BoundInstr[Any], /) -> Text:
+        ans = Text()
+        mark = self.jumps and any(get_type(x) == Label for x in instr.inputs)
+        mark |= not instr.continues
+        ans.append(type(self).__name__, "ic10.jump" if mark else "ic10.opcode")
+        for x in instr.inputs:
+            ans += " "
+            ans += format_val(x)
+        return ans
+
+    def format(self, instr: BoundInstr[Any], /) -> Text:
+        expr_part = self.format_expr_part(instr)
+
+        ans = Text()
+        if len(instr.outputs) > 0:
+            ans += format_val(instr.outputs[0])
+            for x in instr.outputs[1:]:
+                ans += ", "
+                ans += format_val(x)
+            ans += " = "
+        ans += expr_part
+        return ans
+
+    def format_with_anno(self, instr: BoundInstr[Any], /) -> RenderableType:
+        if (parts := self.bundles(instr)) is not None:
+            parts = [x.instr.format_with_anno(x) for x in parts]
+            return Panel(Group(*parts))
+
+        ans = Text()
+        ans += self.format(instr)
+        loc_info = instr.debug.location_info()
+        if loc_info:
+            ans.append("  # " + loc_info, "ic10.comment")
+
+        annotation = FORMAT_ANNOTATE.value(instr)
+        if annotation:
+            ans.append("  # ", "ic10.comment")
+            ans.append(annotation)
+
+        return ans
+
+    # format_with_args: Callable[..., Text] = _default_format
 
     ################################################################################
     # stub methods for static typing
@@ -304,6 +366,12 @@ class InstrBase(abc.ABC):
         self: _InstrTypedIn[tuple[type[A], type[B]]], x: tuple[Value[A], Value[B]], /
     ) -> None: ...
     @overload
+    def _static_in_typing_helper[A: VarT, B: VarT, C: VarT](
+        self: _InstrTypedIn[tuple[type[A], type[B], type[C]]],
+        x: tuple[Value[A], Value[B], Value[C]],
+        /,
+    ) -> None: ...
+    @overload
     def _static_in_typing_helper[T](self: _InstrTypedIn[TypeList[T]], x: T, /) -> None: ...
     def _static_in_typing_helper(self: Any, x: Any, /) -> None: ...
 
@@ -328,6 +396,12 @@ class InstrBase(abc.ABC):
     @overload
     def _static_in_typing_helper_api[A: VarT, B: VarT](
         self: _InstrTypedIn[tuple[type[A], type[B]]], x: tuple[UserValue[A], UserValue[B]], /
+    ) -> None: ...
+    @overload
+    def _static_in_typing_helper_api[A: VarT, B: VarT, C: VarT](
+        self: _InstrTypedIn[tuple[type[A], type[B], type[C]]],
+        x: tuple[UserValue[A], UserValue[B], UserValue[C]],
+        /,
     ) -> None: ...
     def _static_in_typing_helper_api(self: Any, x: Any, /) -> None: ...
 
@@ -431,39 +505,31 @@ class BoundInstr(Generic[B_co], ByIdMixin):
         for x in self.outputs:
             _ck_val(x)
 
+    def is_bundle(self: BoundInstr) -> bool:
+        return self.instr.bundles(self) is not None
+
+    def unpack(self: BoundInstr) -> list[BoundInstr]:
+        parts = self.instr.bundles(self)
+        if parts is None:
+            return [self]
+        return [p for x in parts for p in x.unpack()]
+
+    @property
+    def continues(self: BoundInstr) -> bool:
+        return self.instr.get_continues(self)
+
     def jumps_to(self: BoundInstr) -> list[InternalValLabel]:
         return list(self.instr.jumps_to(self))
 
-    def __rich__(self) -> Text:
-        from ._instructions import RawInstr
-
-        assert narrow_unchecked(self, BoundInstr)
-
-        if me := self.isinst(RawInstr):
-            return me.instr.format_with_args_outputs(self.outputs, *self.inputs)
-
-        ans = Text()
-        if len(self.outputs) > 0:
-            ans += format_val(self.outputs[0])
-            for x in self.outputs[1:]:
-                ans += ", "
-                ans += format_val(x)
-            ans += " = "
-        ans += self.instr.format_with_args(*self.inputs)
-
-        loc_info = self.debug.location_info()
-        if loc_info:
-            ans.append("  # " + loc_info, "ic10.comment")
-
-        annotation = FORMAT_ANNOTATE.value(self)
-        if annotation:
-            ans.append("  # ", "ic10.comment")
-            ans.append(annotation)
-
-        return ans
+    def __rich__(self) -> RenderableType:
+        if TYPE_CHECKING:
+            assert narrow_unchecked(self, BoundInstr)
+        return self.instr.format_with_anno(self)
 
     def __repr__(self):
-        return repr(self.__rich__().plain)
+        if TYPE_CHECKING:
+            assert narrow_unchecked(self, BoundInstr)
+        return repr(self.instr.format(self).plain)
 
     def isinst[T: InstrBase](self, instr_type: type[T]) -> BoundInstr[T] | None:
         if isinstance(self.instr, instr_type):
@@ -574,11 +640,11 @@ class ReadMVar[T: VarT = Any](InstrBase):
         self.out_types = (s.type,)
 
     @override
-    def format_with_args(self) -> Text:
+    def format_expr_part(self, instr: BoundInstr[Self], /) -> Text:
         return self.s._format()
 
     @override
-    def reads(self, instr: BoundInstr[Any], /) -> EffectBase:
+    def reads(self, instr: BoundInstr[Self], /) -> EffectBase:
         return EffectMvar(self.s)
 
 
@@ -593,8 +659,8 @@ class WriteMVar[T: VarT = Any](InstrBase):
         self.out_types = ()
 
     @override
-    def format_with_args(self, val: Value[T]) -> Text:
-        return self.s._format() + " = " + format_val(val)
+    def format(self, instr: BoundInstr[Self], /) -> Text:
+        return self.s._format() + " = " + format_val(instr.inputs_[0])
 
     @override
     def writes(self, instr: BoundInstr[Any], /) -> EffectBase:
@@ -633,7 +699,7 @@ class Block:
     @property
     def end(self) -> BoundInstr:
         ans = self.contents[-1]
-        assert not ans.instr.continues
+        assert not ans.continues
         return ans
 
     @property
@@ -660,7 +726,7 @@ class Block:
                     prev_is_label = True
                 else:
                     prev_is_label = False
-                prev_cont = x.instr.continues
+                prev_cont = x.continues
 
                 if sep:
                     yield ""

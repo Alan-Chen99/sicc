@@ -3,7 +3,7 @@ from .._core import BoundInstr
 from .._core import Label
 from .._core import Var
 from .._instructions import Branch
-from .._instructions import CJump
+from .._instructions import CondJump
 from .._instructions import Jump
 from .basic import get_index
 from .control_flow import External
@@ -70,7 +70,7 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
         if efficient_only:
             for x in pred:
                 assert not isinstance(x, External)
-                if x != cur.end and not x.instr.continues:
+                if x != cur.end and not x.continues:
                     return False
 
         # do the fuse
@@ -92,11 +92,12 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
             keep = b.contents[:-1]
         elif instr := b.end.isinst(Branch):
             t_l, f_l, *args = instr.inputs_
+            assert False
             if t_l == target:
-                rep = CJump(instr.instr.base, jump_on=False).bind((), f_l, *args)
+                rep = CondJump(instr.instr.base, jump_on=False).bind((), f_l, *args)
             else:
                 assert f_l == target
-                rep = CJump(instr.instr.base, jump_on=True).bind((), t_l, *args)
+                rep = CondJump(instr.instr.base, jump_on=True).bind((), t_l, *args)
             keep = b.contents[:-1] + [rep]
         else:
             assert False

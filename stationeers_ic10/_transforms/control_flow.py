@@ -181,7 +181,7 @@ def build_control_flow_graph(ctx: TransformCtx) -> "nx.DiGraph[CfgNode]":
 
     for b in f.blocks.values():
         for x, y in zip(b.contents[:-1], b.contents[1:]):
-            if x.instr.continues:
+            if x.continues:
                 G.add_edge(x, y)
 
         for x in b.contents:

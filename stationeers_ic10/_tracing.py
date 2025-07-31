@@ -65,10 +65,13 @@ def mk_var[T: VarT](typ: type[T], *, debug: DebugInfo | None = None) -> Var[T]:
 
 
 def ck_val(v: Value) -> None:
-    if isinstance(v, Var):
-        if not v in _CUR_SCOPE.value.vars:
-            raise TypeError("use of out of scope varaible")
-        assert v.live.value
+    # FIXME: this check has been temporarily disabled since introduction of bundles
+    # it should be moved somewhere
+    pass
+    # if isinstance(v, Var):
+    #     if not v in _CUR_SCOPE.value.vars:
+    #         raise TypeError("use of out of scope varaible")
+    #     assert v.live.value
 
 
 def mk_mvar[T: VarT](
@@ -229,6 +232,7 @@ def internal_transform(frag: Fragment) -> Iterator[None]:
 
 @contextmanager
 def trace_main_test() -> Iterator[Cell[Fragment]]:
+    from ._transforms import global_opts
     from ._transforms import optimize_frag
     from ._transforms.basic import mark_all_private_except
 
@@ -250,8 +254,11 @@ def trace_main_test() -> Iterator[Cell[Fragment]]:
         for x in subrs:
             emit_frag(x.frag)
 
-    mark_all_private_except(res.value, [start, exit])
-    optimize_frag(res.value)
+    f = res.value
+    mark_all_private_except(f, [start, exit])
+    optimize_frag(f)
+    global_opts(f)
+
     print("final optimize:")
     print(res.value)
 

@@ -11,6 +11,18 @@ from .utils import TransformCtx
 
 
 def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
+    """
+    try to move a post-branch block entirely to before-branch. most notably:
+
+    if_(...):
+        fn(x+1)
+
+    into
+
+    y = x + 1
+    if_(...):
+        fn(y)
+    """
     f = ctx.frag
     graph = build_control_flow_graph.call_cached(ctx)
     index = get_index.call_cached(ctx)
