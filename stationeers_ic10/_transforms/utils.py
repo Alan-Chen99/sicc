@@ -6,6 +6,7 @@ from typing import Any
 from typing import Callable
 from typing import Concatenate
 
+from ordered_set import OrderedSet
 from rich import print as print
 
 from .._core import Fragment
@@ -17,7 +18,7 @@ from .._utils import ByIdMixin
 class TransformCtx:
     frag: Fragment
 
-    _cache: dict[CachedFn[..., Any], Any]
+    _cache: dict[Any, Any]
 
 
 class Transform[**P, R](ByIdMixin):
@@ -65,10 +66,11 @@ class Transform[**P, R](ByIdMixin):
 
 class CachedFn[**P, R](Transform[P, R]):
     def call_cached(self, ctx: TransformCtx, /, *args: P.args, **kwargs: P.kwargs) -> R:
-        if self in ctx._cache:
-            return ctx._cache[self]
+        cache_key = (self, args, *kwargs.items())
+        if cache_key in ctx._cache:
+            return ctx._cache[cache_key]
         ans = self.fn(ctx, *args, **kwargs)
-        ctx._cache[self] = ans
+        ctx._cache[cache_key] = ans
         return ans
 
 
@@ -100,3 +102,7 @@ def run_phases(frag: Fragment, *fs: Callable[[Fragment], bool | None], loop: boo
     while _run_phases_once(frag, *fs):
         res = True
     return res
+
+
+def mk_ordered_set() -> OrderedSet[Any]:  # makes type check happy
+    return OrderedSet(())

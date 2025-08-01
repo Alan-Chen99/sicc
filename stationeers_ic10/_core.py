@@ -244,16 +244,20 @@ class InstrBase(abc.ABC):
 
     # optional overrides
 
-    def bundles(self, instr: BoundInstr[Any], /) -> Iterator[BoundInstr] | None:
+    def bundles(self, instr: BoundInstr[Any], /) -> Iterable[BoundInstr] | None:
         """
         If not None, instr is a bundle of several instructions.
 
-        Every time its called, it should return instructions with a new/different id.
-        it should NOT return [instr]; caller would unpack recursively.
+        Every time its called, it should
+        (1) return a list of instructions with a new/different instr id.
+              this list must not contain [self]
+        (2) unlike BoundInstr objects, internal vars in the bundle must be in the
+              "output" field of a BoundInstr
 
         this features is added later; some code might not be aware of this and may make mistakes.
         TODO:
         (1) check EmitLabel. now this is no longer the only thing that can produce a label
+        (2) i think some previous code incorrectly assmed instrs have at most one output
         """
         return None
 
@@ -262,8 +266,8 @@ class InstrBase(abc.ABC):
 
     def get_continues(self, instr: BoundInstr[Any], /) -> bool:
         """if overriding this, "continues" variable have no effect"""
-        if instr.is_bundle():
-            return instr.unpack()[-1].continues
+        if (unpacked := instr.unpack()) is not None:
+            return unpacked[-1].continues
         return self.continues
 
     #: if True, may jump to any label that is a input
@@ -272,8 +276,8 @@ class InstrBase(abc.ABC):
 
     def jumps_to(self, instr: BoundInstr[Any], /) -> Iterable[InternalValLabel]:
         """if overriding this, "jumps" variable have no effect"""
-        if instr.is_bundle():
-            for part in instr.unpack():
+        if (unpacked := instr.unpack()) is not None:
+            for part in unpacked:
                 yield from part.jumps_to()
             return
 
@@ -283,20 +287,28 @@ class InstrBase(abc.ABC):
                     yield x
 
     # impure operations MUST override reads and/or writes
+    # writes does NOT imply reads
     def reads(self, instr: BoundInstr[Any], /) -> EffectRes:
-        if instr.is_bundle():
-            for part in instr.unpack():
+        if (unpacked := instr.unpack()) is not None:
+            for part in unpacked:
                 yield from part.reads()
             return
 
     def writes(self, instr: BoundInstr[Any], /) -> EffectRes:
-        if instr.is_bundle():
-            for part in instr.unpack():
+        if (unpacked := instr.unpack()) is not None:
+            for part in unpacked:
                 yield from part.writes()
             return
 
         if len(self.out_types) == 0 and len(instr.jumps_to()) == 0:
             raise NotImplementedError(f"{type(self)} returns nothing, so it must override 'writes'")
+
+    def defines_labels(self, instr: BoundInstr[Any], /) -> Iterable[Label]:
+        """does it contain EmitLabel or equirvalent?"""
+        if (unpacked := instr.unpack()) is not None:
+            for part in unpacked:
+                yield from part.defines_labels()
+        return
 
     def format_expr_part(self, instr: BoundInstr[Any], /) -> Text:
         ans = Text()
@@ -505,14 +517,16 @@ class BoundInstr(Generic[B_co], ByIdMixin):
         for x in self.outputs:
             _ck_val(x)
 
-    def is_bundle(self: BoundInstr) -> bool:
-        return self.instr.bundles(self) is not None
+    def unpack_or_self(self: BoundInstr) -> list[BoundInstr]:
+        if (unpacked := self.unpack()) is not None:
+            return unpacked
+        return [self]
 
-    def unpack(self: BoundInstr) -> list[BoundInstr]:
+    def unpack(self: BoundInstr) -> list[BoundInstr] | None:
         parts = self.instr.bundles(self)
         if parts is None:
-            return [self]
-        return [p for x in parts for p in x.unpack()]
+            return None
+        return [p for x in parts for p in x.unpack_or_self()]
 
     @property
     def continues(self: BoundInstr) -> bool:
@@ -584,6 +598,9 @@ class BoundInstr(Generic[B_co], ByIdMixin):
         if isinstance(ans, EffectBase):
             return [ans]
         return list(ans)
+
+    def defines_labels(self: BoundInstr) -> list[Label]:
+        return list(self.instr.defines_labels(self))
 
     def is_pure(self) -> bool:
         return (not self.reads()) and (not self.writes())

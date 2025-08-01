@@ -64,7 +64,7 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
 
         if trivial_only:
             # label: and jump [label] should be the only uses
-            if len(index.labels[target_block.label].uses) > 2:
+            if len(index.labels[target_block.label].uses) > 1:
                 return False
         pred = list(graph.predecessors(target_block.contents[0]))
         if efficient_only:

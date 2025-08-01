@@ -58,6 +58,12 @@ class EmitLabel(InstrBase):
     def writes(self, instr: BoundInstr[Self]) -> Iterable[EffectBase]:
         return []
 
+    @override
+    def defines_labels(self, instr: BoundInstr[Self], /) -> Iterable[Label]:
+        (l,) = instr.inputs_
+        assert not isinstance(l, Var)
+        yield l
+
 
 @dataclass(frozen=True)
 class RawInstr(InstrBase):
@@ -272,8 +278,8 @@ class PredBranch(InstrBase):
 
     @override
     def bundles(self, instr: BoundInstr[Self]) -> Iterator[BoundInstr]:
-        (pred_var,) = instr.outputs_
         l_t, l_f, *args = instr.inputs_
+        (pred_var,) = instr.outputs_
         yield self.base.bind((pred_var,), *args)  # pyright: ignore
         yield Branch().bind((), pred_var, l_t, l_f)
 
@@ -335,12 +341,13 @@ class CondJumpAndLink(InstrBase):
         )
         self.out_types = ()
 
-    def bundles(self, instr: BoundInstr[Self], /):
+    def bundles(self, instr: BoundInstr[Self]):
         func_label, ret_label, *pred_args = instr.inputs_
-
-        yield WriteMVar(self.link_reg).bind((), ret_label)
-        yield CondJump(self.pred).bind((), func_label, *pred_args)
-        yield EmitLabel().bind((), ret_label)
+        return (
+            WriteMVar(self.link_reg).bind((), ret_label),
+            CondJump(self.pred).bind((), func_label, *pred_args),
+            EmitLabel().bind((), ret_label),
+        )
 
     # @override
     # def format_with_args(self, target: InternalValLabel, *args: Value) -> Text:

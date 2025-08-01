@@ -27,13 +27,18 @@ from .utils import CachedFn
 from .utils import LoopingTransform
 from .utils import Transform
 from .utils import TransformCtx
+from .utils import mk_ordered_set
+
+# note: use ordered set since code uses len() to check #
+# previously instrs emiiting label are pushed twice
+# so we change everything to OrderSet to prevent future bugs
 
 
 @dataclass
 class VarInfo:
     v: Var
-    defs: list[BoundInstr] = field(default_factory=lambda: [])
-    uses: list[BoundInstr] = field(default_factory=lambda: [])
+    defs: OrderedSet[BoundInstr] = field(default_factory=mk_ordered_set)
+    uses: OrderedSet[BoundInstr] = field(default_factory=mk_ordered_set)
 
     @property
     def def_instr(self) -> BoundInstr:
@@ -44,16 +49,18 @@ class VarInfo:
 @dataclass
 class MVarInfo:
     v: MVar
-    defs: list[BoundInstr] = field(default_factory=lambda: [])
-    uses: list[BoundInstr] = field(default_factory=lambda: [])
+    defs: OrderedSet[BoundInstr] = field(default_factory=mk_ordered_set)
+    uses: OrderedSet[BoundInstr] = field(default_factory=mk_ordered_set)
     private: bool = False
 
 
 @dataclass
 class LabelInfo:
     v: Label
-    defs: list[BoundInstr] = field(default_factory=lambda: [])
-    uses: list[BoundInstr] = field(default_factory=lambda: [])
+    # comes from "defines_labels" method on InstrBase
+    defs: OrderedSet[BoundInstr] = field(default_factory=mk_ordered_set)
+    # any uses that is not in "defs", so disjoint with defs
+    uses: OrderedSet[BoundInstr] = field(default_factory=mk_ordered_set)
 
     # private implies internal
     private: bool = False
@@ -72,8 +79,23 @@ class LabelInfo:
 class EffectInfo:
     loc: EffectBase
 
-    reads_instrs: list[BoundInstr] = field(default_factory=lambda: [])
-    writes_instrs: list[BoundInstr] = field(default_factory=lambda: [])
+    #: instruction that reads from loc
+    reads_instrs: OrderedSet[BoundInstr] = field(default_factory=mk_ordered_set)
+
+    #: instruction that writes into loc
+    writes_instrs: OrderedSet[BoundInstr] = field(default_factory=mk_ordered_set)
+
+
+@dataclass
+class ChildInstrInfo:
+    instr: BoundInstr
+    parent: BoundInstr
+
+
+@dataclass
+class InstrInfo:
+    instr: BoundInstr
+    unpacked: list[ChildInstrInfo] | None
 
 
 @dataclass
@@ -85,21 +107,23 @@ class Index:
     labels: dict[Label, LabelInfo]
 
     effects: dict[EffectBase, EffectInfo]
-
     effect_conflicts: "nx.Graph[EffectBase]"
+
+    instrs: dict[BoundInstr, InstrInfo]
 
 
 @CachedFn
-def get_index(ctx: TransformCtx) -> Index:
+def get_index(ctx: TransformCtx, unpack: bool = False) -> Index:
     f = ctx.frag
     res_vars: dict[Var, VarInfo] = {}
     # res_mvars: dict[MVar, MVarInfo] = {}
     res_labels: dict[Label, LabelInfo] = {}
     res_effects: dict[EffectBase, EffectInfo] = {}
+    res_instrs: dict[BoundInstr, InstrInfo] = {}
 
     def get_var(v: Var) -> VarInfo:
         assert isinstance(v, Var)
-        return res_vars.setdefault(v, VarInfo(v, [], []))
+        return res_vars.setdefault(v, VarInfo(v))
 
     def get_label(v: Label) -> LabelInfo:
         assert isinstance(v, Label)
@@ -110,29 +134,53 @@ def get_index(ctx: TransformCtx) -> Index:
         return res_effects.setdefault(loc, EffectInfo(loc))
 
     @f.map_instrs
-    def _(instr: BoundInstr):
-        for v in instr.inputs:
-            ck_val(v)
-            if isinstance(v, Var):
-                get_var(v).uses.append(instr)
-            if isinstance(v, Label):
-                get_label(v).uses.append(instr)
+    def _(orig_instr: BoundInstr):
+        if unpack and ((unpacked := orig_instr.unpack()) is not None):
+            res_instrs[orig_instr] = InstrInfo(
+                orig_instr, [ChildInstrInfo(x, orig_instr) for x in unpacked]
+            )
+            instrs = unpacked
+        else:
+            res_instrs[orig_instr] = InstrInfo(orig_instr, None)
+            instrs = [orig_instr]
 
-        for v in instr.outputs:
-            ck_val(v)
-            get_var(v).defs.append(instr)
+        for instr in instrs:
 
-        if i := instr.isinst(EmitLabel):
-            (arg,) = i.inputs_
-            assert not isinstance(arg, Var)
-            l = get_label(arg)
-            l.defs.append(instr)
+            for v in instr.inputs:
+                ck_val(v)
+                if isinstance(v, Var):
 
-        for loc in instr.reads():
-            get_effect(loc).reads_instrs.append(instr)
+                    # for bundles
+                    # test whether unpack contains a "leaked" variable
+                    # that is not properly exposed
+                    assert v in orig_instr.inputs or v in orig_instr.outputs
 
-        for loc in instr.writes():
-            get_effect(loc).writes_instrs.append(instr)
+                    get_var(v).uses.append(instr)
+
+                if isinstance(v, Label):
+                    assert v in orig_instr.inputs
+                    # note: we remove also-defs latter
+                    get_label(v).uses.append(instr)
+
+            for v in instr.outputs:
+
+                # for bundles
+                assert v in orig_instr.outputs
+
+                ck_val(v)
+                get_var(v).defs.append(instr)
+
+            # do all remove after, prevent add -> remove -> add
+            for l in instr.defines_labels():
+                get_label(l).defs.append(instr)
+            for l in instr.defines_labels():
+                get_label(l).uses.remove(instr)
+
+            for loc in instr.reads():
+                get_effect(loc).reads_instrs.append(instr)
+
+            for loc in instr.writes():
+                get_effect(loc).writes_instrs.append(instr)
 
     res_mvars = {
         x.loc.s: MVarInfo(x.loc.s, defs=x.writes_instrs, uses=x.reads_instrs)
@@ -173,7 +221,7 @@ def get_index(ctx: TransformCtx) -> Index:
             if not known_distinct(x, y):
                 effect_conflicts.add_edge(x, y)
 
-    return Index(res_vars, res_mvars, res_labels, res_effects, effect_conflicts)
+    return Index(res_vars, res_mvars, res_labels, res_effects, effect_conflicts, res_instrs)
 
 
 @Transform
