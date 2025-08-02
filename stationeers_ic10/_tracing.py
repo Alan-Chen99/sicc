@@ -6,7 +6,7 @@ from typing import Callable
 from typing import Iterator
 
 from ordered_set import OrderedSet
-from rich import print
+from rich import print as print  # autoflake: skip
 
 from ._core import Block
 from ._core import BoundInstr
@@ -26,18 +26,20 @@ from ._core import get_id
 from ._core import get_types
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
+from ._diagnostic import clear_debug_info
 from ._diagnostic import debug_info
 from ._diagnostic import describe_fn
-from ._diagnostic import register_exclusion
 from ._diagnostic import track_caller
 from ._functions import branch
 from ._functions import jump
 from ._functions import unreachable_checked
 from ._instructions import EmitLabel
+from ._instructions import EndPlaceholder
+from ._instructions import Isolate
 from ._utils import ByIdMixin
 from ._utils import Cell
 
-register_exclusion(__file__)
+# register_exclusion(__file__)
 
 
 @dataclass
@@ -66,6 +68,8 @@ def mk_var[T: VarT](typ: type[T], *, debug: DebugInfo | None = None) -> Var[T]:
 
 def ck_val(v: Value) -> None:
     # FIXME: this check has been temporarily disabled since introduction of bundles
+    # this is bc previously BoundInstr is only created under specific places
+    # and now they can be created almost anywhere from a .bundles function
     # it should be moved somewhere
     pass
     # if isinstance(v, Var):
@@ -77,7 +81,7 @@ def ck_val(v: Value) -> None:
 def mk_mvar[T: VarT](
     typ: type[T], *, force_public: bool = False, debug: DebugInfo | None = None
 ) -> MVar[T]:
-    ans = MVar(typ, get_id(), debug or debug_info())
+    ans = MVar(typ, get_id(), debug or debug_info(1))
     if not force_public and (scope := _CUR_SCOPE.get()):
         scope.private_mvars.append(ans)
     return ans
@@ -154,7 +158,12 @@ def trace_to_fragment(emit: bool = False, optimize: bool = True) -> Iterator[Cel
         scope=scope,
     )
     trace = Trace(f, [])
-    with _CUR_TRACE.bind(trace), _CUR_SCOPE.bind(scope), _EMIT_HOOK.bind(_emit_bound_default):
+    with (
+        clear_debug_info(),
+        _CUR_TRACE.bind(trace),
+        _CUR_SCOPE.bind(scope),
+        _EMIT_HOOK.bind(_emit_bound_default),
+    ):
         start = mk_internal_label("frag_fake_start")
         label(start)
         unreachable_checked()
@@ -277,7 +286,8 @@ def trace_if(cond: InteralBool) -> Iterator[None]:
         yield
         jump(if_end)
 
-    label(if_end)
+    with track_caller():
+        label(if_end)
 
 
 ################################################################################
@@ -349,3 +359,23 @@ def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[V
             arg_mvars=arg_mvars,
             ret_mvars=ret_mvars,
         )
+
+
+@contextmanager
+def isolate() -> Iterator[None]:
+    """for debugging and testing only"""
+
+    from ._transforms.fuse_blocks import force_fuse_into_one
+
+    start = mk_internal_label(f"isolate")
+
+    with trace_to_fragment() as res:
+        label(start)
+        yield
+        EndPlaceholder().call()
+
+    frag = res.value
+    force_fuse_into_one(frag, start)
+
+    block = frag.blocks[start]
+    Isolate.from_block(block).emit()

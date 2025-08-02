@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any  # autoflake: ignore
+from typing import Any  # autoflake: skip
 from typing import Callable
 from typing import ClassVar
 from typing import Iterable
@@ -9,11 +9,15 @@ from typing import Iterator
 from typing import Self
 from typing import TypedDict
 from typing import Unpack
+from typing import cast
 from typing import overload
 from typing import override
 
+from ordered_set import OrderedSet
+from rich import print as print  # autoflake: skip
 from rich.text import Text
 
+from ._core import Block
 from ._core import BoundInstr
 from ._core import EffectBase
 from ._core import InstrBase
@@ -29,7 +33,12 @@ from ._core import VarT
 from ._core import VarTS
 from ._core import WriteMVar
 from ._core import format_val
+from ._core import get_type
 from ._core import get_types
+from ._diagnostic import DebugInfo
+from ._diagnostic import add_debug_info
+from ._diagnostic import clear_debug_info
+from ._utils import mk_ordered_set
 from ._utils import safe_cast
 
 # register_exclusion(__file__)
@@ -74,22 +83,22 @@ class RawInstr(InstrBase):
     continues: bool
     jumps: bool
 
-    def format_with_args_outputs(self, out_vars: tuple[Var, ...], *args: Value) -> Text:
-        ans = Text()
-        ans.append(self.opcode, "ic10.raw_opcode")
-        if len(out_vars) > 0:
-            ans += " ["
-            ans += format_val(out_vars[0])
-            for x in out_vars[1:]:
-                ans += ", "
-                ans += format_val(x)
-            ans += "]"
+    # def format_with_args_outputs(self, out_vars: tuple[Var, ...], *args: Value) -> Text:
+    #     ans = Text()
+    #     ans.append(self.opcode, "ic10.raw_opcode")
+    #     if len(out_vars) > 0:
+    #         ans += " ["
+    #         ans += format_val(out_vars[0])
+    #         for x in out_vars[1:]:
+    #             ans += ", "
+    #             ans += format_val(x)
+    #         ans += "]"
 
-        for x in args:
-            ans += " "
-            ans += format_val(x)
+    #     for x in args:
+    #         ans += " "
+    #         ans += format_val(x)
 
-        return ans
+    #     return ans
 
 
 class RawAsmOpts(TypedDict, total=False):
@@ -156,6 +165,12 @@ class Move[T: VarT = Any](AsmInstrBase):
 
 
 class Stop(InstrBase):
+    in_types = ()
+    out_types = ()
+    continues = False
+
+
+class EndPlaceholder(InstrBase):
     in_types = ()
     out_types = ()
     continues = False
@@ -337,10 +352,11 @@ class CondJumpAndLink(InstrBase):
 
         self.in_types = safe_cast(
             TypeList[tuple[InternalValLabel, InternalValLabel, *tuple[Value, ...]]],
-            TypeList((Label, *pred.in_types)),
+            TypeList((Label, Label, *pred.in_types)),
         )
         self.out_types = ()
 
+    @override
     def bundles(self, instr: BoundInstr[Self]):
         func_label, ret_label, *pred_args = instr.inputs_
         return (
@@ -394,13 +410,13 @@ class CondJump(InstrBase):
     #     ans += format_val(target)
     #     return ans
 
-    @override
-    def lower(self, label: InternalValLabel, *args: Value) -> None:
-        assert False
-        if self.jump_on == True:
-            return self.base.lower_cjump(*args, label=label)
-        else:
-            return self.base.lower_neg_cjump(*args, label=label)
+    # @override
+    # def lower(self, label: InternalValLabel, *args: Value) -> None:
+    #     assert False
+    #     if self.jump_on == True:
+    #         return self.base.lower_cjump(*args, label=label)
+    #     else:
+    #         return self.base.lower_neg_cjump(*args, label=label)
 
 
 ################################################################################
@@ -441,3 +457,68 @@ class PredLE(PredicateBase):
     @override
     def negate(self, a: InternalFloat, b: InternalFloat):
         return PredLT().create_bind(b, a)
+
+
+@dataclass
+class Isolate(InstrBase):
+    """for debugging and testing only"""
+
+    # atm inputs must be plain values (cannot be Var). this may change in future
+
+    # False, i -> var is inputs[i]
+    # True, i -> var is outputs[i]
+    var_info: list[tuple[bool, int]]
+
+    in_types: TypeList[tuple[Value, ...]]  # pyright: ignore[reportIncompatibleVariableOverride]
+    out_types: TypeList[tuple[Var, ...]]  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    children: list[tuple[InstrBase, tuple[int, ...], tuple[int, ...], DebugInfo]]
+
+    @override
+    def bundles(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        vars = [instr.outputs[x] if is_out else instr.inputs[x] for is_out, x in self.var_info]
+        for child, args, outs, dbg in self.children:
+            arg_vals = tuple(vars[i] for i in args)
+            out_vars = tuple(cast(Var, vars[i]) for i in outs)
+            with clear_debug_info(), add_debug_info(dbg):
+                yield child.bind_untyped(out_vars, *arg_vals)
+
+    @staticmethod
+    def from_list(instrs: list[BoundInstr]) -> BoundInstr[Isolate]:
+        vars: OrderedSet[Value] = mk_ordered_set()
+        out_vars: set[Var] = set()
+
+        children: list[tuple[InstrBase, tuple[int, ...], tuple[int, ...], DebugInfo]] = []
+
+        for instr in instrs:
+            arg_idxs = tuple(vars.add(x) for x in instr.inputs)
+            out_idxs = tuple(vars.add(x) for x in instr.outputs)
+            out_vars |= set(instr.outputs)
+            children.append((instr.instr, arg_idxs, out_idxs, instr.debug))
+
+        var_info: list[tuple[bool, int]] = []
+        inputs: list[Value] = []
+        outputs: list[Var] = []
+
+        for x in vars:
+            if isinstance(x, Var) and x in out_vars:
+                var_info.append((True, len(outputs)))
+                outputs.append(x)
+            else:
+                var_info.append((False, len(inputs)))
+                inputs.append(x)
+
+        ans = Isolate(
+            var_info=var_info,
+            in_types=TypeList((get_type(x) for x in inputs)),
+            out_types=TypeList((x.type for x in outputs)),
+            children=children,
+        )
+
+        return ans.bind_untyped(tuple(outputs), *inputs)
+
+    @staticmethod
+    def from_block(b: Block) -> BoundInstr[Isolate]:
+        assert b.end.isinst(EndPlaceholder)
+        with add_debug_info(b.debug):
+            return Isolate.from_list(b.contents[:-1])

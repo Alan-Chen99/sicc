@@ -52,9 +52,10 @@ def check_mvars_defined(ctx: TransformCtx) -> None:
         reach = nx.descendants(graph_, external)  # pyright: ignore[reportUnknownMemberType]
         for u in v.uses:
             if u in reach:
-                err = u.debug.error(
-                    f"mvar {v.v} ({v.v.type}) may not be initialized",
+                err = u.debug.warn(
+                    f"mvar {v.v} ({v.v.type.__name__}) can not be proved to be initialized",
                 )
+                err.note("in instruction", u)
                 err.note("defined here:", v.v.debug)
                 for d in v.defs:
-                    err.note("initialized here, but may occur after use:", d.debug)
+                    err.note("assigned here, but may occur after use:", d.debug)

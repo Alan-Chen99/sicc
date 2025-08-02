@@ -4,7 +4,9 @@ import networkx as nx
 from ordered_set import OrderedSet
 
 from .._core import MVar
+from .._core import NeverUnpack
 from .._core import ReadMVar
+from .._core import UnpackPolicy
 from .._core import Value
 from .._core import WriteMVar
 from .._instructions import Move
@@ -26,12 +28,32 @@ class MvarLifetimeRes:
     reachable: OrderedSet[CfgNode]
 
 
-def compute_mvar_lifetime(ctx: TransformCtx, v_: MVar) -> MvarLifetimeRes:
-    graph = build_control_flow_graph.call_cached(ctx)
-    index = get_index.call_cached(ctx)
-
+def support_mvar_analysis(
+    ctx: TransformCtx, v_: MVar, unpack: UnpackPolicy = NeverUnpack()
+) -> bool:
+    index = get_index.call_cached(ctx, unpack)
     v = index.mvars[v_]
-    assert v.private
+
+    if not v.private:
+        return False
+
+    # not sufficiently expanded
+    if not all(x.isinst(WriteMVar) for x in v.defs):
+        return False
+    if not all(x.isinst(ReadMVar) for x in v.uses):
+        return False
+
+    return True
+
+
+def compute_mvar_lifetime(
+    ctx: TransformCtx, v_: MVar, unpack: UnpackPolicy = NeverUnpack()
+) -> MvarLifetimeRes:
+    graph = build_control_flow_graph.call_cached(ctx, out_unpack=unpack)
+    index = get_index.call_cached(ctx, unpack)
+
+    assert support_mvar_analysis(ctx, v_, unpack=unpack)
+    v = index.mvars[v_]
 
     ########################################
     # get the subgraph where a value set to v
@@ -53,17 +75,17 @@ def compute_mvar_lifetime(ctx: TransformCtx, v_: MVar) -> MvarLifetimeRes:
 
 
 @LoopingTransform
-def elim_mvars_read_writes(ctx: TransformCtx) -> bool:
+def elim_mvars_read_writes(ctx: TransformCtx, unpack: UnpackPolicy = NeverUnpack()) -> bool:
     """
     # (1) optimize mvar reads that can only come from a single mvar write
     # (2) remove mvar write that can never b read
     """
     f = ctx.frag
-    graph = build_control_flow_graph.call_cached(ctx)
-    index = get_index.call_cached(ctx)
+    graph = build_control_flow_graph.call_cached(ctx, out_unpack=unpack)
+    index = get_index.call_cached(ctx, unpack)
 
     for v in index.mvars.values():
-        if not v.private:
+        if not support_mvar_analysis(ctx, v.v):
             continue
 
         reachable = compute_mvar_lifetime(ctx, v.v).reachable

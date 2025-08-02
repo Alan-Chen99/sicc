@@ -46,4 +46,5 @@ reportUnusedImport = "warning"
 reportUnusedFunction = "warning"
 reportUnusedVariable = "warning"
 
+reportUnreachable = "warning"
 reportUnnecessaryTypeIgnoreComment = "warning"

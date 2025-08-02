@@ -4,7 +4,6 @@ from ._core import InteralBool
 from ._core import InternalValLabel
 from ._instructions import Branch
 from ._instructions import Jump
-from ._instructions import PredVar
 from ._instructions import UnreachableChecked
 
 # register_exclusion(__file__)

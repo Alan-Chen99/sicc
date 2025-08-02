@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import copy
+import inspect
+import logging
 from dataclasses import dataclass
 from typing import Any
 from typing import Callable
 from typing import Concatenate
 
-from ordered_set import OrderedSet
-from rich import print as print
+from rich import print as print  # autoflake: skip
+from rich.pretty import pretty_repr
 
 from .._core import Fragment
+from .._diagnostic import CompilerError
+from .._diagnostic import Report
+from .._diagnostic import register_exclusion
 from .._tracing import internal_transform
-from .._utils import ByIdMixin
+from ..config import verbose
+
+register_exclusion(__file__)
 
 
 @dataclass
@@ -21,10 +28,20 @@ class TransformCtx:
     _cache: dict[Any, Any]
 
 
-class Transform[**P, R](ByIdMixin):
+class Transform[**P, R]:
     def __init__(self, fn: Callable[Concatenate[TransformCtx, P], R]) -> None:
         self.fn = fn
+        self.sig = inspect.signature(fn)
         self.id = id(fn)
+
+    def __eq__(self, other: Any) -> bool:
+        return self is other
+
+    def __hash__(self) -> int:
+        return hash(id(self.fn))
+
+    def __rich_repr__(self):
+        yield self.fn.__name__
 
     def __call__(self, frag: Fragment, /, *args: P.args, **kwargs: P.kwargs) -> R:
         from .basic import get_index
@@ -36,6 +53,7 @@ class Transform[**P, R](ByIdMixin):
 
         with internal_transform(frag):
             try:
+                logging.debug(f"running {self.fn.__qualname__}")
                 ctx = TransformCtx(frag, {})
                 ans = self.fn(ctx, *args, **kwargs)
 
@@ -44,9 +62,7 @@ class Transform[**P, R](ByIdMixin):
 
                 assert before is not None
                 if frag.blocks != before.blocks:
-                    print("changed:", self.fn)
-                else:
-                    return ans
+                    logging.info(f"modified by {self.fn.__qualname__}")
 
                 # TODO: potentially reuse result of this call
                 # validate result
@@ -55,20 +71,37 @@ class Transform[**P, R](ByIdMixin):
                 except Exception as e:
                     raise RuntimeError(f"Transform {self.fn} returned invalid fragment") from e
 
-            except:
-                if before is not None:
-                    print(before.__rich__(title=f"Fragment before {self.fn}"))
-                print(frag.__rich__(title=f"Fragment after {self.fn}"))
-                raise
-
-            return ans
+                return ans
+            except Exception as e:
+                if isinstance(e, CompilerError):
+                    report = e.report
+                else:
+                    report = Report.from_ex(e)
+                report.note(f"during transform {self.fn.__qualname__}")
+                if verbose.value >= 1:
+                    if before is not None:
+                        report.add(
+                            before.__rich__(title=f"Fragment before {self.fn}"),
+                        )
+                    if before is None or frag.blocks != before.blocks:
+                        report.add(
+                            frag.__rich__(title=f"Fragment after {self.fn}"),
+                        )
+                report.fatal()
 
 
 class CachedFn[**P, R](Transform[P, R]):
     def call_cached(self, ctx: TransformCtx, /, *args: P.args, **kwargs: P.kwargs) -> R:
-        cache_key = (self, args, *kwargs.items())
+        # TODO: make this cache default arguments friendly
+
+        bound = self.sig.bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        cache_key = (self, *sorted(bound.arguments.items()))
+
         if cache_key in ctx._cache:
+            logging.debug(f"cached: {pretty_repr(cache_key)}")
             return ctx._cache[cache_key]
+        logging.debug(f"cach miss: {pretty_repr(cache_key)}")
         ans = self.fn(ctx, *args, **kwargs)
         ctx._cache[cache_key] = ans
         return ans
@@ -102,7 +135,3 @@ def run_phases(frag: Fragment, *fs: Callable[[Fragment], bool | None], loop: boo
     while _run_phases_once(frag, *fs):
         res = True
     return res
-
-
-def mk_ordered_set() -> OrderedSet[Any]:  # makes type check happy
-    return OrderedSet(())

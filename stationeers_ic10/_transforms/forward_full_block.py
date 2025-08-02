@@ -1,4 +1,5 @@
 from .._core import Block
+from .._core import ReadMVar
 from .._core import WriteMVar
 from .._instructions import Jump
 from .._utils import is_eq_typed
@@ -6,6 +7,7 @@ from .basic import get_index
 from .control_flow import build_control_flow_graph
 from .control_flow import external
 from .optimize_mvars import compute_mvar_lifetime
+from .optimize_mvars import support_mvar_analysis
 from .utils import LoopingTransform
 from .utils import TransformCtx
 
@@ -31,7 +33,10 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
         return False
 
     for i in b.contents:
-        if not (i.is_side_effect_free() or i.isinst(WriteMVar)):
+        # TODO: is_side_effect_free would be correct here if the op is garanteed
+        # to not fail. does failure (read from non-exist device for ex) cause problem?
+        safe_side_effect_free = i.is_pure() or i.isinst(ReadMVar)
+        if not (safe_side_effect_free or i.isinst(WriteMVar)):
             return False
 
     if len(b.body) == 0:
@@ -44,7 +49,12 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
     preds = list(graph.predecessors(b.label_instr))
     if len(preds) != 1 or external in preds:
         return False
-    (pred_block,) = [x for x in f.blocks.values() if x.end == preds[0]]
+    pred_blocks = [x for x in f.blocks.values() if x.end == preds[0]]
+    if len(pred_blocks) == 0:
+        # comes from probably a condition jump;
+        # not implemented
+        return False
+    (pred_block,) = pred_blocks
 
     # handled in fuse
     if len(list(graph.successors(pred_block.end))) <= 1:
@@ -58,6 +68,8 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
         if not index.mvars[mv].private:
             return False
 
+        if not support_mvar_analysis(ctx, mv):
+            return False
         lifetime = compute_mvar_lifetime(ctx, mv)
         if pred_block.end in lifetime.reachable:
             return False

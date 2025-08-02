@@ -140,8 +140,8 @@ class Variable[T: VarT](VarRead[T]):
         return self._inner.read()
 
     @property
-    def value(self):
-        return self._read()
+    def value(self) -> Variable[T]:
+        return Variable(self)
 
     @value.setter
     def value(self, v: UserValue[T]):

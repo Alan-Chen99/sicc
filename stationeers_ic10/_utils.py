@@ -10,6 +10,7 @@ from typing import Protocol
 from typing import TypeGuard
 from typing import cast
 from typing import final
+from weakref import WeakSet
 
 from ordered_set import OrderedSet
 
@@ -101,7 +102,7 @@ def late_fn[F](fn: Callable[[], F]) -> F:
     return cast_unchecked(inner)
 
 
-def in_typed[T](x: T, s: set[T] | list[T] | OrderedSet[T]) -> bool:
+def in_typed[T](x: T, s: set[T] | list[T] | OrderedSet[T] | WeakSet[T]) -> bool:
     return x in s
 
 
@@ -132,8 +133,17 @@ def get_id() -> int:
     return ans
 
 
+_IdType = int | str | tuple[int, ...]
+
+_TYPE_TO_IDX: dict[type[_IdType], int] = {
+    int: 1,
+    str: 2,
+    tuple: 3,
+}
+
+
 class _HaveId(Protocol):
-    id: Final[int | str]
+    id: Final[_IdType]
 
 
 class ByIdMixin:
@@ -150,7 +160,7 @@ class ByIdMixin:
     def __lt__(self, other: _HaveId) -> bool:
         id1 = cast(_HaveId, self).id
         id2 = other.id
-        return (type(id1) is str, id1) < (type(id2) is str, id2)
+        return (_TYPE_TO_IDX[type(id1)], id1) < (_TYPE_TO_IDX[type(id2)], id2)
 
 
 ################################################################################
@@ -164,7 +174,5 @@ class Singleton(ByIdMixin):
         return type(self).__name__
 
 
-def register_exclusion_():
-    from ._diagnostic import register_exclusion
-
-    register_exclusion(__file__)
+def mk_ordered_set() -> OrderedSet[Any]:  # makes type check happy
+    return OrderedSet(())

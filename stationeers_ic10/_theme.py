@@ -16,6 +16,6 @@ theme = Theme(
         "ic10.label_private": "magenta italic",
         #
         "ic10.title": "cyan bold",
-        "ic10.comment": "white italic",
+        "ic10.comment": "white dim italic",
     }
 )

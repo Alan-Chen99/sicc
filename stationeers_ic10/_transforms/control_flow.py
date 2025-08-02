@@ -6,11 +6,14 @@ from ordered_set import OrderedSet
 from rich import print as print  # autoflake: skip
 from rich.text import Text
 
+from .._core import AlwaysUnpack
 from .._core import Block
 from .._core import BoundInstr
 from .._core import EffectBase
 from .._core import EffectMvar
 from .._core import Label
+from .._core import NeverUnpack
+from .._core import UnpackPolicy
 from .._core import Var
 from .._instructions import Jump
 from .._utils import Singleton
@@ -45,20 +48,30 @@ class LabelProvenanceRes:
     reaches_label: dict[_NodeT, list[JumpTarget]]
 
     def annotate(self, instr: BoundInstr) -> Text:
-        # jumps = self.instr_jumps[instr]
-        jumps = self.reaches_label[instr]
+        if jumps := self.instr_jumps.get(instr):
+            start, end = "{", "}"
+        elif instr in self.reaches_label:
+            start, end = "[", "]"
+            jumps = self.reaches_label[instr]
+        else:
+            return Text("...")
 
-        ans = Text("{", "ic10.comment")
+        ans = Text(start, "ic10.comment")
         ans += Text(", ", "ic10.comment").join(
             Text(repr(x), "ic10.label" if x in self.leaked else "ic10.label_private") for x in jumps
         )
-        ans += Text("}", "ic10.comment")
+        ans += Text(end, "ic10.comment")
 
         return ans
 
 
 @CachedFn
-def compute_label_provenance(ctx: TransformCtx) -> LabelProvenanceRes:
+def compute_label_provenance(
+    ctx: TransformCtx,
+    *,
+    out_unpack: UnpackPolicy = NeverUnpack(),
+    analysis_unpack: UnpackPolicy = AlwaysUnpack(),
+) -> LabelProvenanceRes:
     """
     this computes possible values varaibles with type Label can take.
     this is required to build a control flow graph.
@@ -68,8 +81,8 @@ def compute_label_provenance(ctx: TransformCtx) -> LabelProvenanceRes:
     # note: it may be faster to compute SCC of the graph first and use it to do this "one-shot"
     #   which is asymptotically faster
 
-    f = ctx.frag
-    index = get_index.call_cached(ctx)
+    index = get_index.call_cached(ctx, analysis_unpack)
+    out_index = get_index.call_cached(ctx, out_unpack)
 
     G: nx.DiGraph[_NodeT] = nx.DiGraph()
 
@@ -86,8 +99,7 @@ def compute_label_provenance(ctx: TransformCtx) -> LabelProvenanceRes:
     for x in labels:
         G.add_node(x)
 
-    @f.map_instrs
-    def _(instr: BoundInstr):
+    for instr in index.instrs_unpacked():
         # ensure all instr is added as node even if no operands
         G.add_node(instr)
 
@@ -135,13 +147,14 @@ def compute_label_provenance(ctx: TransformCtx) -> LabelProvenanceRes:
     # print("reaches_label", reaches_label)
 
     def handle_one(instr: BoundInstr) -> Iterator[JumpTarget]:
-        for x in instr.jumps_to():
-            if isinstance(x, Label):
-                yield preprocess(x)
-            if isinstance(x, Var) and x.type == Label:
-                yield from reaches_label[x]
+        for child in instr.unpack_rec_or_self(analysis_unpack):
+            for x in child.jumps_to():
+                if isinstance(x, Label):
+                    yield preprocess(x)
+                if isinstance(x, Var) and x.type == Label:
+                    yield from reaches_label[x]
 
-    res = {instr: sorted(set(handle_one(instr))) for instr in f.all_instrs()}
+    res = {instr: sorted(set(handle_one(instr))) for instr in out_index.instrs_unpacked()}
 
     # print(index)
 
@@ -168,10 +181,12 @@ CfgNode = BoundInstr | External
 
 
 @CachedFn
-def build_control_flow_graph(ctx: TransformCtx) -> "nx.DiGraph[CfgNode]":
+def build_control_flow_graph(
+    ctx: TransformCtx, *, out_unpack: UnpackPolicy = NeverUnpack()
+) -> "nx.DiGraph[CfgNode]":
     f = ctx.frag
-    index = get_index.call_cached(ctx)
-    res = compute_label_provenance.call_cached(ctx)
+    index = get_index.call_cached(ctx, out_unpack)
+    res = compute_label_provenance.call_cached(ctx, out_unpack=out_unpack)
 
     # # note: this creates extra labels
     # split_blocks(f)
@@ -180,11 +195,12 @@ def build_control_flow_graph(ctx: TransformCtx) -> "nx.DiGraph[CfgNode]":
     G.add_node(external)
 
     for b in f.blocks.values():
-        for x, y in zip(b.contents[:-1], b.contents[1:]):
+        contents = [x for instr in b.contents for x in instr.unpack_rec_or_self(out_unpack)]
+        for x, y in zip(contents[:-1], contents[1:]):
             if x.continues:
                 G.add_edge(x, y)
 
-        for x in b.contents:
+        for x in contents:
             for t in res.instr_jumps[x]:
                 if isinstance(t, External):
                     G.add_edge(x, external)
@@ -234,13 +250,14 @@ def handle_deterministic_var_jump(ctx: TransformCtx) -> bool:
 
     @f.map_instrs
     def _(instr: BoundInstr):
+        if not instr.is_pure():
+            return None
         targets = res.instr_jumps[instr]
         if len(targets) != 1:
             return None
         (target,) = targets
         if isinstance(target, External):
             return None
-        assert instr.is_pure()
 
         return Jump().bind((), target)
 

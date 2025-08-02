@@ -1,54 +1,88 @@
 from __future__ import annotations
 
+import contextlib
+import gc
 import linecache
+import os
 import sys
 import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
-from types import FrameType
+from types import ModuleType
 from types import TracebackType
 from typing import Any
 from typing import Iterator
+from typing import Never
 from typing import Self
 
 import rich
 import rich.repr
-from rich import print as print
+from rich import print as print  # autoflake: skip
+from rich.console import Group
+from rich.console import RenderableType
+from rich.console import group
+from rich.panel import Panel
+from rich.text import Text
+from rich.traceback import Frame
+from rich.traceback import Stack
 from rich.traceback import Trace
 from rich.traceback import Traceback
 
+from . import _utils
 from ._utils import Cell
-from ._utils import register_exclusion_
+from .config import verbose
 
-_TRACEBACK_EXCLUDE_MODULES: Cell[set[str]] = Cell({f"contextlib"})
-_TRACEBACK_EXCLUDE_FILES: Cell[set[str]] = Cell(set())
+_TRACEBACK_SUPPRESS: Cell[set[str]] = Cell(set())
 
 
-def register_exclusion(filename: str):
-    _TRACEBACK_EXCLUDE_FILES.value.add(filename)
+def register_exclusion(filename: str | ModuleType):
+    # taken from rich; we want to "get the top frame" also, aside from printing
+    if not isinstance(filename, str):
+        f = filename.__file__
+        assert f is not None
+        f = os.path.dirname(f)
+    else:
+        f = filename
+    _TRACEBACK_SUPPRESS.value.add(f)
 
 
 register_exclusion(__file__)
-register_exclusion_()
+register_exclusion(_utils.__file__)
+
+register_exclusion(contextlib)
 
 
-def _get_traceback_frame() -> FrameType:
-    frame = sys._getframe()
+def get_location(depth: int = 0) -> Frame:
+    frame = sys._getframe(depth + 1)
     while True:
         if frame.f_back is None:
-            return frame
-        if (
-            frame.f_code.co_filename not in _TRACEBACK_EXCLUDE_FILES.value
-            and frame.f_globals.get("__name__") not in _TRACEBACK_EXCLUDE_MODULES.value
-        ):
-            return frame
+            break
+        if not any(frame.f_code.co_filename.startswith(x) for x in _TRACEBACK_SUPPRESS.value):
+            break
         frame = frame.f_back
+
+    ex = BaseException("_tmp")
+    ans = Traceback.extract(
+        type(ex),
+        ex,
+        TracebackType(None, frame, frame.f_lasti, frame.f_lineno),
+    )
+    (stack,) = ans.stacks
+    (ans_frame,) = stack.frames
+    return ans_frame
+
+
+def format_location(loc: Frame):
+    stack = Stack("", "", frames=[loc])
+    return Traceback(Trace([stack]), suppress=_TRACEBACK_SUPPRESS.value)._render_stack(stack)
 
 
 def get_trace() -> Trace:
-    frame = _get_traceback_frame()
+    # frame = _get_traceback_frame()
+    frame = sys._getframe()
+
     # print("_get_traceback_frame", frame)
 
     # note: "frame" is mutable so we cant do this function lazily
@@ -63,18 +97,21 @@ def get_trace() -> Trace:
             break
 
     ex = BaseException("_tmp")
-    return Traceback.extract(type(ex), ex, tb)
+    ans = Traceback.extract(type(ex), ex, tb)
+    (stack,) = ans.stacks
+    stack.exc_type = ""
+    stack.exc_value = ""
+    return ans
 
 
-@dataclass
-class CallInfo:
-    filename: str
+def format_backtrace(trace: Trace, max_frames: int = 100):
+    stack = Stack("", "", frames=trace.stacks[0].frames[-max_frames:])
+    return Traceback(trace, suppress=_TRACEBACK_SUPPRESS.value)._render_stack(stack)
 
 
-def _get_callsite_desc(tb: Trace) -> str:
+def frame_short_desc(frame: Frame) -> str:
     # print("get_callsite_desc", tb)
     # its not from an ex so it has no cause, "stacks" should always have len 1
-    frame = tb.stacks[0].frames[-1]
     if frame.last_instruction is None:
         return ""
     (start_line, start_column), (end_line, end_column) = frame.last_instruction
@@ -120,19 +157,16 @@ class MustuseCtx:
         # yield [type(x) for x in gc.get_referrers(self)]
         # yield [type(x) for x in gc.get_referrers(self)]
         yield id(self)
-        yield self.debug.location_info()
+        yield self.debug.location_info_brief()
 
     def check(self):
         assert len(self.debug.must_use_ctx) == 0
         if len(self._get_parents()) == 0:
-            print("WARN: UNUSED:", self)
-            # print([(x.describe, gc.get_referrers(x)) for x in self._get_parents()])
-
-        # if len(self._get_parents()) == 0:
-        #     print("WARN: UNUSED:", self.debug.describe)
+            self.debug.warn("expression has no effect:")
 
 
 def check_must_use():
+    gc.collect()
     for x in mustuse_ctxs.value:
         x.check()
 
@@ -154,6 +188,8 @@ class DebugInfo:
     traceback: Trace | None = None
     must_use_ctx: list[MustuseCtx] = field(default_factory=lambda: [])
     describe: str = ""
+    location: Frame | None = None
+    track_caller: bool = False
 
     def __eq__(self, other: Any) -> bool:
         # if we get here the caller probably didnt define a __eq__
@@ -186,44 +222,153 @@ class DebugInfo:
         for x in other.must_use_ctx:
             x.add_parent(self)
         self.describe = other.describe or self.describe
+        self.location = other.location or self.location
+        self.track_caller = other.track_caller or self.track_caller
         return self
 
-    def location_info(self) -> str:
-        return self.describe
-        # if not self.describe:
-        #     return ""
-        # if self.traceback is None:
-        #     return ""
-        # return _get_callsite_desc(self.traceback)
+    def location_info_brief(self) -> str:
+        if desc := self.describe:
+            return desc
+        # if loc := self.location:
+        #     return frame_short_desc(loc)
+        if (verbose.value >= 2 or self.track_caller) and (loc := self.location):
+            return frame_short_desc(loc)
+        return ""
+
+    @group()
+    def location_info_full(self) -> Iterator[RenderableType]:
+        if desc := self.describe:
+            yield f"({desc})"
+        if loc := self.location:
+            yield format_location(loc)
+
+    def __rich__(self) -> RenderableType:
+        return self.location_info_full()
+
+    def warn(self, msg: str) -> Report:
+        return mk_warn(msg, self)
 
     def error(self, msg: str) -> Report:
-        raise RuntimeError(msg)
+        return mk_error(msg, self)
+
+
+_PENDING_ERRORS: Cell[list[Report]] = Cell([])
+
+
+def show_pending_diagnostics():
+    pending = _PENDING_ERRORS.value
+    _PENDING_ERRORS.value = []
+    for x in pending:
+        x.show()
+
+
+def mk_warn(msg: str | Text, first: RenderableType, *parts: RenderableType) -> Report:
+    txt = Text("", style="logging.level.warning")
+    txt += Text("[WARN] ", style="bold")
+    txt += msg
+    return Report.new(Group(txt, first), *parts, border_style="logging.level.warning")
+
+
+def mk_error(msg: str | Text, first: RenderableType, *parts: RenderableType) -> Report:
+    txt = Text("", style="logging.level.error")
+    txt += Text("[ERROR] ", style="bold")
+    txt += msg
+    return Report.new(Group(txt, first), *parts, border_style="logging.level.error")
 
 
 @dataclass
 class Report:
-    parts: list[Any]
+    # internal part of bt (bt of line that created the report)
+    trace: Trace | None
+    parts: list[RenderableType]
 
-    def note(self, msg: str, loc: DebugInfo) -> Self:
+    border_style: str = "traceback.border"
+    did_show: bool = False
+
+    @staticmethod
+    def new(*parts: RenderableType, border_style: str = "traceback.border") -> Report:
+        ans = Report(
+            trace=get_trace() if verbose.value >= 1 else None,
+            border_style=border_style,
+            parts=list(parts),
+        )
+        _PENDING_ERRORS.value.append(ans)
+        return ans
+
+    @staticmethod
+    def from_ex(e: BaseException) -> Report:
+        txt = Text("internal compiler error:", style="logging.level.error")
+        tb = Traceback.from_exception(type(e), e, e.__traceback__)
+        return Report(get_trace(), [Group(txt, tb)])
+
+    def add(self, *parts: RenderableType) -> Self:
+        self.parts.append(Group(*parts))
         return self
 
+    def note(self, msg: str, *parts: RenderableType) -> Self:
+        txt = Text()
+        txt.append("[NOTE] ", style="traceback.note")
+        self.add(txt + Text(msg), *parts)
+        return self
 
-def debug_info() -> DebugInfo:
+    def throw(self):
+        raise CompilerError(self)
+
+    def fatal(self) -> Never:
+        show_pending_diagnostics()
+        self.show()
+        exit(1)
+
+    def __rich__(self) -> RenderableType:
+        def gen():
+            yield self.parts[0]
+            for x in self.parts[1:]:
+                yield ""
+                yield x
+            if self.trace is not None:
+                yield ""
+                yield Text("Traceback (most recent call last)", style="traceback.title")
+                yield format_backtrace(self.trace)
+
+        return Panel(Group(*gen()), border_style=self.border_style)
+
+    def show(self) -> None:
+        if self.did_show:
+            return
+        print(self)
+        self.did_show = True
+
+
+class CompilerError(Exception):
+    def __init__(self, report: Report):
+        self.report = report
+
+
+def debug_info(depth: int = 1) -> DebugInfo:
     frame = sys._getframe(1)
 
     ans = DebugInfo(
         # created_at=linecache.getlines(frame.f_code.co_filename)[frame.f_lineno - 1].strip(),
         created_at=frame.f_code.co_qualname,
     )
+    # print("stack:", DEBUG_INFO_STACK.value)
     for x in DEBUG_INFO_STACK.value:
         ans.fuse(x)
     if ans.traceback is None:
         ans.traceback = get_trace()
+    if ans.location is None:
+        ans.location = get_location(depth + 1)
 
     return ans
 
 
 DEBUG_INFO_STACK: Cell[list[DebugInfo]] = Cell([])
+
+
+@contextmanager
+def clear_debug_info() -> Iterator[None]:
+    with DEBUG_INFO_STACK.bind([]):
+        yield None
 
 
 @contextmanager
@@ -234,9 +379,13 @@ def add_debug_info(x: DebugInfo) -> Iterator[None]:
 
 
 @contextmanager
-def track_caller() -> Iterator[None]:
+def track_caller(depth: int = 0) -> Iterator[None]:
+    # FIXME: this 3 is impl detail of contextlib
+    # TODO: improve efficiency by checking if already in "track_caller"
+    # so this would do nothing
+    loc = get_location(depth + 3)
     tb = get_trace()
-    with add_debug_info(DebugInfo(describe=_get_callsite_desc(tb), traceback=tb)):
+    with add_debug_info(DebugInfo(location=loc, traceback=tb, track_caller=True)):
         yield
 
 

@@ -1,8 +1,8 @@
 from .._core import Var
+from .._diagnostic import add_debug_info
 from .._instructions import Branch
 from .._instructions import PredBranch
 from .._instructions import PredicateBase
-from .._instructions import PredVar
 from .._tracing import mk_var
 from .basic import get_index
 from .utils import LoopingTransform
@@ -25,9 +25,10 @@ def inline_pred_to_branch(ctx: TransformCtx) -> bool:
                     def _():
                         assert def_instr is not None
                         new_v = mk_var(bool)
-                        return PredBranch(def_instr.instr).bind(
-                            (new_v,), l_t, l_f, *def_instr.inputs
-                        )
+                        with add_debug_info(def_instr.debug):
+                            return PredBranch(def_instr.instr).bind(
+                                (new_v,), l_t, l_f, *def_instr.inputs
+                            )
 
                     return True
 

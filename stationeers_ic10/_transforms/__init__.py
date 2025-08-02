@@ -61,6 +61,7 @@ def global_checks(f: Fragment):
 
 
 def global_opts(f: Fragment):
+    global_checks(f)
     run_phases(f, *GLOBAL_OPTS)
 
 

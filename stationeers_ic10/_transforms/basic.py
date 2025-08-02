@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from dataclasses import field
+from weakref import WeakSet
 
 import networkx as nx
 from ordered_set import OrderedSet
@@ -12,22 +13,27 @@ from .._core import EffectMvar
 from .._core import Label
 from .._core import MapInstrsRes
 from .._core import MVar
+from .._core import NeverUnpack
 from .._core import ReadMVar
+from .._core import UnpackPolicy
 from .._core import Var
 from .._core import WriteMVar
 from .._core import known_distinct
 from .._instructions import EmitLabel
+from .._instructions import EndPlaceholder
+from .._instructions import Isolate
 from .._instructions import Jump
 from .._tracing import ck_val
 from .._tracing import mk_internal_label
 from .._tracing import mk_mvar
 from .._tracing import mk_var
 from .._utils import Cell
+from .._utils import in_typed
+from .._utils import mk_ordered_set
 from .utils import CachedFn
 from .utils import LoopingTransform
 from .utils import Transform
 from .utils import TransformCtx
-from .utils import mk_ordered_set
 
 # note: use ordered set since code uses len() to check #
 # previously instrs emiiting label are pushed twice
@@ -87,15 +93,12 @@ class EffectInfo:
 
 
 @dataclass
-class ChildInstrInfo:
-    instr: BoundInstr
-    parent: BoundInstr
-
-
-@dataclass
 class InstrInfo:
-    instr: BoundInstr
-    unpacked: list[ChildInstrInfo] | None
+    i: BoundInstr
+    # this bundle directly contains...
+    children: list[BoundInstr] | None
+    # direct parent
+    parent: BoundInstr | None
 
 
 @dataclass
@@ -111,9 +114,12 @@ class Index:
 
     instrs: dict[BoundInstr, InstrInfo]
 
+    def instrs_unpacked(self) -> list[BoundInstr]:
+        return [i.i for i in self.instrs.values() if i.children is None]
+
 
 @CachedFn
-def get_index(ctx: TransformCtx, unpack: bool = False) -> Index:
+def get_index(ctx: TransformCtx, unpack: UnpackPolicy = NeverUnpack()) -> Index:
     f = ctx.frag
     res_vars: dict[Var, VarInfo] = {}
     # res_mvars: dict[MVar, MVarInfo] = {}
@@ -133,54 +139,65 @@ def get_index(ctx: TransformCtx, unpack: bool = False) -> Index:
         assert isinstance(loc, EffectBase)
         return res_effects.setdefault(loc, EffectInfo(loc))
 
-    @f.map_instrs
-    def _(orig_instr: BoundInstr):
-        if unpack and ((unpacked := orig_instr.unpack()) is not None):
-            res_instrs[orig_instr] = InstrInfo(
-                orig_instr, [ChildInstrInfo(x, orig_instr) for x in unpacked]
-            )
-            instrs = unpacked
-        else:
-            res_instrs[orig_instr] = InstrInfo(orig_instr, None)
-            instrs = [orig_instr]
+    def handle_instr(instr: BoundInstr, parent: BoundInstr | None) -> None:
 
-        for instr in instrs:
+        children = None
+        if unpack.should_unpack(instr):
+            children = instr.unpack()
+        if children is not None:
 
-            for v in instr.inputs:
-                ck_val(v)
-                if isinstance(v, Var):
+            children = list(children)
 
-                    # for bundles
-                    # test whether unpack contains a "leaked" variable
-                    # that is not properly exposed
-                    assert v in orig_instr.inputs or v in orig_instr.outputs
+            for c in children:
+                handle_instr(c, parent=instr)
 
-                    get_var(v).uses.append(instr)
+        res_instrs[instr] = InstrInfo(instr, children, parent)
 
-                if isinstance(v, Label):
-                    assert v in orig_instr.inputs
-                    # note: we remove also-defs latter
-                    get_label(v).uses.append(instr)
+        if children is not None:
+            return
 
-            for v in instr.outputs:
+        for v in instr.inputs:
+            ck_val(v)
+            if isinstance(v, Var):
 
                 # for bundles
-                assert v in orig_instr.outputs
+                # test whether unpack contains a "leaked" variable
+                # that is not properly exposed
+                if parent:
+                    assert v in parent.inputs or v in parent.outputs
 
-                ck_val(v)
-                get_var(v).defs.append(instr)
+                get_var(v).uses.append(instr)
 
-            # do all remove after, prevent add -> remove -> add
-            for l in instr.defines_labels():
-                get_label(l).defs.append(instr)
-            for l in instr.defines_labels():
-                get_label(l).uses.remove(instr)
+            if isinstance(v, Label):
+                if parent:
+                    assert v in parent.inputs
+                # note: we remove also-defs latter
+                get_label(v).uses.append(instr)
 
-            for loc in instr.reads():
-                get_effect(loc).reads_instrs.append(instr)
+        for v in instr.outputs:
 
-            for loc in instr.writes():
-                get_effect(loc).writes_instrs.append(instr)
+            if parent:
+                # for bundles
+                assert v in parent.outputs
+
+            ck_val(v)
+            get_var(v).defs.append(instr)
+
+        # do all remove after, prevent add -> remove -> add
+        for l in instr.defines_labels():
+            get_label(l).defs.append(instr)
+        for l in instr.defines_labels():
+            get_label(l).uses.remove(instr)
+
+        for loc in instr.reads():
+            get_effect(loc).reads_instrs.append(instr)
+
+        for loc in instr.writes():
+            get_effect(loc).writes_instrs.append(instr)
+
+    @f.map_instrs
+    def _(instr: BoundInstr):
+        handle_instr(instr, None)
 
     res_mvars = {
         x.loc.s: MVarInfo(x.loc.s, defs=x.writes_instrs, uses=x.reads_instrs)
@@ -291,10 +308,18 @@ def remove_unused_side_effect_free(ctx: TransformCtx) -> bool:
     return ans.value
 
 
+_DEAD_VARS: Cell[WeakSet[Var]] = Cell(WeakSet())
+
+
 @Transform
 def rename_private_vars(ctx: TransformCtx) -> None:
     f = ctx.frag
     index = get_index.call_cached(ctx)
+
+    _dead = _DEAD_VARS.value
+    for v in index.vars:
+        assert v not in _dead
+        _dead.add(v)
 
     new_vars = {x.v: mk_var(x.v.type, debug=x.v.debug) for x in index.vars.values()}
 
@@ -306,10 +331,23 @@ def rename_private_vars(ctx: TransformCtx) -> None:
         )
 
 
+_DEAD_LABELS: Cell[WeakSet[Label]] = Cell(WeakSet())
+
+
 @Transform
 def rename_private_labels(ctx: TransformCtx) -> None:
     f = ctx.frag
     index = get_index.call_cached(ctx)
+
+    _dead = _DEAD_LABELS.value
+    for l in index.labels.values():
+        if in_typed(l.v, _dead):
+            use_instr = (list(l.uses) + list(l.defs))[0]
+            report = use_instr.debug.error(f"use of out-of-scope label {l.v}")
+            report.note("this is likely a bug rather than user error")
+            report.note("in instruction", use_instr)
+            report.note("defined here", l.v.debug)
+            report.throw()
 
     new_labels = {
         x.v: mk_internal_label(x.v.id) if x.private else x.v for x in index.labels.values()
@@ -322,17 +360,37 @@ def rename_private_labels(ctx: TransformCtx) -> None:
         )
 
 
+_DEAD_MVARS: Cell[WeakSet[MVar]] = Cell(WeakSet())
+
+
 @Transform
 def rename_private_mvars(ctx: TransformCtx) -> None:
     f = ctx.frag
     index = get_index.call_cached(ctx)
 
+    _dead = _DEAD_MVARS.value
+    for v in index.mvars.values():
+        if in_typed(v.v, _dead):
+            use_instr = (list(v.uses) + list(v.defs))[0]
+            report = use_instr.debug.error(f"use of out-of-scope variable {v.v}")
+            report.note("in instruction", use_instr)
+            report.note("defined here", v.v.debug)
+            report.throw()
+
+    for v in index.mvars.values():
+        if v.private:
+            _dead.add(v.v)
+
     new_mvars = {
         x.v: mk_mvar(x.v.type, debug=x.v.debug) if x.private else x.v for x in index.mvars.values()
     }
 
-    @f.map_instrs
-    def _(instr: BoundInstr) -> MapInstrsRes:
+    def map_fn(instr: BoundInstr) -> MapInstrsRes:
+        if i := instr.isinst(Isolate):
+            block = Block(list(i.unpack_typed()) + [EndPlaceholder().bind(())], i.debug)
+            block.map_instrs(map_fn)
+            return Isolate.from_block(block)
+
         if any(isinstance(x, EffectMvar) for x in instr.reads()):
             if i := instr.isinst(ReadMVar):
                 return ReadMVar(new_mvars[i.instr.s]).bind(i.outputs_, *i.inputs_)
@@ -342,6 +400,8 @@ def rename_private_mvars(ctx: TransformCtx) -> None:
             if i := instr.isinst(WriteMVar):
                 return WriteMVar(new_mvars[i.instr.s]).bind(i.outputs_, *i.inputs_)
             raise TypeError(instr)
+
+    f.map_instrs(map_fn)
 
 
 @Transform

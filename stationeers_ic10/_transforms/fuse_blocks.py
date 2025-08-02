@@ -1,14 +1,18 @@
+from typing import Iterator
+
 from .._core import Block
 from .._core import BoundInstr
 from .._core import Label
 from .._core import Var
 from .._instructions import Branch
 from .._instructions import CondJump
+from .._instructions import EndPlaceholder
 from .._instructions import Jump
 from .basic import get_index
 from .control_flow import External
 from .control_flow import build_control_flow_graph
 from .utils import LoopingTransform
+from .utils import Transform
 from .utils import TransformCtx
 
 
@@ -25,6 +29,7 @@ def remove_trivial_blocks(ctx: TransformCtx) -> bool:
             len(b.contents) == 2
             and index.labels[b.label].private
             and (instr := b.end.isinst(Jump))
+            and not isinstance(instr.inputs_[0], Var)
             and (instr.inputs_[0] != b.label)
         ):
             del f.blocks[b.label]
@@ -147,3 +152,26 @@ def fuse_blocks_all(ctx: TransformCtx) -> bool:
     if _fuse_blocks_impl(ctx, trivial_only=False, efficient_only=True):
         return True
     return _fuse_blocks_impl(ctx, trivial_only=False, efficient_only=False)
+
+
+@Transform
+def force_fuse_into_one(ctx: TransformCtx, start: Label) -> None:
+    f = ctx.frag
+    if len(f.blocks) == 1:
+        assert f.blocks[start].end.isinst(EndPlaceholder)
+        return
+
+    start_block = f.blocks[start]
+    (end_block,) = (b for b in f.blocks.values() if b.end.isinst(EndPlaceholder))
+    assert start_block is not end_block
+    other_blocks = [b for b in f.blocks.values() if b is not start_block and b is not end_block]
+
+    def gen() -> Iterator[BoundInstr]:
+        yield from start_block.contents
+        for b in other_blocks:
+            yield from b.contents
+        yield from end_block.contents
+
+    ans = Block(list(gen()), start.debug)
+
+    f.blocks = {start: ans}

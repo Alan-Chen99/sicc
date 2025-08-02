@@ -22,12 +22,15 @@ from typing import runtime_checkable
 from ordered_set import OrderedSet
 from rich.console import Group
 from rich.console import RenderableType
+from rich.console import group
 from rich.panel import Panel
 from rich.text import Text
 
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
+from ._diagnostic import clear_debug_info
 from ._diagnostic import debug_info
+from ._diagnostic import register_exclusion
 from ._utils import ByIdMixin
 from ._utils import Cell
 from ._utils import cast_unchecked
@@ -35,6 +38,7 @@ from ._utils import disjoint_union
 from ._utils import get_id
 from ._utils import narrow_unchecked
 from ._utils import safe_cast
+from .config import verbose
 
 if TYPE_CHECKING:
     from ._api import UserValue
@@ -42,7 +46,7 @@ if TYPE_CHECKING:
     from ._instructions import EmitLabel
 
 
-# register_exclusion(__file__)
+register_exclusion(__file__)
 
 counter = Cell(0)
 
@@ -236,6 +240,26 @@ def format_val(v: Value) -> Text:
 LowerRes = tuple[Var, ...] | Var | None
 
 
+class UnpackPolicy(Protocol):
+    def should_unpack(self, instr: BoundInstr, /) -> bool: ...
+
+
+@dataclass(frozen=True)
+class AlwaysUnpack(UnpackPolicy):
+    def should_unpack(self, instr: BoundInstr) -> bool:
+        return True
+
+
+@dataclass(frozen=True)
+class NeverUnpack(UnpackPolicy):
+    def should_unpack(self, instr: BoundInstr) -> bool:
+        return False
+
+
+class BundlesProto[T](Protocol):
+    def bundles(self, instr: BoundInstr[Any], /) -> T: ...
+
+
 class InstrBase(abc.ABC):
     # required overrides
     in_types: VarTS
@@ -266,7 +290,7 @@ class InstrBase(abc.ABC):
 
     def get_continues(self, instr: BoundInstr[Any], /) -> bool:
         """if overriding this, "continues" variable have no effect"""
-        if (unpacked := instr.unpack()) is not None:
+        if (unpacked := instr.unpack_rec()) is not None:
             return unpacked[-1].continues
         return self.continues
 
@@ -276,7 +300,7 @@ class InstrBase(abc.ABC):
 
     def jumps_to(self, instr: BoundInstr[Any], /) -> Iterable[InternalValLabel]:
         """if overriding this, "jumps" variable have no effect"""
-        if (unpacked := instr.unpack()) is not None:
+        if (unpacked := instr.unpack_rec()) is not None:
             for part in unpacked:
                 yield from part.jumps_to()
             return
@@ -289,23 +313,23 @@ class InstrBase(abc.ABC):
     # impure operations MUST override reads and/or writes
     # writes does NOT imply reads
     def reads(self, instr: BoundInstr[Any], /) -> EffectRes:
-        if (unpacked := instr.unpack()) is not None:
+        if (unpacked := instr.unpack_rec()) is not None:
             for part in unpacked:
                 yield from part.reads()
             return
 
     def writes(self, instr: BoundInstr[Any], /) -> EffectRes:
-        if (unpacked := instr.unpack()) is not None:
+        if (unpacked := instr.unpack_rec()) is not None:
             for part in unpacked:
                 yield from part.writes()
             return
 
-        if len(self.out_types) == 0 and len(instr.jumps_to()) == 0:
+        if len(self.out_types) == 0 and len(instr.jumps_to()) == 0 and instr.continues:
             raise NotImplementedError(f"{type(self)} returns nothing, so it must override 'writes'")
 
     def defines_labels(self, instr: BoundInstr[Any], /) -> Iterable[Label]:
         """does it contain EmitLabel or equirvalent?"""
-        if (unpacked := instr.unpack()) is not None:
+        if (unpacked := instr.unpack_rec()) is not None:
             for part in unpacked:
                 yield from part.defines_labels()
         return
@@ -334,20 +358,37 @@ class InstrBase(abc.ABC):
         return ans
 
     def format_with_anno(self, instr: BoundInstr[Any], /) -> RenderableType:
-        if (parts := self.bundles(instr)) is not None:
-            parts = [x.instr.format_with_anno(x) for x in parts]
-            return Panel(Group(*parts))
+        comment = Text()
+        if loc_info := instr.debug.location_info_brief():
+            comment.append("  # " + loc_info, "ic10.comment")
+
+        if annotation := FORMAT_ANNOTATE.value(instr):
+            comment.append("  # ", "ic10.comment")
+            comment.append(annotation)
+
+        if (parts := instr.unpack()) is not None:
+
+            @group()
+            def mk_group() -> Iterator[RenderableType]:
+                if len(comment) > 0:
+                    yield comment[2:]
+                yield from format_instr_list(parts)
+
+            if verbose.value >= 2:
+                title = self.format(instr)
+            else:
+                title = Text(type(self).__name__, "ic10.title")
+
+            return Panel(
+                mk_group(),
+                title=title,
+                # title=self.format(instr),
+                title_align="left",
+            )
 
         ans = Text()
         ans += self.format(instr)
-        loc_info = instr.debug.location_info()
-        if loc_info:
-            ans.append("  # " + loc_info, "ic10.comment")
-
-        annotation = FORMAT_ANNOTATE.value(instr)
-        if annotation:
-            ans.append("  # ", "ic10.comment")
-            ans.append(annotation)
+        ans += comment
 
         return ans
 
@@ -438,14 +479,12 @@ class InstrBase(abc.ABC):
     def bind[*I, O](
         self: InstrTypedWithArgs[tuple[*I], O], out_vars: O, /, *args: *I
     ) -> BoundInstr:
-        if TYPE_CHECKING:
-            assert isinstance(self, InstrBase)
-            assert narrow_unchecked(args, tuple[Value, ...])
-            assert narrow_unchecked(out_vars, tuple[Var, ...])
+        return self.bind_untyped(out_vars, *args)  # pyright: ignore
 
+    def bind_untyped[*I, O](self, out_vars: tuple[Var, ...], /, *args: Value) -> BoundInstr[Self]:
         self.check_inputs(*args)
         self.check_outputs(*out_vars)
-        return BoundInstr(get_id(), self, args, out_vars, debug_info())
+        return BoundInstr((get_id(),), self, args, out_vars, debug_info())
 
     def create_bind[*I, O](
         self: InstrTypedWithArgs[tuple[*I], O], *args: *I
@@ -459,7 +498,7 @@ class InstrBase(abc.ABC):
         self.check_inputs(*args)
         out_vars = tuple(mk_var(x) for x in self.out_types)
 
-        ans = BoundInstr(get_id(), self, args, out_vars, debug_info())
+        ans = BoundInstr((get_id(),), self, args, out_vars, debug_info())
         return cast_unchecked(out_vars), ans
 
     def emit[*I, O](self: InstrTypedWithArgs[tuple[*I], O], *args: *I) -> O:
@@ -497,11 +536,13 @@ B_co = TypeVar("B_co", covariant=True, default=InstrBase)
 
 @dataclass(frozen=True, eq=False)
 class BoundInstr(Generic[B_co], ByIdMixin):
-    id: int
+    id: tuple[int, ...]
     instr: B_co
     inputs: tuple[Value, ...]
     outputs: tuple[Var, ...]
     debug: DebugInfo
+
+    # TODO: organize these methods
 
     @property
     def inputs_[I1, O1](self: BoundInstr[InstrTypedWithArgs[I1, O1]]) -> I1:
@@ -517,16 +558,41 @@ class BoundInstr(Generic[B_co], ByIdMixin):
         for x in self.outputs:
             _ck_val(x)
 
-    def unpack_or_self(self: BoundInstr) -> list[BoundInstr]:
-        if (unpacked := self.unpack()) is not None:
-            return unpacked
-        return [self]
+    @overload
+    def unpack_typed[*Ts](self: BoundInstr[BundlesProto[tuple[*Ts]]]) -> tuple[*Ts]: ...
+    @overload
+    def unpack_typed[T](
+        self: BoundInstr[BundlesProto[Iterable[BoundInstr[T]]]],
+    ) -> tuple[BoundInstr[T], ...]: ...
+
+    def unpack_typed(self):
+        ans = cast_unchecked(self.unpack())  # pyright: ignore
+        assert ans is not None
+        return ans
 
     def unpack(self: BoundInstr) -> list[BoundInstr] | None:
         parts = self.instr.bundles(self)
         if parts is None:
             return None
-        return [p for x in parts for p in x.unpack_or_self()]
+        parts = list(parts)
+        return [
+            BoundInstr((*self.id, i), x.instr, x.inputs, x.outputs, x.debug)
+            for i, x in enumerate(parts)
+        ]
+
+    def unpack_rec(
+        self: BoundInstr, policy: UnpackPolicy = AlwaysUnpack()
+    ) -> list[BoundInstr] | None:
+        if policy.should_unpack(self) and (parts := self.unpack()) is not None:
+            return [p for x in parts for p in x.unpack_rec_or_self(policy)]
+        return None
+
+    def unpack_rec_or_self(
+        self: BoundInstr, policy: UnpackPolicy = AlwaysUnpack()
+    ) -> list[BoundInstr]:
+        if (unpacked := self.unpack_rec(policy)) is not None:
+            return unpacked
+        return [self]
 
     @property
     def continues(self: BoundInstr) -> bool:
@@ -579,7 +645,7 @@ class BoundInstr(Generic[B_co], ByIdMixin):
         else:
             new_outputs = self.outputs
 
-        return BoundInstr(get_id(), self.instr, new_inputs, new_outputs, debug_info())
+        return BoundInstr((get_id(),), self.instr, new_inputs, new_outputs, debug_info())
 
     def reads(self) -> list[EffectBase]:
         assert isinstance(self.instr, InstrBase)
@@ -690,6 +756,27 @@ MapInstrsRes = BoundInstr | Iterable[BoundInstr] | None
 MapInstrsFn = Callable[[BoundInstr], MapInstrsRes]
 
 
+def format_instr_list(instrs: list[BoundInstr]) -> Iterator[RenderableType]:
+    from ._instructions import EmitLabel
+
+    prev_is_label = True
+    prev_cont = True
+    for x in instrs:
+        sep = not prev_cont
+        if x.isinst(EmitLabel):
+            if not prev_is_label:
+                sep = True
+            prev_is_label = True
+        else:
+            prev_is_label = False
+        prev_cont = x.continues
+
+        if sep:
+            yield ""
+        # eagerly, so that FORMAT_CTX takes effect
+        yield x.__rich__()
+
+
 @dataclass
 class Block:
     """
@@ -730,28 +817,8 @@ class Block:
         _ = self.body
 
     def __rich__(self) -> RenderableType:
-        from ._instructions import EmitLabel
-
-        def content() -> Iterator[RenderableType]:
-            prev_is_label = True
-            prev_cont = True
-            for x in self.contents:
-                sep = not prev_cont
-                if x.isinst(EmitLabel):
-                    if not prev_is_label:
-                        sep = True
-                    prev_is_label = True
-                else:
-                    prev_is_label = False
-                prev_cont = x.continues
-
-                if sep:
-                    yield ""
-                # eagerly, so that FORMAT_CTX takes effect
-                yield x.__rich__()
-
         return Panel(
-            Group(*content()),
+            Group(*format_instr_list(self.contents)),
             # title=format_val(self.label),
             # title = "Block",
             # title_align="left",
@@ -759,7 +826,7 @@ class Block:
 
     def map_instrs(self, fn: MapInstrsFn) -> None:
         def get(x: BoundInstr) -> list[BoundInstr]:
-            with add_debug_info(x.debug):
+            with clear_debug_info(), add_debug_info(x.debug):
                 ans = fn(x)
                 if ans is None:
                     return [x]
@@ -867,10 +934,7 @@ class Fragment:
 
     ################################################################################
 
-    def all_instrs(self) -> list[BoundInstr]:
-        return [x for b in self.blocks.values() for x in b.contents]
-
-    def map_instrs(self, fn: MapInstrsFn) -> None:
+    def map_instrs[F: MapInstrsFn](self, fn: F) -> F:
         ans: dict[Label, Block] = {}
         for x in self.blocks.values():
             x.map_instrs(fn)
@@ -878,6 +942,7 @@ class Fragment:
             ans[x.label] = x
         self.blocks = ans
         self.basic_check()
+        return fn
 
     def replace_instr(self, instr: BoundInstr) -> Callable[[Callable[[], MapInstrsRes]], None]:
 
