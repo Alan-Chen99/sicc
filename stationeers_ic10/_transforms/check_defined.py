@@ -1,9 +1,13 @@
 import networkx as nx
 
+from .._core import AlwaysUnpack
+from .._diagnostic import mk_warn
 from .._utils import cast_unchecked_val
 from .basic import get_index
 from .control_flow import build_control_flow_graph
 from .control_flow import external
+from .optimize_mvars import compute_mvar_lifetime
+from .optimize_mvars import support_mvar_analysis
 from .utils import CachedFn
 from .utils import TransformCtx
 
@@ -20,8 +24,8 @@ def check_vars_defined(ctx: TransformCtx) -> None:
 
     returns cached result from "build_instr_flow_graph"
     """
-    index = get_index.call_cached(ctx)
-    graph = build_control_flow_graph.call_cached(ctx)
+    index = get_index.call_cached(ctx, unpack=AlwaysUnpack())
+    graph = build_control_flow_graph.call_cached(ctx, out_unpack=AlwaysUnpack())
 
     for v in index.vars.values():
         graph_ = cast_unchecked_val(graph)(
@@ -33,29 +37,33 @@ def check_vars_defined(ctx: TransformCtx) -> None:
                 err = u.debug.error(
                     f"variable {v.v} ({v.v.debug.describe}) may not be initialized",
                 )
+                err.note("in instruction", u)
                 err.note("defined here:", v.v.debug)
                 err.note("initialized here, but may occur after use:", v.def_instr.debug)
+                err.throw()
 
 
 @CachedFn
 def check_mvars_defined(ctx: TransformCtx) -> None:
     index = get_index.call_cached(ctx)
-    graph = build_control_flow_graph.call_cached(ctx)
 
     for v in index.mvars.values():
-        if not v.private:
+        if not support_mvar_analysis(ctx, v.v, AlwaysUnpack()):
             continue
-        graph_ = cast_unchecked_val(graph)(
-            nx.restricted_view(graph, set(v.defs), [])  # pyright: ignore[reportUnknownMemberType]
-        )
+        res = compute_mvar_lifetime(ctx, v.v, AlwaysUnpack())
+        res.reachable
 
-        reach = nx.descendants(graph_, external)  # pyright: ignore[reportUnknownMemberType]
-        for u in v.uses:
-            if u in reach:
-                err = u.debug.warn(
-                    f"mvar {v.v} ({v.v.type.__name__}) can not be proved to be initialized",
+        undef_uses = [use for use in v.uses if res.reachable[use].possible_undef]
+        if len(undef_uses) > 0:
+            err = mk_warn(f"mvar {v.v} ({v.v.type.__name__}) can not be proved to be initialized")
+            for i, u in enumerate(undef_uses):
+                err.add(
+                    f"Possible uninitialized use [{i+1}]:",
+                    u.debug,
+                    "",
+                    "corresponding instruction:",
+                    u,
                 )
-                err.note("in instruction", u)
-                err.note("defined here:", v.v.debug)
-                for d in v.defs:
-                    err.note("assigned here, but may occur after use:", d.debug)
+            err.note("defined here:", v.v.debug)
+            for d in v.defs:
+                err.note("assigned here, but may occur after use:", d.debug)

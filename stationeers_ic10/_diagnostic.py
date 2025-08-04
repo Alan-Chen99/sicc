@@ -79,9 +79,9 @@ def format_location(loc: Frame):
     return Traceback(Trace([stack]), suppress=_TRACEBACK_SUPPRESS.value)._render_stack(stack)
 
 
-def get_trace() -> Trace:
+def get_trace(depth: int = 0) -> Trace:
     # frame = _get_traceback_frame()
-    frame = sys._getframe()
+    frame = sys._getframe(depth + 1)
 
     # print("_get_traceback_frame", frame)
 
@@ -262,18 +262,28 @@ def show_pending_diagnostics():
         x.show()
 
 
-def mk_warn(msg: str | Text, first: RenderableType, *parts: RenderableType) -> Report:
+def mk_warn(msg: str | Text, first: RenderableType | None = None, *parts: RenderableType) -> Report:
     txt = Text("", style="logging.level.warning")
     txt += Text("[WARN] ", style="bold")
     txt += msg
-    return Report.new(Group(txt, first), *parts, border_style="logging.level.warning")
+    return Report.new(
+        Group(txt, first) if first is not None else txt,
+        *parts,
+        border_style="logging.level.warning",
+    )
 
 
-def mk_error(msg: str | Text, first: RenderableType, *parts: RenderableType) -> Report:
+def mk_error(
+    msg: str | Text, first: RenderableType | None = None, *parts: RenderableType
+) -> Report:
     txt = Text("", style="logging.level.error")
     txt += Text("[ERROR] ", style="bold")
     txt += msg
-    return Report.new(Group(txt, first), *parts, border_style="logging.level.error")
+    return Report.new(
+        Group(txt, first) if first is not None else txt,
+        *parts,
+        border_style="logging.level.error",
+    )
 
 
 @dataclass
@@ -286,9 +296,11 @@ class Report:
     did_show: bool = False
 
     @staticmethod
-    def new(*parts: RenderableType, border_style: str = "traceback.border") -> Report:
+    def new(
+        *parts: RenderableType, border_style: str = "traceback.border", depth: int = 0
+    ) -> Report:
         ans = Report(
-            trace=get_trace() if verbose.value >= 1 else None,
+            trace=get_trace(depth + 1) if verbose.value >= 1 else None,
             border_style=border_style,
             parts=list(parts),
         )

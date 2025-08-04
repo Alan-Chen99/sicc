@@ -19,9 +19,9 @@ from .._core import UnpackPolicy
 from .._core import Var
 from .._core import WriteMVar
 from .._core import known_distinct
+from .._instructions import Bundle
 from .._instructions import EmitLabel
 from .._instructions import EndPlaceholder
-from .._instructions import Isolate
 from .._instructions import Jump
 from .._tracing import ck_val
 from .._tracing import mk_internal_label
@@ -222,13 +222,13 @@ def get_index(ctx: TransformCtx, unpack: UnpackPolicy = NeverUnpack()) -> Index:
     # sanity checks
     for x in res_vars.values():
         if len(x.defs) != 1:
-            x.v.debug.error(f"{x.v} defined {len(x.defs)} times")
+            x.v.debug.error(f"{x.v} defined {len(x.defs)} times").throw()
 
     for l in res_labels.values():
         assert len(l.defs) <= 1
         if l.private and len(l.uses) > 0:
             if len(l.defs) == 0:
-                l.v.debug.error(f"private label {l} never defined")
+                l.v.debug.error(f"private label {l} never defined").throw()
 
     effect_list = list(res_effects)
     effect_conflicts: "nx.Graph[EffectBase]" = nx.Graph(nodes=effect_list)
@@ -386,10 +386,10 @@ def rename_private_mvars(ctx: TransformCtx) -> None:
     }
 
     def map_fn(instr: BoundInstr) -> MapInstrsRes:
-        if i := instr.isinst(Isolate):
-            block = Block(list(i.unpack_typed()) + [EndPlaceholder().bind(())], i.debug)
+        if i := instr.isinst(Bundle):
+            block = Block(list(i.instr.parts(i)) + [EndPlaceholder().bind(())], i.debug)
             block.map_instrs(map_fn)
-            return Isolate.from_block(block)
+            return Bundle.from_block(block)
 
         if any(isinstance(x, EffectMvar) for x in instr.reads()):
             if i := instr.isinst(ReadMVar):

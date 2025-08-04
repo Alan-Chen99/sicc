@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any  # autoflake: skip
-from typing import Callable
-from typing import ClassVar
+from typing import TYPE_CHECKING  # autoflake: skip
+from typing import Any
 from typing import Iterable
 from typing import Iterator
 from typing import Self
@@ -15,31 +14,35 @@ from typing import override
 
 from ordered_set import OrderedSet
 from rich import print as print  # autoflake: skip
+from rich.console import RenderableType
+from rich.console import group
+from rich.panel import Panel
 from rich.text import Text
 
+from ._core import FORMAT_ANNOTATE
 from ._core import Block
 from ._core import BoundInstr
 from ._core import EffectBase
+from ._core import EffectRes
 from ._core import InstrBase
-from ._core import InteralBool
-from ._core import InternalFloat
 from ._core import InternalValLabel
 from ._core import Label
-from ._core import MVar
 from ._core import TypeList
 from ._core import Value
 from ._core import Var
 from ._core import VarT
 from ._core import VarTS
 from ._core import WriteMVar
+from ._core import format_instr_list
 from ._core import format_val
 from ._core import get_type
 from ._core import get_types
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
-from ._diagnostic import clear_debug_info
+from ._utils import cast_unchecked
 from ._utils import mk_ordered_set
-from ._utils import safe_cast
+from ._utils import narrow_unchecked
+from .config import verbose
 
 # register_exclusion(__file__)
 
@@ -222,21 +225,22 @@ class PredicateBase(AsmInstrBase):
 
     jumps = False
 
-    negate: ClassVar[Callable[..., tuple[tuple[Var[bool]], BoundInstr]]]
+    def negate(self, instr: BoundInstr[Any]) -> BoundInstr[PredicateBase]:
+        raise NotImplementedError()
 
-    def lower_neg(self, *args: Value) -> Var[bool]:
-        (out_var,), bound = self.negate(*args)
-        bound.emit()
-        return out_var
+    # def lower_neg(self, *args: Value) -> Var[bool]:
+    #     (out_var,), bound = self.negate(*args)
+    #     bound.emit()
+    #     return out_var
 
-    def lower_cjump(self, *args: Value, label: InternalValLabel) -> None:
-        assert self.opcode.startswith("s")
-        raw_asm("b" + self.opcode.removeprefix("s"), None, *args, label)
+    # def lower_cjump(self, *args: Value, label: InternalValLabel) -> None:
+    #     assert self.opcode.startswith("s")
+    #     raw_asm("b" + self.opcode.removeprefix("s"), None, *args, label)
 
-    def lower_neg_cjump(self, *args: Value, label: InternalValLabel) -> None:
-        (_out_var,), bound = self.negate(*args)
-        assert isinstance(bound.instr, PredicateBase)
-        bound.instr.lower_cjump(*bound.inputs, label=label)
+    # def lower_neg_cjump(self, *args: Value, label: InternalValLabel) -> None:
+    #     (_out_var,), bound = self.negate(*args)
+    #     assert isinstance(bound.instr, PredicateBase)
+    #     bound.instr.lower_cjump(*bound.inputs, label=label)
 
 
 class PredVar(PredicateBase):
@@ -246,16 +250,16 @@ class PredVar(PredicateBase):
     in_types = (bool,)
 
     @override
-    def negate(self, a: InteralBool):
-        return Not().create_bind(a)
+    def negate(self, instr: BoundInstr[Self]):
+        return Not().bind(instr.outputs_, *instr.inputs_)
 
-    @override
-    def lower_cjump(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, a: InteralBool, label: InternalValLabel
-    ) -> None:
-        from ._instructions import PredLE
+    # @override
+    # def lower_cjump(
+    #     self, a: InteralBool, label: InternalValLabel
+    # ) -> None:
+    #     from ._instructions import PredLE
 
-        PredLE().lower_cjump(1, a, label=label)
+    #     PredLE().lower_cjump(1, a, label=label)
 
 
 class Not(PredicateBase):
@@ -263,120 +267,22 @@ class Not(PredicateBase):
     in_types = (bool,)
 
     @override
-    def negate(self, a: InteralBool):
-        return PredVar().create_bind(a)
+    def negate(self, instr: BoundInstr[Self]):
+        return PredVar().bind(instr.outputs_, *instr.inputs_)
 
-    @override
-    def lower_cjump(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, a: InteralBool, label: InternalValLabel
-    ) -> None:
-        from ._instructions import PredLT
+    # @override
+    # def lower_cjump(
+    #     self, a: InteralBool, label: InternalValLabel
+    # ) -> None:
+    #     from ._instructions import PredLT
 
-        PredLT().lower_cjump(a, 1, label=label)
+    #     PredLT().lower_cjump(a, 1, label=label)
 
 
 class Branch(InstrBase):
     in_types = (bool, Label, Label)
     out_types = ()
     continues = False
-
-
-class PredBranch(InstrBase):
-    def __init__(self, pred: PredicateBase):
-        assert pred.out_types == (bool,)
-        self.base = pred
-
-        self.in_types: TypeList[  # pyright: ignore[reportIncompatibleVariableOverride]
-            tuple[InternalValLabel, InternalValLabel, *tuple[Value, ...]]
-        ] = TypeList((Label, Label, *pred.in_types))
-        self.out_types = (bool,)
-
-    @override
-    def bundles(self, instr: BoundInstr[Self]) -> Iterator[BoundInstr]:
-        l_t, l_f, *args = instr.inputs_
-        (pred_var,) = instr.outputs_
-        yield self.base.bind((pred_var,), *args)  # pyright: ignore
-        yield Branch().bind((), pred_var, l_t, l_f)
-
-    # @override
-    # def format_with_args(self, l_t: InternalValLabel, l_f: InternalValLabel, *args: Value) -> Text:
-    #     ans = Text()
-    #     ans.append(type(self).__name__, "ic10.jump")
-    #     ans += " ["
-    #     ans += self.base.format_with_args(*args)
-    #     ans += "]"
-    #     for x in [l_t, l_f]:
-    #         ans += " "
-    #         ans += format_val(x)
-    #     return ans
-
-    # def lower(self, l_t: InternalValLabel, l_f: InternalValLabel, *args: Value) -> None:
-    #     CJump(self.base, jump_on=True).call(l_t, *args)
-    #     Jump().call(l_f)
-
-    #     # assert self.opcode.startswith("s")
-    #     # raw_asm("b" + self.opcode.removeprefix("s"), None, *args, label)
-
-
-class JumpAndLink(InstrBase):
-    """
-    contains link_reg, which is a mvar with reg preference to ra
-
-    takes (return_label, call_label)
-    equivalent to
-
-    link_reg := return_label
-    jump call_label
-
-    jump to label and set link_reg to
-    """
-
-    def __init__(self, link_reg: MVar):
-        self.link_reg = link_reg
-        self.in_types = (Label, Label)
-        self.out_types = ()
-
-    @override
-    def bundles(self, instr: BoundInstr[Self]):
-        return_label, call_label = instr.inputs_
-        yield WriteMVar(self.link_reg).bind((), return_label)
-        yield Jump().bind((), call_label)
-
-
-class CondJumpAndLink(InstrBase):
-    def __init__(self, pred: PredicateBase, link_reg: MVar):
-        self.link_reg = link_reg
-
-        assert pred.out_types == (bool,)
-        self.pred = pred
-
-        self.in_types = safe_cast(
-            TypeList[tuple[InternalValLabel, InternalValLabel, *tuple[Value, ...]]],
-            TypeList((Label, Label, *pred.in_types)),
-        )
-        self.out_types = ()
-
-    @override
-    def bundles(self, instr: BoundInstr[Self]):
-        func_label, ret_label, *pred_args = instr.inputs_
-        return (
-            WriteMVar(self.link_reg).bind((), ret_label),
-            CondJump(self.pred).bind((), func_label, *pred_args),
-            EmitLabel().bind((), ret_label),
-        )
-
-    # @override
-    # def format_with_args(self, target: InternalValLabel, *args: Value) -> Text:
-    #     ans = Text()
-    #     ans.append(type(self).__name__, "ic10.jump")
-    #     ans += " "
-    #     if self.jump_on == False:
-    #         ans.append("NOT", "ic10.jump")
-    #     ans += "["
-    #     ans += self.base.format_with_args(*args)
-    #     ans += "] "
-    #     ans += format_val(target)
-    #     return ans
 
 
 class CondJump(InstrBase):
@@ -386,37 +292,10 @@ class CondJump(InstrBase):
     tracing does not emit this; only used after optimize when concating blocks
     """
 
-    def __init__(self, pred: PredicateBase):
-        assert pred.out_types == (bool,)
-        self.base = pred
-        # self.jump_on = jump_on
-
-        self.in_types: TypeList[  # pyright: ignore[reportIncompatibleVariableOverride]
-            tuple[InternalValLabel, *tuple[Value, ...]]
-        ] = TypeList((Label, *pred.in_types))
+    def __init__(self):
+        self.in_types = (bool, Label)
         self.out_types = ()
         self.continues = True
-
-    # @override
-    # def format_with_args(self, target: InternalValLabel, *args: Value) -> Text:
-    #     ans = Text()
-    #     ans.append(type(self).__name__, "ic10.jump")
-    #     ans += " "
-    #     if self.jump_on == False:
-    #         ans.append("NOT", "ic10.jump")
-    #     ans += "["
-    #     ans += self.base.format_with_args(*args)
-    #     ans += "] "
-    #     ans += format_val(target)
-    #     return ans
-
-    # @override
-    # def lower(self, label: InternalValLabel, *args: Value) -> None:
-    #     assert False
-    #     if self.jump_on == True:
-    #         return self.base.lower_cjump(*args, label=label)
-    #     else:
-    #         return self.base.lower_neg_cjump(*args, label=label)
 
 
 ################################################################################
@@ -446,8 +325,9 @@ class PredLT(PredicateBase):
     in_types = (float, float)
 
     @override
-    def negate(self, a: InternalFloat, b: InternalFloat):
-        return PredLE().create_bind(b, a)
+    def negate(self, instr: BoundInstr[Self]):
+        a, b = instr.inputs_
+        return PredLE().bind(instr.outputs_, b, a)
 
 
 class PredLE(PredicateBase):
@@ -455,16 +335,13 @@ class PredLE(PredicateBase):
     in_types = (float, float)
 
     @override
-    def negate(self, a: InternalFloat, b: InternalFloat):
-        return PredLT().create_bind(b, a)
+    def negate(self, instr: BoundInstr[Self]):
+        a, b = instr.inputs_
+        return PredLT().bind(instr.outputs_, b, a)
 
 
 @dataclass
-class Isolate(InstrBase):
-    """for debugging and testing only"""
-
-    # atm inputs must be plain values (cannot be Var). this may change in future
-
+class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
     # False, i -> var is inputs[i]
     # True, i -> var is outputs[i]
     var_info: list[tuple[bool, int]]
@@ -474,17 +351,38 @@ class Isolate(InstrBase):
 
     children: list[tuple[InstrBase, tuple[int, ...], tuple[int, ...], DebugInfo]]
 
-    @override
-    def bundles(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
-        vars = [instr.outputs[x] if is_out else instr.inputs[x] for is_out, x in self.var_info]
-        for child, args, outs, dbg in self.children:
-            arg_vals = tuple(vars[i] for i in args)
-            out_vars = tuple(cast(Var, vars[i]) for i in outs)
-            with clear_debug_info(), add_debug_info(dbg):
-                yield child.bind_untyped(out_vars, *arg_vals)
+    # # def bundles(self, instr: BoundInstr[Any], /) -> Iterable[BoundInstr] | None:
+    # #     """
+    # #     If not None, instr is a bundle of several instructions.
 
-    @staticmethod
-    def from_list(instrs: list[BoundInstr]) -> BoundInstr[Isolate]:
+    # #     Every time its called, it should
+    # #     (1) return a list of instructions with a new/different instr id.
+    # #           this list must not contain [self]
+    # #     (2) unlike BoundInstr objects, internal vars in the bundle must be in the
+    # #           "output" field of a BoundInstr
+
+    # #     this features is added later; some code might not be aware of this and may make mistakes.
+    # #     TODO:
+    # #     (1) check EmitLabel. now this is no longer the only thing that can produce a label
+    # #     (2) i think some previous code incorrectly assmed instrs have at most one output
+    # #     """
+    # #     return None
+
+    def parts(self, instr: BoundInstr[Self]) -> tuple[*Ts]:
+        vars = [instr.outputs[x] if is_out else instr.inputs[x] for is_out, x in self.var_info]
+        ans: list[BoundInstr] = []
+        for i, (child, args, outs, dbg) in enumerate(self.children):
+            arg_vals = tuple(vars[j] for j in args)
+            out_vars = tuple(cast(Var, vars[j]) for j in outs)
+            ans.append(BoundInstr((*instr.id, i), child, arg_vals, out_vars, dbg))
+
+        return cast_unchecked(tuple(ans))
+
+    @classmethod
+    def from_parts(cls, *instrs: *Ts) -> BoundInstr[Self]:
+        if TYPE_CHECKING:
+            assert narrow_unchecked(instrs, tuple[BoundInstr, ...])
+
         vars: OrderedSet[Value] = mk_ordered_set()
         out_vars: set[Var] = set()
 
@@ -508,7 +406,7 @@ class Isolate(InstrBase):
                 var_info.append((False, len(inputs)))
                 inputs.append(x)
 
-        ans = Isolate(
+        ans = cls(
             var_info=var_info,
             in_types=TypeList((get_type(x) for x in inputs)),
             out_types=TypeList((x.type for x in outputs)),
@@ -518,7 +416,91 @@ class Isolate(InstrBase):
         return ans.bind_untyped(tuple(outputs), *inputs)
 
     @staticmethod
-    def from_block(b: Block) -> BoundInstr[Isolate]:
+    def from_block(b: Block) -> BoundInstr[Bundle]:
         assert b.end.isinst(EndPlaceholder)
         with add_debug_info(b.debug):
-            return Isolate.from_list(b.contents[:-1])
+            return Bundle.from_parts(*b.contents[:-1])
+
+    @override
+    def get_continues(self, instr: BoundInstr[Self]) -> bool:
+        return instr.unpack_untyped()[-1].continues
+
+    @override
+    def jumps_to(self, instr: BoundInstr[Self]) -> Iterable[InternalValLabel]:
+        for part in instr.unpack_untyped():
+            yield from part.jumps_to()
+
+    @override
+    def reads(self, instr: BoundInstr[Self]) -> EffectRes:
+        for part in instr.unpack_untyped():
+            yield from part.reads()
+
+    @override
+    def writes(self, instr: BoundInstr[Self]) -> EffectRes:
+        for part in instr.unpack_untyped():
+            yield from part.writes()
+
+    @override
+    def defines_labels(self, instr: BoundInstr[Self]) -> Iterable[Label]:
+        for part in instr.unpack_untyped():
+            yield from part.defines_labels()
+
+    def format_with_anno(self, instr: BoundInstr[Any], /) -> RenderableType:
+        parts = instr.unpack_untyped()
+
+        comment = Text()
+        if loc_info := instr.debug.location_info_brief():
+            comment.append("  # " + loc_info, "ic10.comment")
+
+        if annotation := FORMAT_ANNOTATE.value(instr):
+            comment.append("  # ", "ic10.comment")
+            comment.append(annotation)
+
+        @group()
+        def mk_group() -> Iterator[RenderableType]:
+            if len(comment) > 0:
+                yield comment[2:]
+            yield from format_instr_list(list(parts))
+
+        if verbose.value >= 2:
+            title = self.format(instr)
+        else:
+            title = Text(type(self).__name__, "ic10.title")
+
+        return Panel(
+            mk_group(),
+            title=title,
+            # title=self.format(instr),
+            title_align="left",
+        )
+
+
+@dataclass
+class PredBranch(
+    Bundle[
+        BoundInstr[PredicateBase],
+        BoundInstr[Branch],
+    ]
+):
+    pass
+
+
+class JumpAndLink(
+    Bundle[
+        BoundInstr[WriteMVar],
+        BoundInstr[Jump],
+        BoundInstr[EmitLabel],
+    ]
+):
+    pass
+
+
+class CondJumpAndLink(
+    Bundle[
+        BoundInstr[WriteMVar],
+        BoundInstr[PredicateBase],
+        BoundInstr[CondJump],
+        BoundInstr[EmitLabel],
+    ]
+):
+    pass

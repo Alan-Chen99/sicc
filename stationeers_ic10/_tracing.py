@@ -33,9 +33,9 @@ from ._diagnostic import track_caller
 from ._functions import branch
 from ._functions import jump
 from ._functions import unreachable_checked
+from ._instructions import Bundle
 from ._instructions import EmitLabel
 from ._instructions import EndPlaceholder
-from ._instructions import Isolate
 from ._utils import ByIdMixin
 from ._utils import Cell
 
@@ -362,9 +362,7 @@ def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[V
 
 
 @contextmanager
-def isolate() -> Iterator[None]:
-    """for debugging and testing only"""
-
+def trace_bundle() -> Iterator[None]:
     from ._transforms.fuse_blocks import force_fuse_into_one
 
     start = mk_internal_label(f"isolate")
@@ -378,4 +376,4 @@ def isolate() -> Iterator[None]:
     force_fuse_into_one(frag, start)
 
     block = frag.blocks[start]
-    Isolate.from_block(block).emit()
+    Bundle.from_block(block).emit()

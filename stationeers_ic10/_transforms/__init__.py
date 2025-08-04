@@ -15,8 +15,11 @@ from .forward_full_block import forward_remove_full_block
 from .fuse_blocks import fuse_blocks_all
 from .fuse_blocks import fuse_blocks_trivial_jumps
 from .fuse_blocks import remove_trivial_blocks
+from .link_bundles import pack_call
+from .link_bundles import pack_cond_call
 from .lower import lower_instrs
 from .optimize_mvars import elim_mvars_read_writes
+from .optimize_mvars import writeback_mvar_use
 from .remove_trivial_vars import remove_trivial_vars_
 from .utils import run_phases
 
@@ -39,7 +42,9 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
 
 GLOBAL_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
     #
-    inline_pred_to_branch
+    inline_pred_to_branch,
+    pack_cond_call,
+    pack_call,
 ]
 
 
@@ -62,6 +67,9 @@ def global_checks(f: Fragment):
 
 def global_opts(f: Fragment):
     global_checks(f)
+    optimize_frag(f)
+    writeback_mvar_use(f)
+    optimize_frag(f)
     run_phases(f, *GLOBAL_OPTS)
 
 

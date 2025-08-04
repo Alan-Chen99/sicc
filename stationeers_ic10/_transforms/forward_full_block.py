@@ -1,6 +1,8 @@
+from .._core import AlwaysUnpack
 from .._core import Block
 from .._core import ReadMVar
 from .._core import WriteMVar
+from .._instructions import Bundle
 from .._instructions import Jump
 from .._utils import is_eq_typed
 from .basic import get_index
@@ -68,9 +70,13 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
         if not index.mvars[mv].private:
             return False
 
-        if not support_mvar_analysis(ctx, mv):
+        if pred_block.end.isinst(Bundle):
+            # TODO
             return False
-        lifetime = compute_mvar_lifetime(ctx, mv)
+
+        if not support_mvar_analysis(ctx, mv, AlwaysUnpack()):
+            return False
+        lifetime = compute_mvar_lifetime(ctx, mv, AlwaysUnpack())
         if pred_block.end in lifetime.reachable:
             return False
 
