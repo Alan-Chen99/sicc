@@ -266,10 +266,14 @@ def trace_main_test() -> Iterator[Cell[Fragment]]:
     f = res.value
     mark_all_private_except(f, [start, exit])
     optimize_frag(f)
+
+    print("after optimize with marked private:")
+    print(f)
+
     global_opts(f)
 
-    print("final optimize:")
-    print(res.value)
+    print("after global optimize:")
+    print(f)
 
 
 @contextmanager
@@ -363,6 +367,7 @@ def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[V
 
 @contextmanager
 def trace_bundle() -> Iterator[None]:
+    """for debugging/testing purposes"""
     from ._transforms.fuse_blocks import force_fuse_into_one
 
     start = mk_internal_label(f"isolate")

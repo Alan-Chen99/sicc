@@ -42,6 +42,7 @@ from sicc._transforms import emit_asm
 from sicc._transforms.control_flow import build_control_flow_graph
 from sicc._transforms.control_flow import compute_label_provenance
 from sicc._transforms.regalloc import compute_lifetimes_all
+from sicc._transforms.regalloc import regalloc_try_fuse
 from sicc.functions import black_box
 from sicc.functions import jump
 
@@ -88,6 +89,8 @@ def main():
         parent(1)
 
         # with trace_bundle():
+        v = x > 2
+
         with if_(x > 2):
             black_box(parent(x))
 
@@ -116,6 +119,15 @@ if __name__ == "__main__":
 
     res = compute_lifetimes_all(ans)
     with res.with_anno():
+        print(ans)
+
+    print("conflict_graph", list(res.conflict_graph.edges))
+
+    fuse_res = regalloc_try_fuse(ans)
+    print("fuse groups", fuse_res.groups_rev)
+    # print("post-fuse conflict graph", list(fuse_res.collapsed_conflict_graph.edges))
+
+    with fuse_res.with_anno():
         print(ans)
 
     # res = compute_label_provenance(ans, out_unpack=NeverUnpack(), analysis_unpack=AlwaysUnpack())

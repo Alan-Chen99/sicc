@@ -337,8 +337,6 @@ class Subr[F]:
         def inner(*args: P.args, **kwargs: P.kwargs) -> R:
             if self._subr is None:
                 self._subr = trace_to_subr(self.fn, *args, **kwargs)
-                # FIXME?
-                # emit_frag(self._subr.subr.frag)
             return self._subr.call(*args, **kwargs)
 
         return inner

@@ -645,10 +645,6 @@ class EffectMvar(EffectBase):
         return self.s != other.s
 
 
-class SubMVar:
-    pass
-
-
 class ReadMVar[T: VarT = Any](InstrBase):
     s: MVar[T]
 

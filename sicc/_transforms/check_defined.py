@@ -45,13 +45,12 @@ def check_vars_defined(ctx: TransformCtx) -> None:
 
 @CachedFn
 def check_mvars_defined(ctx: TransformCtx) -> None:
-    index = get_index.call_cached(ctx)
+    index = get_index.call_cached(ctx, AlwaysUnpack())
 
     for v in index.mvars.values():
         if not support_mvar_analysis(ctx, v.v, AlwaysUnpack()):
             continue
         res = compute_mvar_lifetime(ctx, v.v, AlwaysUnpack())
-        res.reachable
 
         undef_uses = [use for use in v.uses if res.reachable[use].possible_undef]
         if len(undef_uses) > 0:

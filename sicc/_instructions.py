@@ -445,7 +445,8 @@ class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
         for part in instr.unpack_untyped():
             yield from part.defines_labels()
 
-    def format_with_anno(self, instr: BoundInstr[Any], /) -> RenderableType:
+    @override
+    def format_with_anno(self, instr: BoundInstr[Self], /) -> RenderableType:
         parts = instr.unpack_untyped()
 
         comment = Text()

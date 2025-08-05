@@ -125,12 +125,15 @@ def compute_mvar_lifetime(
         subgraph = graph.subgraph(reachable | {d})
         des = nx.descendants(subgraph, d)  # pyright: ignore[reportUnknownMemberType]1
         for x in des:
-            get(x).possible_defs.append(d)
+            res[x].possible_defs.append(d)
 
     subgraph = graph.subgraph(reachable | {external})
     des = nx.descendants(subgraph, external)  # pyright: ignore[reportUnknownMemberType]1
     for x in des:
-        get(x).possible_undef = True
+        res[x].possible_undef = True
+
+    if external in reachable:
+        res[external].possible_undef = True
 
     ########################################
 
