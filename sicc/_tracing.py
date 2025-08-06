@@ -16,6 +16,7 @@ from ._core import Label
 from ._core import LabelLike
 from ._core import LowerRes
 from ._core import MVar
+from ._core import RegInfo
 from ._core import Scope
 from ._core import Value
 from ._core import Var
@@ -59,9 +60,11 @@ _EXISTING_EMITTED_LABELS: Cell[set[Label]] = Cell(set())
 _EMIT_HOOK: Cell[Callable[[BoundInstr], None]] = Cell()
 
 
-def mk_var[T: VarT](typ: type[T], *, debug: DebugInfo | None = None) -> Var[T]:
+def mk_var[T: VarT](
+    typ: type[T], *, reg: RegInfo = RegInfo(), debug: DebugInfo | None = None
+) -> Var[T]:
     """create a Var, tied to the current scope"""
-    ans = Var(typ, get_id(), Cell(True), debug or debug_info())
+    ans = Var(typ, get_id(), Cell(True), reg, debug or debug_info())
     _CUR_SCOPE.value.vars.add(ans)
     return ans
 
@@ -79,9 +82,13 @@ def ck_val(v: Value) -> None:
 
 
 def mk_mvar[T: VarT](
-    typ: type[T], *, force_public: bool = False, debug: DebugInfo | None = None
+    typ: type[T],
+    *,
+    force_public: bool = False,
+    reg: RegInfo = RegInfo(),
+    debug: DebugInfo | None = None,
 ) -> MVar[T]:
-    ans = MVar(typ, get_id(), debug or debug_info(1))
+    ans = MVar(typ, get_id(), reg, debug or debug_info(1))
     if not force_public and (scope := _CUR_SCOPE.get()):
         scope.private_mvars.append(ans)
     return ans
@@ -232,10 +239,11 @@ def internal_trace_as_rep(
 @contextmanager
 def internal_transform(frag: Fragment) -> Iterator[None]:
     if _CUR_TRACE.get() is None and _CUR_SCOPE.get() is frag.scope:
-        yield
+        with clear_debug_info():
+            yield
         return
 
-    with _CUR_TRACE.bind_clear(), _CUR_SCOPE.bind(frag.scope):
+    with _CUR_TRACE.bind_clear(), _CUR_SCOPE.bind(frag.scope), clear_debug_info():
         yield
 
 

@@ -42,6 +42,7 @@ from sicc._transforms import emit_asm
 from sicc._transforms.control_flow import build_control_flow_graph
 from sicc._transforms.control_flow import compute_label_provenance
 from sicc._transforms.regalloc import compute_lifetimes_all
+from sicc._transforms.regalloc import regalloc
 from sicc._transforms.regalloc import regalloc_try_fuse
 from sicc.functions import black_box
 from sicc.functions import jump
@@ -54,14 +55,14 @@ class Data:
 
 
 @subr()
-def child(x: Int):
+def child(x: Float):
     with if_(x > 0):
         return_(Data(7, x))
     return Data(x, 9)
 
 
 @subr()
-def parent(x: Int) -> Int:
+def parent(x: Float) -> Float:
     with if_(x > 0):
         return_(child(x).x)
 
@@ -82,6 +83,7 @@ def main():
     with trace_main_test() as res:
         label("start")
 
+        # x = black_box(child(1).y)
         x = black_box(parent(1))
         with if_(x > 1):
             parent(x + 51)
@@ -89,9 +91,8 @@ def main():
         parent(1)
 
         # with trace_bundle():
-        v = x > 2
 
-        with if_(x > 2):
+        with if_(black_box(x > 2)):
             black_box(parent(x))
 
         black_box(55)
@@ -115,26 +116,20 @@ if __name__ == "__main__":
     finally:
         show_pending_diagnostics()
 
-    # emit_asm(ans)
+    emit_asm(ans)
 
-    res = compute_lifetimes_all(ans)
-    with res.with_anno():
-        print(ans)
-
-    print("conflict_graph", list(res.conflict_graph.edges))
-
-    fuse_res = regalloc_try_fuse(ans)
-    print("fuse groups", fuse_res.groups_rev)
-    # print("post-fuse conflict graph", list(fuse_res.collapsed_conflict_graph.edges))
-
-    with fuse_res.with_anno():
-        print(ans)
-
-    # res = compute_label_provenance(ans, out_unpack=NeverUnpack(), analysis_unpack=AlwaysUnpack())
-    # res = compute_label_provenance(ans, out_unpack=AlwaysUnpack(), analysis_unpack=AlwaysUnpack())
-    # with FORMAT_ANNOTATE.bind(res.annotate):
+    # res = compute_lifetimes_all(ans)
+    # with res.with_anno():
     #     print(ans)
-    # print(ans)
 
-    # graph = build_control_flow_graph(ans, out_unpack=NeverUnpack(), analysis_unpack=AlwaysUnpack())
-    # print(list(graph.edges))
+    # print("conflict_graph", list(res.conflict_graph.edges))
+
+    # fuse_res = regalloc_try_fuse(ans)
+    # print("fuse groups", fuse_res.groups_rev)
+    # # print("post-fuse conflict graph", list(fuse_res.collapsed_conflict_graph.edges))
+
+    # with fuse_res.with_anno():
+    #     print(ans)
+
+    # regalloc(ans)
+    print(ans)

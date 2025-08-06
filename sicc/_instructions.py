@@ -9,6 +9,7 @@ from typing import Self
 from typing import TypedDict
 from typing import Unpack
 from typing import cast
+from typing import final
 from typing import overload
 from typing import override
 
@@ -27,6 +28,7 @@ from ._core import EffectRes
 from ._core import InstrBase
 from ._core import InternalValLabel
 from ._core import Label
+from ._core import Register
 from ._core import TypeList
 from ._core import Value
 from ._core import Var
@@ -39,6 +41,7 @@ from ._core import get_type
 from ._core import get_types
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
+from ._diagnostic import clear_debug_info
 from ._utils import cast_unchecked
 from ._utils import mk_ordered_set
 from ._utils import narrow_unchecked
@@ -86,22 +89,40 @@ class RawInstr(InstrBase):
     continues: bool
     jumps: bool
 
-    # def format_with_args_outputs(self, out_vars: tuple[Var, ...], *args: Value) -> Text:
-    #     ans = Text()
-    #     ans.append(self.opcode, "ic10.raw_opcode")
-    #     if len(out_vars) > 0:
-    #         ans += " ["
-    #         ans += format_val(out_vars[0])
-    #         for x in out_vars[1:]:
-    #             ans += ", "
-    #             ans += format_val(x)
-    #         ans += "]"
+    @staticmethod
+    def make(
+        opcode: str,
+        out_vars: Iterable[Var],
+        *args: Value,
+        continues: bool = True,
+        jumps: bool = True,
+    ) -> BoundInstr[RawInstr]:
+        out_vars = tuple(out_vars)
+        return RawInstr(
+            opcode=opcode,
+            in_types=TypeList(get_types(*args)),
+            out_types=TypeList(get_types(*out_vars)),
+            continues=continues,
+            jumps=jumps,
+        ).bind_untyped(out_vars, *args)
 
-    #     for x in args:
-    #         ans += " "
-    #         ans += format_val(x)
+    @override
+    def format(self, instr: BoundInstr[Self]) -> Text:
+        ans = Text()
+        ans.append(self.opcode, "ic10.raw_opcode")
+        if len(instr.outputs_) > 0:
+            ans += " ["
+            ans += format_val(instr.outputs_[0])
+            for x in instr.outputs_[1:]:
+                ans += ", "
+                ans += format_val(x)
+            ans += "]"
 
-    #     return ans
+        for x in instr.inputs_:
+            ans += " "
+            ans += format_val(x)
+
+        return ans
 
 
 class RawAsmOpts(TypedDict, total=False):
@@ -144,15 +165,8 @@ class AsmInstrBase(InstrBase):
     out_types: VarTS
 
     @override
-    def lower(self, *args: Value) -> tuple[Var, ...]:
-        assert False
-        # return RawInstr(
-        #     self.opcode,
-        #     TypeList(self.in_types),
-        #     TypeList(self.out_types),
-        #     continues=self.continues,
-        #     jumps=self.jumps,
-        # ).emit(*args)
+    def lower(self, instr: BoundInstr[Any]) -> Iterable[BoundInstr]:
+        yield RawInstr.make(self.opcode, instr.outputs, *instr.inputs, continues=instr.continues)
 
 
 ################################################################################
@@ -165,6 +179,16 @@ class Move[T: VarT = Any](AsmInstrBase):
         self.opcode = "move"
         self.in_types = (typ,)
         self.out_types = (typ,)
+
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        (ipt,) = instr.inputs_
+        (opt,) = instr.outputs_
+
+        if isinstance(ipt, Var) and ipt.reg.allocated == opt.reg.allocated:
+            return
+        else:
+            yield from super().lower(instr)
 
 
 class Stop(InstrBase):
@@ -200,7 +224,7 @@ class BlackBox[T: VarT](AsmInstrBase):
     jumps = False
 
     def __init__(self, typ: type[T]) -> None:
-        self.opcode = "move"
+        self.opcode = "BlackBox"
         self.in_types = (typ,)
         self.out_types = (typ,)
 
@@ -225,22 +249,16 @@ class PredicateBase(AsmInstrBase):
 
     jumps = False
 
-    def negate(self, instr: BoundInstr[Any]) -> BoundInstr[PredicateBase]:
-        raise NotImplementedError()
+    @final
+    def negate(self, instr: BoundInstr[PredicateBase]) -> BoundInstr[PredicateBase]:
+        with clear_debug_info(), add_debug_info(instr.debug):
+            return self.negate_impl(instr)
 
-    # def lower_neg(self, *args: Value) -> Var[bool]:
-    #     (out_var,), bound = self.negate(*args)
-    #     bound.emit()
-    #     return out_var
+    def negate_impl(self, instr: BoundInstr[Any]) -> BoundInstr[PredicateBase]:
+        raise NotImplementedError(f"negating {self}")
 
-    # def lower_cjump(self, *args: Value, label: InternalValLabel) -> None:
-    #     assert self.opcode.startswith("s")
-    #     raw_asm("b" + self.opcode.removeprefix("s"), None, *args, label)
-
-    # def lower_neg_cjump(self, *args: Value, label: InternalValLabel) -> None:
-    #     (_out_var,), bound = self.negate(*args)
-    #     assert isinstance(bound.instr, PredicateBase)
-    #     bound.instr.lower_cjump(*bound.inputs, label=label)
+    def pred_for_cjump(self, instr: BoundInstr[Any]) -> BoundInstr[PredicateBase]:
+        return instr
 
 
 class PredVar(PredicateBase):
@@ -250,16 +268,12 @@ class PredVar(PredicateBase):
     in_types = (bool,)
 
     @override
-    def negate(self, instr: BoundInstr[Self]):
+    def negate_impl(self, instr: BoundInstr[Self]):
         return Not().bind(instr.outputs_, *instr.inputs_)
 
-    # @override
-    # def lower_cjump(
-    #     self, a: InteralBool, label: InternalValLabel
-    # ) -> None:
-    #     from ._instructions import PredLE
-
-    #     PredLE().lower_cjump(1, a, label=label)
+    @override
+    def pred_for_cjump(self, instr: BoundInstr[Self]) -> BoundInstr[PredicateBase]:
+        return PredLE().bind(instr.outputs_, 1, instr.inputs_[0])
 
 
 class Not(PredicateBase):
@@ -267,16 +281,12 @@ class Not(PredicateBase):
     in_types = (bool,)
 
     @override
-    def negate(self, instr: BoundInstr[Self]):
+    def negate_impl(self, instr: BoundInstr[Self]):
         return PredVar().bind(instr.outputs_, *instr.inputs_)
 
-    # @override
-    # def lower_cjump(
-    #     self, a: InteralBool, label: InternalValLabel
-    # ) -> None:
-    #     from ._instructions import PredLT
-
-    #     PredLT().lower_cjump(a, 1, label=label)
+    @override
+    def pred_for_cjump(self, instr: BoundInstr[Self]) -> BoundInstr[PredicateBase]:
+        return PredLT().bind(instr.outputs_, instr.inputs_[0], 1)
 
 
 class Branch(InstrBase):
@@ -325,7 +335,7 @@ class PredLT(PredicateBase):
     in_types = (float, float)
 
     @override
-    def negate(self, instr: BoundInstr[Self]):
+    def negate_impl(self, instr: BoundInstr[Self]):
         a, b = instr.inputs_
         return PredLE().bind(instr.outputs_, b, a)
 
@@ -335,7 +345,7 @@ class PredLE(PredicateBase):
     in_types = (float, float)
 
     @override
-    def negate(self, instr: BoundInstr[Self]):
+    def negate_impl(self, instr: BoundInstr[Self]):
         a, b = instr.inputs_
         return PredLT().bind(instr.outputs_, b, a)
 
@@ -415,11 +425,15 @@ class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
 
         return ans.bind_untyped(tuple(outputs), *inputs)
 
-    @staticmethod
-    def from_block(b: Block) -> BoundInstr[Bundle]:
+    @classmethod
+    def from_block(cls, b: Block) -> BoundInstr[Self]:
         assert b.end.isinst(EndPlaceholder)
         with add_debug_info(b.debug):
-            return Bundle.from_parts(*b.contents[:-1])
+            return cls.from_parts(*b.contents[:-1])  # pyright: ignore[reportArgumentType]
+
+    @override
+    def lower(self, instr: BoundInstr[Any], /) -> Iterable[BoundInstr]:
+        return instr.unpack_untyped()
 
     @override
     def get_continues(self, instr: BoundInstr[Self]) -> bool:
@@ -486,6 +500,23 @@ class PredBranch(
     pass
 
 
+class PredCondJump(
+    Bundle[
+        BoundInstr[PredicateBase],
+        BoundInstr[CondJump],
+    ]
+):
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        pred, cjump = instr.unpack()
+        _predvar, label = cjump.inputs_
+
+        pred = pred.instr.pred_for_cjump(pred)
+
+        assert pred.instr.opcode.startswith("s")
+        yield RawInstr.make("b" + pred.instr.opcode.removeprefix("s"), [], *pred.inputs, label)
+
+
 class JumpAndLink(
     Bundle[
         BoundInstr[WriteMVar],
@@ -493,7 +524,13 @@ class JumpAndLink(
         BoundInstr[EmitLabel],
     ]
 ):
-    pass
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        write_mv, jump, _emit_label = instr.unpack()
+        if write_mv.instr.s.reg.allocated == Register.RA:
+            yield RawInstr.make("jal", [], jump.inputs_[0])
+        else:
+            yield from super().lower(instr)
 
 
 class CondJumpAndLink(
@@ -504,4 +541,21 @@ class CondJumpAndLink(
         BoundInstr[EmitLabel],
     ]
 ):
-    pass
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        write_mv, pred, cjump, emit_label = instr.unpack()
+
+        if write_mv.instr.s.reg.allocated == Register.RA:
+
+            pred = pred.instr.pred_for_cjump(pred)
+
+            opcode = pred.instr.opcode
+            assert opcode.startswith("s")
+
+            yield RawInstr.make(
+                "b" + opcode.removeprefix("s") + "al", [], *pred.inputs, cjump.inputs_[1]
+            )
+        else:
+            yield write_mv
+            yield PredCondJump.from_parts(pred, cjump)
+            yield emit_label

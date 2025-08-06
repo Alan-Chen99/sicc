@@ -10,6 +10,7 @@ from .._core import Block
 from .._core import BoundInstr
 from .._core import EffectBase
 from .._core import EffectMvar
+from .._core import Fragment
 from .._core import Label
 from .._core import MapInstrsRes
 from .._core import MVar
@@ -321,8 +322,11 @@ def rename_private_vars(ctx: TransformCtx) -> None:
         assert v not in _dead
         _dead.add(v)
 
-    new_vars = {x.v: mk_var(x.v.type, debug=x.v.debug) for x in index.vars.values()}
+    new_vars = {x.v: mk_var(x.v.type, reg=x.v.reg, debug=x.v.debug) for x in index.vars.values()}
+    map_vars(f, new_vars)
 
+
+def map_vars(f: Fragment, new_vars: dict[Var, Var]) -> None:
     @f.map_instrs
     def _(instr: BoundInstr) -> MapInstrsRes:
         return instr.instr.bind(  # pyright: ignore
@@ -382,23 +386,31 @@ def rename_private_mvars(ctx: TransformCtx) -> None:
             _dead.add(v.v)
 
     new_mvars = {
-        x.v: mk_mvar(x.v.type, debug=x.v.debug) if x.private else x.v for x in index.mvars.values()
+        x.v: mk_mvar(x.v.type, reg=x.v.reg, debug=x.v.debug)
+        for x in index.mvars.values()
+        if x.private
     }
+    map_mvars(f, new_mvars)
+
+
+def map_mvars(f: Fragment, new_mvars: dict[MVar, MVar]) -> None:
+    def get_new(x: MVar) -> MVar:
+        return new_mvars.get(x, x)
 
     def map_fn(instr: BoundInstr) -> MapInstrsRes:
         if i := instr.isinst(Bundle):
             block = Block(list(i.instr.parts(i)) + [EndPlaceholder().bind(())], i.debug)
             block.map_instrs(map_fn)
-            return Bundle.from_block(block)
+            return type(i.instr).from_block(block)
 
         if any(isinstance(x, EffectMvar) for x in instr.reads()):
             if i := instr.isinst(ReadMVar):
-                return ReadMVar(new_mvars[i.instr.s]).bind(i.outputs_, *i.inputs_)
+                return ReadMVar(get_new(i.instr.s)).bind(i.outputs_, *i.inputs_)
             raise TypeError(instr)
 
         if any(isinstance(x, EffectMvar) for x in instr.writes()):
             if i := instr.isinst(WriteMVar):
-                return WriteMVar(new_mvars[i.instr.s]).bind(i.outputs_, *i.inputs_)
+                return WriteMVar(get_new(i.instr.s)).bind(i.outputs_, *i.inputs_)
             raise TypeError(instr)
 
     f.map_instrs(map_fn)

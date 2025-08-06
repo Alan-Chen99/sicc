@@ -20,6 +20,7 @@ from .link_bundles import pack_cond_call
 from .lower import lower_instrs
 from .optimize_mvars import elim_mvars_read_writes
 from .optimize_mvars import writeback_mvar_use
+from .regalloc import regalloc
 from .remove_trivial_vars import remove_trivial_vars_
 from .utils import run_phases
 
@@ -77,9 +78,14 @@ def emit_asm(f: Fragment):
     global_checks(f)
 
     fuse_blocks_all(f)
-    lower_instrs(f)
 
     global_checks(f)
+
+    regalloc(f)
+
+    lower_instrs(f)
+
+    # global_checks(f)
 
     # _changed = run_phases(
     #     f,

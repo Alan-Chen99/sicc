@@ -3,6 +3,7 @@ from __future__ import annotations
 import abc
 from dataclasses import dataclass
 from dataclasses import field
+from enum import Enum
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -10,7 +11,6 @@ from typing import Final
 from typing import Generic
 from typing import Iterable
 from typing import Iterator
-from typing import Never
 from typing import Protocol
 from typing import Self
 from typing import TypeGuard
@@ -47,7 +47,41 @@ if TYPE_CHECKING:
 
 register_exclusion(__file__)
 
-counter = Cell(0)
+
+class Register(Enum):
+    R0 = "r0"
+    R1 = "r1"
+    R2 = "r2"
+    R3 = "r3"
+    R4 = "r4"
+    R5 = "r5"
+    R6 = "r6"
+    R7 = "r7"
+    R8 = "r8"
+    R9 = "r9"
+    R10 = "r10"
+    R11 = "r11"
+    R12 = "r12"
+    R13 = "r13"
+    R14 = "r14"
+    R15 = "r15"
+    R16 = "r16"
+
+    RA = "ra"
+    SP = "sp"
+
+
+@dataclass(frozen=True)
+class RegInfo:
+    allocated_reg: Register | None = None
+    force_reg: Register | None = None
+    preferred_reg: Register | None = None
+    preferred_weight: int = 0
+
+    @property
+    def allocated(self) -> Register:
+        assert self.allocated_reg is not None
+        return self.allocated_reg
 
 
 @runtime_checkable
@@ -68,12 +102,17 @@ class Var(Generic[T_co], ByIdMixin):
     unlike Variable, equality and comparison is by variable id.
 
     A Var must always be assigned in one place. A MVar may be assigned any number of times.
+
+    currently only created with the mk_var function in _tracing.py (TODO: is this true?)
     """
 
     type: type[T_co]
     id: int
     #: internal check. user invalid uses should be caught when the Var is found not in _CUR_SCOPE
+    #: TODO: not used rn
     live: Cell[bool]
+    reg: RegInfo
+
     debug: DebugInfo
 
     def check_type[T: VarT](self, typ: type[T]) -> Var[T]:
@@ -82,6 +121,8 @@ class Var(Generic[T_co], ByIdMixin):
         return cast_unchecked(self)
 
     def __repr__(self) -> str:
+        if self.reg.allocated_reg:
+            return f"%{self.reg.allocated_reg.value}"
         return f"%v{self.id}"
 
 
@@ -208,16 +249,13 @@ class InstrTypedWithArgs_api[I, O](Protocol):
     def _static_out_typing_helper_api(self) -> O: ...
 
 
-def _default_lower(self: InstrBase, *args: Value) -> Never:
-    raise NotImplementedError(f"not implemented, or {type(self)} is not supposed to be lowered")
-
-
 def _default_annotate(x: BoundInstr) -> str:
     return ""
 
 
 FORMAT_SCOPE_CONTEXT: Cell[Scope] = Cell()
 FORMAT_ANNOTATE: Cell[Callable[[BoundInstr], str | Text]] = Cell(_default_annotate)
+FORMAT_VAL_FN: Cell[Callable[[Value | MVar], str]] = Cell(repr)
 
 
 def get_style(typ: type[VarT]) -> str:
@@ -232,9 +270,9 @@ def format_val(v: Value) -> Text:
     typ = get_type(v)
     if issubclass(typ, Label):
         priv = (f := FORMAT_SCOPE_CONTEXT.get()) and (v in f.private_labels)
-        return Text(repr(v), "ic10.label_private" if priv else "ic10.label")
+        return Text(FORMAT_VAL_FN(v), "ic10.label_private" if priv else "ic10.label")
 
-    return Text(repr(v), get_style(typ))
+    return Text(FORMAT_VAL_FN(v), get_style(typ))
 
 
 LowerRes = tuple[Var, ...] | Var | None
@@ -260,7 +298,20 @@ class InstrBase(abc.ABC):
     # required overrides
     in_types: VarTS
     out_types: VarTS
-    lower: Callable[..., LowerRes] = _default_lower
+
+    def lower(self, instr: BoundInstr[Any], /) -> Iterable[BoundInstr]:
+        """
+        The final step before outputing asm: Convert instr to RawInstr
+
+        If returning other instrs, the lower method on those will be called until
+        everthing is a RawInstr or EmitLabel
+
+        this is the only place where the resulting fragment would be invalid.
+        we still have this return boundinstr to make use of the existing formatting stack.
+
+        one should not pass the resulting fragment to any analysis passes
+        """
+        raise NotImplementedError(f"not implemented, or {type(self)} is not supposed to be lowered")
 
     # optional overrides
 
@@ -617,8 +668,13 @@ class BoundInstr(Generic[B_co], ByIdMixin):
 
 @dataclass(frozen=True, eq=False)
 class MVar[T: VarT = Any](ByIdMixin):
+    """
+    currently only created with the mk_mvar function in _tracing.py (TODO: is this true?)
+    """
+
     type: type[T]
     id: int
+    reg: RegInfo
     debug: DebugInfo
 
     def read(self) -> Var[T]:
@@ -628,12 +684,14 @@ class MVar[T: VarT = Any](ByIdMixin):
         () = WriteMVar(self).emit(v)
 
     def __repr__(self) -> str:
+        if self.reg.allocated_reg:
+            return f"%{self.reg.allocated_reg.value}"
         return f"%s{self.id}"
 
     def _format(self):
         priv = (f := FORMAT_SCOPE_CONTEXT.get()) and (self in f.private_mvars)
         ans = Text("", "underline" if priv else "underline reverse")
-        ans.append(repr(self), get_style(self.type))
+        ans.append(FORMAT_VAL_FN(self), get_style(self.type))
         return Text() + ans
 
 
@@ -663,6 +721,19 @@ class ReadMVar[T: VarT = Any](InstrBase):
     def reads(self, instr: BoundInstr[Self], /) -> EffectBase:
         return EffectMvar(self.s)
 
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        from ._instructions import Move
+        from ._tracing import mk_var
+
+        (opt,) = instr.outputs_
+
+        if opt.reg.allocated == self.s.reg.allocated:
+            return
+        else:
+            mv = mk_var(self.s.type, reg=self.s.reg, debug=self.s.debug)
+            yield Move(self.s.type).bind((opt,), mv)
+
 
 class WriteMVar[T: VarT = Any](InstrBase):
     s: MVar[T]
@@ -681,6 +752,19 @@ class WriteMVar[T: VarT = Any](InstrBase):
     @override
     def writes(self, instr: BoundInstr[Any], /) -> EffectBase:
         return EffectMvar(self.s)
+
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        from ._instructions import Move
+        from ._tracing import mk_var
+
+        (ipt,) = instr.inputs_
+
+        if isinstance(ipt, Var) and ipt.reg.allocated == self.s.reg.allocated:
+            return
+        else:
+            mv = mk_var(self.s.type, reg=self.s.reg, debug=self.s.debug)
+            yield Move(self.s.type).bind((mv,), ipt)
 
 
 ################################################################################

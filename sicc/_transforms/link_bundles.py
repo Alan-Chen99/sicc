@@ -2,6 +2,9 @@ from .._core import AlwaysUnpack
 from .._core import BoundInstr
 from .._core import InternalValLabel
 from .._core import Label
+from .._core import MVar
+from .._core import RegInfo
+from .._core import Register
 from .._core import WriteMVar
 from .._instructions import CondJump
 from .._instructions import CondJumpAndLink
@@ -10,11 +13,28 @@ from .._instructions import Jump
 from .._instructions import JumpAndLink
 from .._instructions import PredBranch
 from .._tracing import mk_internal_label
+from .._tracing import mk_mvar
 from .basic import get_index
+from .basic import map_mvars
 from .optimize_mvars import compute_mvar_lifetime
 from .optimize_mvars import support_mvar_analysis
 from .utils import LoopingTransform
 from .utils import TransformCtx
+
+
+def _is_suitable_as_ra(ctx: TransformCtx, mv: MVar):
+    index = get_index.call_cached(ctx)
+
+    if not index.mvars[mv].private:
+        return False
+    if mv.reg.force_reg:
+        return False
+    if mv.reg.preferred_reg is not None and mv.reg.preferred_reg != Register.RA:
+        return False
+    if not support_mvar_analysis(ctx, mv, AlwaysUnpack()):
+        return False
+
+    return True
 
 
 def _try_pack_call_one(
@@ -39,7 +59,7 @@ def _try_pack_call_one(
         return False
 
     mv = write_instr.instr.s
-    if not support_mvar_analysis(ctx, mv, AlwaysUnpack()):
+    if not _is_suitable_as_ra(ctx, mv):
         return False
     res = compute_mvar_lifetime(ctx, mv, AlwaysUnpack())
 
@@ -59,6 +79,13 @@ def _try_pack_call_one(
             EmitLabel().bind((), tmp_label),
         )
         yield Jump().bind((), ret_label)
+
+    rep_mv = mk_mvar(
+        mv.type,
+        reg=RegInfo(preferred_reg=Register.RA, preferred_weight=mv.reg.preferred_weight + 1),
+        debug=mv.debug,
+    )
+    map_mvars(f, {mv: rep_mv})
 
     return True
 
@@ -102,8 +129,9 @@ def _try_predbranch_one(
     assert write_instr.inputs_ == (ret_label,)
 
     # try to move write_instr to before instr
+
     mv = write_instr.instr.s
-    if not support_mvar_analysis(ctx, mv, AlwaysUnpack()):
+    if not _is_suitable_as_ra(ctx, mv):
         return False
     res = compute_mvar_lifetime(ctx, mv, AlwaysUnpack())
 
@@ -137,6 +165,13 @@ def _try_predbranch_one(
             )
 
         yield Jump().bind((), ret_label)
+
+    rep_mv = mk_mvar(
+        mv.type,
+        reg=RegInfo(preferred_reg=Register.RA, preferred_weight=mv.reg.preferred_weight + 1),
+        debug=mv.debug,
+    )
+    map_mvars(f, {mv: rep_mv})
 
     return True
 

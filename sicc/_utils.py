@@ -63,6 +63,10 @@ class Cell[T]:
         assert not isinstance(self._value, empty_t)
         return self._value
 
+    @property
+    def __call__(self) -> T:
+        return self.value
+
     @value.setter
     def value(self, val: T):
         self.set(val)

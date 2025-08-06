@@ -4,10 +4,12 @@ from .._core import Block
 from .._core import BoundInstr
 from .._core import Label
 from .._core import Var
-from .._instructions import Branch
+from .._diagnostic import add_debug_info
 from .._instructions import CondJump
 from .._instructions import EndPlaceholder
 from .._instructions import Jump
+from .._instructions import PredBranch
+from .._instructions import PredCondJump
 from .basic import get_index
 from .control_flow import External
 from .control_flow import build_control_flow_graph
@@ -68,8 +70,8 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
         target_block = f.blocks[target]
 
         if trivial_only:
-            # label: and jump [label] should be the only uses
-            if len(index.labels[target_block.label].uses) > 1:
+            # jump [label] should be the only use
+            if len(index.labels[target].uses) > 1:
                 return False
         pred = list(graph.predecessors(target_block.contents[0]))
         if efficient_only:
@@ -95,14 +97,18 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
 
         if b.end.isinst(Jump):
             keep = b.contents[:-1]
-        elif instr := b.end.isinst(Branch):
-            t_l, f_l, *args = instr.inputs_
-            assert False
-            if t_l == target:
-                rep = CondJump(instr.instr.base, jump_on=False).bind((), f_l, *args)
-            else:
-                assert f_l == target
-                rep = CondJump(instr.instr.base, jump_on=True).bind((), t_l, *args)
+        elif instr := b.end.isinst(PredBranch):
+            pred, br = instr.unpack()
+            predvar, t_l, f_l = br.inputs_
+
+            with add_debug_info(instr.debug):
+                if t_l == target:
+                    rep = PredCondJump.from_parts(
+                        pred.instr.negate(pred), CondJump().bind((), predvar, f_l)
+                    )
+                else:
+                    assert f_l == target
+                    rep = PredCondJump.from_parts(pred, CondJump().bind((), predvar, t_l))
             keep = b.contents[:-1] + [rep]
         else:
             assert False
@@ -119,8 +125,9 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
             if attempt_fuse(b, target):
                 return True
 
-        if not trivial_only and (instr := b.end.isinst(Branch)):
-            t_l, f_l, *_args = instr.inputs_
+        if not trivial_only and (instr := b.end.isinst(PredBranch)):
+            _pred, br = instr.unpack()
+            _predvar, t_l, f_l = br.inputs_
             if isinstance(t_l, Label) and attempt_fuse(b, t_l):
                 return True
             if isinstance(f_l, Label) and attempt_fuse(b, f_l):
