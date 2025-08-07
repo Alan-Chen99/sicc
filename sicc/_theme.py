@@ -17,5 +17,6 @@ theme = Theme(
         #
         "ic10.title": "cyan bold",
         "ic10.comment": "white dim italic",
+        "ic10.linenum": "white dim",
     }
 )

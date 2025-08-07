@@ -6,6 +6,7 @@ from .basic import rename_private_labels
 from .basic import rename_private_mvars
 from .basic import rename_private_vars
 from .basic import split_blocks
+from .branch import handle_const_or_not_branch
 from .branch import inline_pred_to_branch
 from .check_defined import check_mvars_defined
 from .check_defined import check_vars_defined
@@ -36,6 +37,7 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
     remove_unused_side_effect_free,
     handle_deterministic_var_jump,
     fuse_blocks_trivial_jumps,
+    handle_const_or_not_branch,
     #
     elim_mvars_read_writes,
     forward_remove_full_block,
@@ -57,41 +59,18 @@ def optimize_frag(f: Fragment) -> None:
 
 
 def global_checks(f: Fragment):
-
-    # res = compute_label_provenance(f)
-    # with FORMAT_ANNOTATE.bind(res.annotate):
-    #     print(f)
-
     check_vars_defined(f)
     check_mvars_defined(f)
 
 
 def global_opts(f: Fragment):
-    global_checks(f)
     optimize_frag(f)
     writeback_mvar_use(f)
     optimize_frag(f)
     run_phases(f, *GLOBAL_OPTS)
 
 
-def emit_asm(f: Fragment):
-    global_checks(f)
-
+def regalloc_and_lower(f: Fragment):
     fuse_blocks_all(f)
-
-    global_checks(f)
-
     regalloc(f)
-
     lower_instrs(f)
-
-    # global_checks(f)
-
-    # _changed = run_phases(
-    #     f,
-    #     normalize,
-    #     #
-    #     split_blocks,
-    #     inline_pred_to_branch,
-    #     remove_unused_side_effect_free,
-    # )

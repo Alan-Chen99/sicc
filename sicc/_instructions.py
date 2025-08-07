@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING  # autoflake: skip
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Iterable
 from typing import Iterator
@@ -20,7 +20,6 @@ from rich.console import group
 from rich.panel import Panel
 from rich.text import Text
 
-from ._core import FORMAT_ANNOTATE
 from ._core import Block
 from ._core import BoundInstr
 from ._core import EffectBase
@@ -189,13 +188,6 @@ class Move[T: VarT = Any](AsmInstrBase):
             return
         else:
             yield from super().lower(instr)
-
-
-class Stop(AsmInstrBase):
-    opcode = "_STOP"
-    in_types = ()
-    out_types = ()
-    continues = False
 
 
 class EndPlaceholder(InstrBase):
@@ -476,13 +468,7 @@ class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
     def format_with_anno(self, instr: BoundInstr[Self], /) -> RenderableType:
         parts = instr.unpack_untyped()
 
-        comment = Text()
-        if loc_info := instr.debug.location_info_brief():
-            comment.append("  # " + loc_info, "ic10.comment")
-
-        if annotation := FORMAT_ANNOTATE.value(instr):
-            comment.append("  # ", "ic10.comment")
-            comment.append(annotation)
+        comment = self.format_comment(instr)
 
         @group()
         def mk_group() -> Iterator[RenderableType]:

@@ -2,6 +2,7 @@ from typing import Iterator
 
 from .._core import Block
 from .._core import BoundInstr
+from .._core import Fragment
 from .._core import Label
 from .._core import Var
 from .._diagnostic import add_debug_info
@@ -14,7 +15,6 @@ from .basic import get_index
 from .control_flow import External
 from .control_flow import build_control_flow_graph
 from .utils import LoopingTransform
-from .utils import Transform
 from .utils import TransformCtx
 
 
@@ -161,15 +161,16 @@ def fuse_blocks_all(ctx: TransformCtx) -> bool:
     return _fuse_blocks_impl(ctx, trivial_only=False, efficient_only=False)
 
 
-@Transform
-def force_fuse_into_one(ctx: TransformCtx, start: Label) -> None:
-    f = ctx.frag
+def force_fuse_into_one(f: Fragment, start: Label) -> None:
     if len(f.blocks) == 1:
         assert f.blocks[start].end.isinst(EndPlaceholder)
         return
 
     start_block = f.blocks[start]
-    (end_block,) = (b for b in f.blocks.values() if b.end.isinst(EndPlaceholder))
+    end_blocks = [b for b in f.blocks.values() if b.end.isinst(EndPlaceholder)]
+    assert len(end_blocks) <= 1
+    end_block = end_blocks[0] if len(end_blocks) == 1 else None
+
     assert start_block is not end_block
     other_blocks = [b for b in f.blocks.values() if b is not start_block and b is not end_block]
 
@@ -177,7 +178,10 @@ def force_fuse_into_one(ctx: TransformCtx, start: Label) -> None:
         yield from start_block.contents
         for b in other_blocks:
             yield from b.contents
-        yield from end_block.contents
+        if end_block is not None:
+            yield from end_block.contents
+        else:
+            yield EndPlaceholder().bind(())
 
     ans = Block(list(gen()), start.debug)
 

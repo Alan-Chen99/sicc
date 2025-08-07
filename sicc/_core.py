@@ -20,6 +20,7 @@ from typing import override
 from typing import runtime_checkable
 
 from ordered_set import OrderedSet
+from rich import print as print  # autoflake: skip
 from rich.console import Group
 from rich.console import RenderableType
 from rich.panel import Panel
@@ -27,9 +28,11 @@ from rich.text import Text
 
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
+from ._diagnostic import check_must_use
 from ._diagnostic import clear_debug_info
 from ._diagnostic import debug_info
 from ._diagnostic import register_exclusion
+from ._diagnostic import show_pending_diagnostics
 from ._utils import ByIdMixin
 from ._utils import Cell
 from ._utils import cast_unchecked
@@ -37,6 +40,7 @@ from ._utils import disjoint_union
 from ._utils import get_id
 from ._utils import narrow_unchecked
 from ._utils import safe_cast
+from .config import verbose
 
 if TYPE_CHECKING:
     from ._api import UserValue
@@ -237,6 +241,17 @@ def can_cast_implicit(t1: type[VarT], t2: type[VarT]) -> bool:
     return False
 
 
+def promote_types(t1: type[VarT], t2: type[VarT]) -> type[VarT]:
+    if t1 == t2:
+        return t1
+
+    for target in [bool, int, float]:
+        if can_cast_implicit(t1, target) and can_cast_implicit(t2, target):
+            return target
+
+    raise TypeError(f"incompatible types: {t1} and {t2}")
+
+
 def can_cast_implicit_many(t1: VarTS, t2: VarTS) -> bool:
     if len(t1) != len(t2):
         return False
@@ -280,6 +295,7 @@ def _default_annotate(x: BoundInstr) -> str:
 FORMAT_SCOPE_CONTEXT: Cell[Scope] = Cell()
 FORMAT_ANNOTATE: Cell[Callable[[BoundInstr], str | Text]] = Cell(_default_annotate)
 FORMAT_VAL_FN: Cell[Callable[[Value | MVar], str]] = Cell(repr)
+FORMAT_LINENUMS: Cell[LineNums] = Cell()
 
 
 def get_style(typ: type[VarT]) -> str:
@@ -393,18 +409,32 @@ class InstrBase(abc.ABC):
         ans += expr_part
         return ans
 
-    def format_with_anno(self, instr: BoundInstr[Any], /) -> RenderableType:
+    def format_comment(self, instr: BoundInstr[Any], /) -> Text:
         comment = Text()
         if loc_info := instr.debug.location_info_brief():
             comment.append("  # " + loc_info, "ic10.comment")
-
         if annotation := FORMAT_ANNOTATE.value(instr):
             comment.append("  # ", "ic10.comment")
             comment.append(annotation)
+        return comment
+
+    def format_with_anno(self, instr: BoundInstr[Any], /) -> RenderableType:
+        from ._instructions import EmitLabel
 
         ans = Text()
+
+        if linenums := FORMAT_LINENUMS.get():
+            if (line := linenums.instr_lines.get(instr)) is not None and not instr.isinst(
+                EmitLabel
+            ):
+                prefix = repr(line).rjust(3) + ": "
+            else:
+                prefix = " " * 5
+
+            ans += Text(prefix, "ic10.linenum")
+
         ans += self.format(instr)
-        ans += comment
+        ans += self.format_comment(instr)
 
         return ans
 
@@ -1009,3 +1039,106 @@ class Fragment:
 
 
 ################################################################################
+
+
+@dataclass
+class LineNums:
+    instr_lines: dict[BoundInstr, int]
+    label_lines: dict[Label, int]
+
+
+@dataclass
+class TracedProgram:
+    start: Label
+    frag: Fragment
+
+    did_optimize: bool = False
+    did_regalloc: bool = False
+
+    def check(self) -> None:
+        from ._transforms import global_checks
+
+        global_checks(self.frag)
+        check_must_use()
+        show_pending_diagnostics()
+
+    def optimize(self) -> None:
+        from ._transforms import global_opts
+
+        global_opts(self.frag)
+
+        if verbose.value >= 1:
+            print("after global optimize:")
+            print(self.frag)
+
+        self.did_optimize = True
+
+    def regalloc(self) -> None:
+        """required to first run optimize"""
+        from ._transforms import regalloc_and_lower
+        from ._transforms.fuse_blocks import force_fuse_into_one
+
+        assert self.did_optimize
+        if self.did_regalloc:
+            return
+
+        regalloc_and_lower(self.frag)
+        force_fuse_into_one(self.frag, self.start)
+
+        self.did_regalloc = True
+
+    def _as_instrs(self) -> list[BoundInstr]:
+        assert self.did_regalloc
+        assert len(self.frag.blocks) == 1
+        (block,) = self.frag.blocks.values()
+        return block.contents
+
+    def _get_linenums(self) -> LineNums:
+        from ._instructions import EmitLabel
+        from ._instructions import EndPlaceholder
+        from ._instructions import RawInstr
+
+        instrs = self._as_instrs()
+
+        c = 0
+        instr_lines: dict[BoundInstr, int] = {}
+        label_lines: dict[Label, int] = {}
+
+        for instr in instrs:
+            if i := instr.isinst(RawInstr):
+                instr_lines[i] = c
+                c += 1
+            elif i := instr.isinst(EmitLabel):
+                v = i.inputs_[0]
+                assert not isinstance(v, Var)
+                label_lines[v] = c
+            elif i := instr.isinst(EndPlaceholder):
+                instr_lines[i] = c
+            else:
+                raise TypeError(instr)
+
+        return LineNums(instr_lines, label_lines)
+
+    def __rich__(self) -> RenderableType:
+        if not self.did_regalloc:
+            return self.frag.__rich__("Program")
+
+        linenums = self._get_linenums()
+
+        def gen():
+            instrs = self._as_instrs()
+
+            # prev_is_label = True
+            prev_cont = True
+            for x in instrs:
+                if not prev_cont:
+                    yield ""
+                prev_cont = x.continues
+                yield x.__rich__()
+
+        with FORMAT_SCOPE_CONTEXT.bind(self.frag.scope), FORMAT_LINENUMS.bind(linenums):
+            return Panel(
+                Group(*gen()),
+                title=Text("Program", "ic10.title"),
+                title_align="left",
+            )

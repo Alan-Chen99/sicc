@@ -5,7 +5,7 @@ description = "Stationeers IC10 Compiler"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-  #
+  "cappa>=0.29.1",
   "networkx>=3.5",
   "optree>=0.17.0",
   "ordered-set>=4.1.0",
@@ -14,7 +14,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  #
   "autoflake>=2.3.1",
   "basedpyright>=1.31.0",
   "black>=25.1.0",
@@ -32,8 +31,8 @@ treat_all_comments_as_code = true
 force_single_line = true
 group_by_package = true
 
-[tool.autoflake]
-ignore-init-module-imports = true
+# [tool.autoflake]
+# ignore-init-module-imports = true
 
 [tool.pyright]
 exclude = [".venv"]

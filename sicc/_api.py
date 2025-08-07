@@ -25,6 +25,7 @@ from ._core import Var
 from ._core import VarT
 from ._core import can_cast_implicit_many
 from ._core import get_type
+from ._core import promote_types
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
 from ._diagnostic import describe_fn
@@ -36,9 +37,10 @@ from ._instructions import AddI
 from ._instructions import BlackBox
 from ._instructions import Jump
 from ._instructions import Not
+from ._instructions import PredEq
 from ._instructions import PredLE
 from ._instructions import PredLT
-from ._instructions import Stop
+from ._instructions import PredNEq
 from ._instructions import UnreachableChecked
 from ._tracing import _CUR_SCOPE
 from ._tracing import RawSubr
@@ -48,6 +50,7 @@ from ._tracing import mk_internal_label
 from ._tracing import mk_mvar
 from ._tracing import trace_if
 from ._tracing import trace_to_raw_subr
+from ._tracing import trace_while
 from ._tree_utils import pytree
 from ._utils import Cell
 from ._utils import cast_unchecked
@@ -96,6 +99,16 @@ class VarRead[T: VarT](abc.ABC):
     __radd__ = late_fn(lambda: add)
 
     __invert__ = late_fn(lambda: bool_not)
+
+    def __eq__[T1: VarT](  # pyright: ignore[reportIncompatibleMethodOverride]
+        self: UserValue[T1], other: UserValue[T1]
+    ) -> Variable[bool]:
+        return equal(self, other)
+
+    def __ne__[T1: VarT](  # pyright: ignore[reportIncompatibleMethodOverride]
+        self: UserValue[T1], other: UserValue[T1]
+    ) -> Variable[bool]:
+        return not_equal(self, other)
 
     __lt__ = late_fn(lambda: less_than)
     __le__ = late_fn(lambda: less_than_or_eq)
@@ -394,8 +407,16 @@ def greater_than_or_eq(x: Float, y: Float) -> Variable[bool]:
     return less_than_or_eq(y, x)
 
 
+def equal[T: VarT](x: UserValue[T], y: UserValue[T]) -> Variable[bool]:
+    return Function(PredEq(promote_types(_get_type(x), _get_type(y)))).call(x, y)
+
+
+def not_equal[T: VarT](x: UserValue[T], y: UserValue[T]) -> Variable[bool]:
+    return Function(PredNEq(promote_types(_get_type(x), _get_type(y)))).call(x, y)
+
+
 def black_box[T: VarT](v: UserValue[T]) -> Variable[T]:
-    return Function(BlackBox(_get_type(v)))(v)
+    return Function(BlackBox(_get_type(v))).call(v)
 
 
 ################################################################################
@@ -405,16 +426,23 @@ def jump(label: ValLabelLike) -> None:
     return Jump().call(_get_label(label))
 
 
-def stop() -> None:
-    return Stop().call()
-
-
 def branch(cond: Bool, on_true: ValLabelLike, on_false: ValLabelLike) -> None:
     return _f.branch(_get(cond), _get_label(on_true), _get_label(on_false))
 
 
 def if_(cond: Bool) -> AbstractContextManager[None]:
     return trace_if(_get(cond))
+
+
+def while_(cond_fn: Callable[[], Bool]) -> AbstractContextManager[None]:
+    def inner():
+        return _get(cond_fn())
+
+    return trace_while(inner)
+
+
+def loop() -> AbstractContextManager[None]:
+    return while_(lambda: True)
 
 
 ################################################################################
