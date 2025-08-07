@@ -19,7 +19,6 @@ def inline_pred_to_branch(ctx: TransformCtx) -> bool:
             v, l_t, l_f = instr.inputs_
 
             if isinstance(v, Var):
-                v = v.check_type(bool)
                 if def_instr := index.vars[v].def_instr.isinst(PredicateBase):
 
                     @f.replace_instr(instr)

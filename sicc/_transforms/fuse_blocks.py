@@ -31,10 +31,10 @@ def remove_trivial_blocks(ctx: TransformCtx) -> bool:
             len(b.contents) == 2
             and index.labels[b.label].private
             and (instr := b.end.isinst(Jump))
-            and not isinstance(instr.inputs_[0], Var)
             and (instr.inputs_[0] != b.label)
         ):
             del f.blocks[b.label]
+            # note: rep might be a var
             (rep,) = instr.inputs_
 
             @f.map_instrs

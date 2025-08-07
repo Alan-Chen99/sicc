@@ -376,6 +376,8 @@ def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[V
 @contextmanager
 def trace_bundle() -> Iterator[None]:
     """for debugging/testing purposes"""
+    from ._transforms import fuse_blocks_all
+    from ._transforms import global_opts
     from ._transforms.fuse_blocks import force_fuse_into_one
 
     start = mk_internal_label(f"isolate")
@@ -386,6 +388,9 @@ def trace_bundle() -> Iterator[None]:
         EndPlaceholder().call()
 
     frag = res.value
+    global_opts(frag)
+    fuse_blocks_all(frag)
+
     force_fuse_into_one(frag, start)
 
     block = frag.blocks[start]

@@ -58,6 +58,11 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
         return False
     (pred_block,) = pred_blocks
 
+    if len(list(graph.successors(preds[0]))) >= 3:
+        # previous block goes to many places; such as a function return
+        # it may not be a good idea to move stuff into it, so we dont do this opt for now
+        return False
+
     # handled in fuse
     if len(list(graph.successors(pred_block.end))) <= 1:
         return False

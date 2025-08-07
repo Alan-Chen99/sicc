@@ -89,6 +89,23 @@ class AsLiteral(Protocol):
     def as_literal(self) -> VarT: ...
 
 
+class AnyType(AsLiteral):
+    def as_literal(self) -> VarT:
+        assert False, "unreachable"
+
+
+class Undef(AsLiteral):
+    @staticmethod
+    def undef() -> Any:
+        return Undef()
+
+    def as_literal(self) -> VarT:
+        return 0
+
+    def __repr__(self) -> str:
+        return "undef"
+
+
 type VarTS = tuple[type[VarT], ...]
 
 
@@ -204,12 +221,19 @@ def get_types(*xs: Value) -> VarTS:
 def can_cast_implicit(t1: type[VarT], t2: type[VarT]) -> bool:
     if t1 == t2:
         return True
+
+    if t1 == AnyType:
+        return True
+    if t1 == Undef:
+        return True
+
     if (t1, t2) == (int, float):
         return True
     if (t1, t2) == (bool, int):
         return True
     if (t1, t2) == (bool, float):
         return True
+
     return False
 
 
@@ -449,6 +473,12 @@ class InstrBase(abc.ABC):
     def _static_in_typing_helper_api[A: VarT, B: VarT, C: VarT](
         self: _InstrTypedIn[tuple[type[A], type[B], type[C]]],
         x: tuple[UserValue[A], UserValue[B], UserValue[C]],
+        /,
+    ) -> None: ...
+    @overload
+    def _static_in_typing_helper_api[A: VarT, B: VarT, C: VarT, D: VarT](
+        self: _InstrTypedIn[tuple[type[A], type[B], type[C], type[D]]],
+        x: tuple[UserValue[A], UserValue[B], UserValue[C], UserValue[D]],
         /,
     ) -> None: ...
     def _static_in_typing_helper_api(self: Any, x: Any, /) -> None: ...

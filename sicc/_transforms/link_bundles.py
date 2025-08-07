@@ -1,5 +1,6 @@
 from .._core import AlwaysUnpack
 from .._core import BoundInstr
+from .._core import Fragment
 from .._core import InternalValLabel
 from .._core import Label
 from .._core import MVar
@@ -35,6 +36,15 @@ def _is_suitable_as_ra(ctx: TransformCtx, mv: MVar):
         return False
 
     return True
+
+
+def _mark_prefer_ra(f: Fragment, mv: MVar):
+    rep_mv = mk_mvar(
+        mv.type,
+        reg=RegInfo(preferred_reg=Register.RA, preferred_weight=mv.reg.preferred_weight + 1),
+        debug=mv.debug,
+    )
+    map_mvars(f, {mv: rep_mv})
 
 
 def _try_pack_call_one(
@@ -80,12 +90,7 @@ def _try_pack_call_one(
         )
         yield Jump().bind((), ret_label)
 
-    rep_mv = mk_mvar(
-        mv.type,
-        reg=RegInfo(preferred_reg=Register.RA, preferred_weight=mv.reg.preferred_weight + 1),
-        debug=mv.debug,
-    )
-    map_mvars(f, {mv: rep_mv})
+    _mark_prefer_ra(f, mv)
 
     return True
 
@@ -166,12 +171,7 @@ def _try_predbranch_one(
 
         yield Jump().bind((), ret_label)
 
-    rep_mv = mk_mvar(
-        mv.type,
-        reg=RegInfo(preferred_reg=Register.RA, preferred_weight=mv.reg.preferred_weight + 1),
-        debug=mv.debug,
-    )
-    map_mvars(f, {mv: rep_mv})
+    _mark_prefer_ra(f, mv)
 
     return True
 

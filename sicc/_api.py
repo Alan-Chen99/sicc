@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 from typing import Callable
 from typing import Final
+from typing import Never
 from typing import Protocol
 from typing import TypeVar
 from typing import Unpack
@@ -18,6 +19,7 @@ from ._core import InstrTypedWithArgs_api
 from ._core import Label
 from ._core import MVar
 from ._core import Scope
+from ._core import Undef
 from ._core import Value
 from ._core import Var
 from ._core import VarT
@@ -33,8 +35,10 @@ from ._instructions import AddF
 from ._instructions import AddI
 from ._instructions import BlackBox
 from ._instructions import Jump
+from ._instructions import Not
 from ._instructions import PredLE
 from ._instructions import PredLT
+from ._instructions import Stop
 from ._instructions import UnreachableChecked
 from ._tracing import _CUR_SCOPE
 from ._tracing import RawSubr
@@ -60,6 +64,8 @@ type UserValue[T: VarT = VarT] = VarRead[T] | T
 
 Bool = UserValue[bool]
 Int = UserValue[int]
+Str = UserValue[str]
+
 # TODO: this causes pyright to report
 # Type of parameter "x" is unknown (reportUnknownParameterType)
 # on function "greater_than"
@@ -81,8 +87,15 @@ class VarRead[T: VarT](abc.ABC):
     def __check_co(self) -> VarRead[VarT]:  # pyright: ignore[reportUnusedFunction]
         return self
 
+    def __bool__(self) -> Never:
+        err = TypeError("not possible to convert a runtime value to a compile-time bool.")
+        err.add_note("use tilde operator '~' to invert a boolean")
+        raise err
+
     __add__ = late_fn(lambda: add)
     __radd__ = late_fn(lambda: add)
+
+    __invert__ = late_fn(lambda: bool_not)
 
     __lt__ = late_fn(lambda: less_than)
     __le__ = late_fn(lambda: less_than_or_eq)
@@ -108,7 +121,7 @@ def _get_type[T: VarT](v: UserValue[T]) -> type[T]:
         return type(v)
     if isinstance(v, Variable):
         return v._inner.type
-    assert False
+    raise TypeError(f"unsupported type: {v}")
 
 
 class Variable[T: VarT](VarRead[T]):
@@ -129,6 +142,9 @@ class Variable[T: VarT](VarRead[T]):
         x_val = _get(x)
         self._inner = mk_mvar(get_type(x_val))
         self._inner.write(x_val)
+
+    def __repr__(self) -> str:
+        return repr(self._inner)
 
     @staticmethod
     def _from_val[T1: VarT](v: Value[T1]) -> Variable[T1]:
@@ -194,6 +210,8 @@ class Function[Ts: tuple[Any, ...]]:
             return Variable._from_val(ans)
 
         raise TypeError()
+
+    call = __call__
 
 
 class _BoundFunction[V, Ts: tuple[Any, ...]](Protocol):
@@ -351,10 +369,18 @@ def subr():
 
 ################################################################################
 
+
+def undef() -> VarRead[Never]:
+    return Variable(Undef.undef())
+
+
+################################################################################
+
 add = Function(AddI(), AddF())
 
 unreachable_checked = Function(UnreachableChecked())
 
+bool_not = Function(Not())
 
 less_than = Function(PredLT())
 less_than_or_eq = Function(PredLE())
@@ -377,6 +403,10 @@ def black_box[T: VarT](v: UserValue[T]) -> Variable[T]:
 
 def jump(label: ValLabelLike) -> None:
     return Jump().call(_get_label(label))
+
+
+def stop() -> None:
+    return Stop().call()
 
 
 def branch(cond: Bool, on_true: ValLabelLike, on_false: ValLabelLike) -> None:

@@ -191,7 +191,8 @@ class Move[T: VarT = Any](AsmInstrBase):
             yield from super().lower(instr)
 
 
-class Stop(InstrBase):
+class Stop(AsmInstrBase):
+    opcode = "_STOP"
     in_types = ()
     out_types = ()
     continues = False
@@ -224,7 +225,7 @@ class BlackBox[T: VarT](AsmInstrBase):
     jumps = False
 
     def __init__(self, typ: type[T]) -> None:
-        self.opcode = "BlackBox"
+        self.opcode = "_BLACKBOX"
         self.in_types = (typ,)
         self.out_types = (typ,)
 
@@ -350,6 +351,35 @@ class PredLE(PredicateBase):
         return PredLT().bind(instr.outputs_, b, a)
 
 
+class PredEq[T: VarT](PredicateBase):
+    opcode = "seq"
+
+    def __init__(self, typ: type[T]) -> None:
+        self.typ = typ
+        self.in_types = (typ, typ)
+
+    @override
+    def negate_impl(self, instr: BoundInstr[Self]):
+        return PredNEq(self.typ).bind(instr.outputs_, *instr.inputs_)
+
+
+class PredNEq[T: VarT](PredicateBase):
+    opcode = "sne"
+
+    def __init__(self, typ: type[T]) -> None:
+        self.typ = typ
+        self.in_types = (typ, typ)
+
+    @override
+    def negate_impl(self, instr: BoundInstr[Self]):
+        return PredEq(self.typ).bind(instr.outputs_, *instr.inputs_)
+
+
+################################################################################
+# Bundles
+################################################################################
+
+
 @dataclass
 class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
     # False, i -> var is inputs[i]
@@ -360,23 +390,6 @@ class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
     out_types: TypeList[tuple[Var, ...]]  # pyright: ignore[reportIncompatibleVariableOverride]
 
     children: list[tuple[InstrBase, tuple[int, ...], tuple[int, ...], DebugInfo]]
-
-    # # def bundles(self, instr: BoundInstr[Any], /) -> Iterable[BoundInstr] | None:
-    # #     """
-    # #     If not None, instr is a bundle of several instructions.
-
-    # #     Every time its called, it should
-    # #     (1) return a list of instructions with a new/different instr id.
-    # #           this list must not contain [self]
-    # #     (2) unlike BoundInstr objects, internal vars in the bundle must be in the
-    # #           "output" field of a BoundInstr
-
-    # #     this features is added later; some code might not be aware of this and may make mistakes.
-    # #     TODO:
-    # #     (1) check EmitLabel. now this is no longer the only thing that can produce a label
-    # #     (2) i think some previous code incorrectly assmed instrs have at most one output
-    # #     """
-    # #     return None
 
     def parts(self, instr: BoundInstr[Self]) -> tuple[*Ts]:
         vars = [instr.outputs[x] if is_out else instr.inputs[x] for is_out, x in self.var_info]
@@ -497,7 +510,9 @@ class PredBranch(
         BoundInstr[Branch],
     ]
 ):
-    pass
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        assert False, "PredBranch is supposed to get converted into PredCondJump"
 
 
 class PredCondJump(
