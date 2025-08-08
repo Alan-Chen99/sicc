@@ -390,7 +390,8 @@ class RawSubr(ByIdMixin):
             argvar.write(arg)
 
         self.ra_mvar.write(l)
-        jump(self.start)
+        with track_caller():
+            jump(self.start)
 
         label(l)
         return tuple(x.read() for x in self.ret_mvars)
