@@ -50,7 +50,7 @@ class LogicType(AsLiteral):
         return f"LogicType.{self.name}"
 
     @staticmethod
-    def create(val: ValLogicType | str) -> ValLogicType:
+    def create(val: ValLogicTypeLike) -> UserValue[LogicType]:
         if isinstance(val, str):
             return LogicType(val)
         return val
@@ -64,7 +64,8 @@ class Pin(AsLiteral):
     pass
 
 
-ValLogicType = UserValue[LogicType]
+ValLogicTypeLike = UserValue[LogicType] | str
+ValBatchMode = UserValue[BatchMode]
 
 
 class LoadBatch[T: VarT](AsmInstrBase):
@@ -151,11 +152,11 @@ class DeviceBase:
         return pretty_repr(self)
 
     @overload
-    def __getitem__(self, logic_type: ValLogicType | str) -> DeviceLogicType[Any, Self]: ...
+    def __getitem__(self, logic_type: ValLogicTypeLike) -> DeviceLogicType[Any, Self]: ...
     @overload
-    def __getitem__(self, logic_type: tuple[ValLogicType | str, BatchMode]) -> VarRead[Any]: ...
+    def __getitem__(self, logic_type: tuple[ValLogicTypeLike, ValBatchMode]) -> VarRead[Any]: ...
 
-    def __getitem__(self, logic_type: ValLogicType | str | tuple[ValLogicType | str, BatchMode]):
+    def __getitem__(self, logic_type: ValLogicTypeLike | tuple[ValLogicTypeLike, ValBatchMode]):
         if isinstance(logic_type, tuple):
             logic_type, bm = logic_type
             return DeviceLogicType(self, LogicType.create(logic_type), AnyType).get(bm)
@@ -178,10 +179,10 @@ class DeviceBase:
 @dataclasses.dataclass
 class DeviceLogicType[T: VarT = Any, D: DeviceBase = DeviceBase]:
     device: D
-    logic_type: ValLogicType
+    logic_type: UserValue[LogicType]
     typ: type[T] = dataclasses.field(pytree_node=False)  # pyright: ignore[reportUnknownMemberType]
 
-    def get(self, mode: BatchMode) -> VarRead[T]:
+    def get(self, mode: ValBatchMode) -> VarRead[T]:
         if self.device.name is None:
             return Function(LoadBatch(self.typ)).call(
                 self.device.device_type, self.logic_type, mode
@@ -242,19 +243,3 @@ class Device(DeviceBase):
 
 def mk_field[T: VarT](typ: type[T], logic_type: LogicType | None = None) -> FieldDesc[T]:
     return FieldDesc(typ, logic_type)
-
-
-class Lock:
-    Lock: FieldDesc[bool] = mk_field(bool)
-
-
-class Open:
-    Open: FieldDesc[bool] = mk_field(bool)
-
-
-class Autolathe(DeviceBase, Lock, Open):
-    pass
-
-
-class AutomatedOven(DeviceBase, Lock):
-    pass

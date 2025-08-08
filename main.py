@@ -1,50 +1,8 @@
 # pyright: reportUnusedImport=false
 
-
-import functools
-import logging
-from pathlib import Path
-
-from rich import print
-from rich import reconfigure
-from rich.logging import RichHandler
-from rich.panel import Panel
-from rich.pretty import Pretty
-from rich.pretty import pretty_repr
-from rich.theme import Theme
-from rich.themes import DEFAULT
-from rich.traceback import install
-
 from sicc import *
 from sicc import functions as f
-from sicc._api import State
-from sicc._api import trace_to_subr
-from sicc._api import undef
-from sicc._api import while_
-from sicc._core import FORMAT_ANNOTATE
-from sicc._core import AlwaysUnpack
-from sicc._core import MVar
-from sicc._core import NeverUnpack
-from sicc._diagnostic import check_must_use
-from sicc._diagnostic import show_pending_diagnostics
-from sicc._instructions import AddF
-from sicc._instructions import PredLT
-from sicc._stationeers import Autolathe
-from sicc._stationeers import BatchMode
-from sicc._stationeers import Device
-from sicc._stationeers import DeviceBase
-from sicc._theme import theme
-from sicc._tracing import ensure_label
-from sicc._tracing import label
-from sicc._tracing import trace_bundle
-from sicc._tracing import trace_if
-from sicc._tracing import trace_program
-from sicc._transforms import regalloc_and_lower
-from sicc._transforms.control_flow import build_control_flow_graph
-from sicc._transforms.control_flow import compute_label_provenance
-from sicc._transforms.regalloc import compute_lifetimes_all
-from sicc._transforms.regalloc import regalloc
-from sicc._transforms.regalloc import regalloc_try_fuse
+from sicc.devices import Autolathe
 
 
 @subr()
@@ -103,7 +61,7 @@ def main():
     # # x = black_box(parent(1))
 
     with while_(lambda: True):
-        with if_(f.black_box(True)):
+        with if_(~d1.On.avg):
             break_()
 
     # parent(1)

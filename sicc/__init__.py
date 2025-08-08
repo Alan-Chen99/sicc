@@ -7,12 +7,19 @@ from . import functions as functions
 from ._cli import program as program
 
 # types
+from ._api import UserValue as UserValue
+from ._api import Variable as Variable
+from ._stationeers import BatchMode as BatchMode
+from ._stationeers import LogicType as LogicType
+
+# UserValue aliases
 from ._api import Bool as Bool
 from ._api import Float as Float
 from ._api import Int as Int
 from ._api import Str as Str
-from ._api import UserValue as UserValue
-from ._api import Variable as Variable
+from ._api import ValLabelLike as ValLabelLike
+from ._stationeers import ValBatchMode as ValBatchMode
+from ._stationeers import ValLogicTypeLike as ValLogicTypeLike
 
 # control flow primitives
 from ._api import branch as branch
@@ -38,3 +45,7 @@ from ._tree_utils import pytree as pytree
 
 dataclass = dataclasses.dataclass
 field = dataclasses.field  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+
+# devices
+from ._stationeers import Device as Device
+from ._stationeers import DeviceBase as DeviceBase
