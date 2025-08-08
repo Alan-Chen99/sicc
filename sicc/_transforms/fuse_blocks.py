@@ -1,5 +1,7 @@
 from typing import Iterator
 
+from rich import print as print  # autoflake: skip
+
 from .._core import Block
 from .._core import BoundInstr
 from .._core import Fragment
@@ -54,17 +56,23 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
     index = get_index.call_cached(ctx)
     graph = build_control_flow_graph.call_cached(ctx)
 
-    def attempt_fuse(cur: Block, target: Label) -> bool:
+    def is_fusable(cur: Block, target: Label) -> bool:
         # in the middle of some other block
         if target not in f.blocks:
             return False
 
         # it loops back to itself
-        if target == b.label:
+        if target == cur.label:
             return False
 
         # this is probably the main "entrypoint" so dont fuse to it
         if not index.labels[target].private:
+            return False
+
+        return True
+
+    def attempt_fuse(cur: Block, target: Label) -> bool:
+        if not is_fusable(cur, target):
             return False
 
         target_block = f.blocks[target]
@@ -73,12 +81,17 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
             # jump [label] should be the only use
             if len(index.labels[target].uses) > 1:
                 return False
-        pred = list(graph.predecessors(target_block.contents[0]))
+        pred = list(graph.predecessors(target_block.label_instr))
         if efficient_only:
             for x in pred:
                 assert not isinstance(x, External)
-                if x != cur.end and not x.continues:
-                    return False
+                if x == cur.end:
+                    continue
+                for alt_b in f.blocks.values():
+                    print("attempt fuse", cur.end, target)
+                    print("alt_b", alt_b.end, is_fusable(alt_b, target))
+                    if alt_b.end == x and is_fusable(alt_b, target):
+                        return False
 
         # do the fuse
 
@@ -95,9 +108,9 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
             assert not trivial_only
             append = target_block.contents
 
-        if b.end.isinst(Jump):
-            keep = b.contents[:-1]
-        elif instr := b.end.isinst(PredBranch):
+        if cur.end.isinst(Jump):
+            keep = cur.contents[:-1]
+        elif instr := cur.end.isinst(PredBranch):
             pred, br = instr.unpack()
             predvar, t_l, f_l = br.inputs_
 
@@ -109,11 +122,11 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
                 else:
                     assert f_l == target
                     rep = PredCondJump.from_parts(pred, CondJump().bind((), predvar, t_l))
-            keep = b.contents[:-1] + [rep]
+            keep = cur.contents[:-1] + [rep]
         else:
             assert False
 
-        b.contents = keep + append
+        cur.contents = keep + append
         return True
 
     for b in f.blocks.values():

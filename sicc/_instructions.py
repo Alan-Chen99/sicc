@@ -498,7 +498,14 @@ class PredBranch(
 ):
     @override
     def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
-        assert False, "PredBranch is supposed to get converted into PredCondJump"
+        pred, br = instr.unpack()
+        predvar, t_l, f_l = br.inputs_
+
+        yield PredCondJump.from_parts(
+            pred,
+            CondJump().bind((), predvar, t_l),
+        )
+        yield Jump().bind((), f_l)
 
 
 class PredCondJump(
