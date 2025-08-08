@@ -60,7 +60,7 @@ def main():
     # x = black_box(child(1).y)
     # # x = black_box(parent(1))
 
-    with while_(lambda: True):
+    with while_(lambda: parent(1) > 0):
         with if_(~d1.On.avg):
             break_()
 

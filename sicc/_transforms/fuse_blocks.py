@@ -69,6 +69,14 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
         if not index.labels[target].private:
             return False
 
+        if (
+            not index.labels[cur.label].private
+            and f.blocks[target].end.isinst(EndPlaceholder)
+            and len(f.blocks) >= 3
+        ):
+            # dont fuse start and exit block, if there are other blocks
+            return False
+
         return True
 
     def attempt_fuse(cur: Block, target: Label) -> bool:
