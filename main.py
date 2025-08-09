@@ -50,6 +50,8 @@ def parent(x: Float) -> Float:
 def main():
     d1, d2, d3, d4 = [Autolathe(f"MyAutolathe{i}") for i in range(4)]
 
+    print("d1", d1)
+
     check_device(d1)
     check_device(d2)
     check_device(d3)

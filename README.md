@@ -3,9 +3,21 @@
 SICC is yet another compiler for Stationeers IC10. It compiles to minimize code size.
 
 This works by writing python code which gets **traced** and then compiled into IC10.
-See `examples/explained.py` for how this works.
+See [examples/explained.py](examples/explained.py) for how this works.
 
-**This is a WIP; currently output may not be correct or even valid. API is subject to change without notice.**.
+**This is a WIP; currently output may not be correct or even valid. API is subject to change without notice.**
+
+## Install (more options will be supported later)
+
+Install [uv](https://github.com/astral-sh/uv) and run
+
+```bash
+git clone https://github.com/Alan-Chen99/sicc-template.git
+cd sicc-template
+uv sync
+source ./.venv/bin/activate
+python main.py
+```
 
 ## Project Goals
 

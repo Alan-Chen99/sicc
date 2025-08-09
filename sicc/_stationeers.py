@@ -171,7 +171,7 @@ DT_co = TypeVar("DT_co", covariant=True, bound=Str, default=Str)
 N_co = TypeVar("N_co", covariant=True, bound=Str | None, default=Str | None)
 
 
-@dataclass
+@dataclass(eq=False, repr=False)
 class DeviceBase(Generic[DT_co, N_co]):
     device_type: DT_co
     name: N_co
@@ -220,7 +220,10 @@ class DeviceBase(Generic[DT_co, N_co]):
         self[logic_type].set(val)
 
     def _getattr(self, name: str) -> DeviceLogicType[Any, Self]:
-        return self[name]
+        if name and name[0].isupper():
+            return self[name]
+        else:
+            raise AttributeError()
 
     def _setattr(self, name: str, val: UserValue) -> None:
         if name and name[0].isupper():
