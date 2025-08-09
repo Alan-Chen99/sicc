@@ -20,6 +20,7 @@ from rich.console import group
 from rich.panel import Panel
 from rich.text import Text
 
+from ._core import AsRawCtx
 from ._core import Block
 from ._core import BoundInstr
 from ._core import EffectBase
@@ -27,6 +28,7 @@ from ._core import EffectRes
 from ._core import InstrBase
 from ._core import InternalValLabel
 from ._core import Label
+from ._core import RawText
 from ._core import Register
 from ._core import TypeList
 from ._core import Value
@@ -35,6 +37,7 @@ from ._core import VarT
 from ._core import VarTS
 from ._core import WriteMVar
 from ._core import format_instr_list
+from ._core import format_raw_val
 from ._core import format_val
 from ._core import get_type
 from ._core import get_types
@@ -88,6 +91,8 @@ class RawInstr(InstrBase):
     continues: bool
     jumps: bool
 
+    src_instr: type[InstrBase] | None = None
+
     @staticmethod
     def make(
         opcode: str,
@@ -95,6 +100,7 @@ class RawInstr(InstrBase):
         *args: Value,
         continues: bool = True,
         jumps: bool = True,
+        src_instr: type[InstrBase] | None = None,
     ) -> BoundInstr[RawInstr]:
         out_vars = tuple(out_vars)
         return RawInstr(
@@ -103,6 +109,7 @@ class RawInstr(InstrBase):
             out_types=TypeList(get_types(*out_vars)),
             continues=continues,
             jumps=jumps,
+            src_instr=src_instr,
         ).bind_untyped(out_vars, *args)
 
     @override
@@ -122,6 +129,26 @@ class RawInstr(InstrBase):
             ans += format_val(x)
 
         return ans
+
+    def format_raw(self, instr: BoundInstr[Self], ctx: AsRawCtx) -> RawText:
+        ans = Text()
+        ans.append(self.opcode, "ic10.raw_opcode")
+        for x in instr.outputs_:
+            ans += " "
+            ans += Text("", "bold") + format_raw_val(x, ctx).text
+        for x in instr.inputs_:
+            ans += " "
+            ans += format_raw_val(x, ctx).text
+
+        # if len(ans) < 40:
+        #     ans += " " * (40 - len(ans))
+
+        # ans += Text(f" # ({linenums.instr_lines[instr]})", "ic10.comment")
+        # if loc_info := instr.debug.location_info_brief():
+        #     ans += Text(" " + loc_info, "ic10.comment")
+
+        ans += "\n"
+        return RawText(ans)
 
 
 class RawAsmOpts(TypedDict, total=False):
@@ -165,7 +192,13 @@ class AsmInstrBase(InstrBase):
 
     @override
     def lower(self, instr: BoundInstr[Any]) -> Iterable[BoundInstr]:
-        yield RawInstr.make(self.opcode, instr.outputs, *instr.inputs, continues=instr.continues)
+        yield RawInstr.make(
+            self.opcode,
+            instr.outputs,
+            *instr.inputs,
+            continues=instr.continues,
+            src_instr=type(self),
+        )
 
 
 ################################################################################
@@ -316,6 +349,73 @@ class AddI(AsmInstrBase):
     opcode = "add"
     in_types = (int, int)
     out_types = (int,)
+
+
+class SubF(AsmInstrBase):
+    opcode = "sub"
+    in_types = (float, float)
+    out_types = (float,)
+
+
+class SubI(AsmInstrBase):
+    opcode = "sub"
+    in_types = (int, int)
+    out_types = (int,)
+
+
+class MulF(AsmInstrBase):
+    opcode = "mul"
+    in_types = (float, float)
+    out_types = (float,)
+
+
+class MulI(AsmInstrBase):
+    opcode = "mul"
+    in_types = (int, int)
+    out_types = (int,)
+
+
+class DivF(AsmInstrBase):
+    opcode = "div"
+    in_types = (float, float)
+    out_types = (float,)
+
+
+class OrB(AsmInstrBase):
+    opcode = "or"
+    in_types = (bool, bool)
+    out_types = (bool,)
+
+
+class OrI(AsmInstrBase):
+    opcode = "or"
+    in_types = (int, int)
+    out_types = (int,)
+
+
+class AndB(AsmInstrBase):
+    opcode = "and"
+    in_types = (bool, bool)
+    out_types = (bool,)
+
+
+class AndI(AsmInstrBase):
+    opcode = "and"
+    in_types = (int, int)
+    out_types = (int,)
+
+
+################################################################################
+# OTHER, PURE
+################################################################################
+
+
+class Select[T: VarT](AsmInstrBase):
+    opcode = "select"
+
+    def __init__(self, typ: type[T]) -> None:
+        self.in_types = (bool, typ, typ)
+        self.out_types = (typ,)
 
 
 ################################################################################

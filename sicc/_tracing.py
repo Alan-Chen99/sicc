@@ -39,6 +39,7 @@ from ._instructions import EndPlaceholder
 from ._utils import ByIdMixin
 from ._utils import Cell
 from .config import verbose
+from .config import with_status
 
 # register_exclusion(__file__)
 
@@ -257,11 +258,6 @@ def trace_program() -> Iterator[Cell[TracedProgram]]:
 
     ans.value = TracedProgram(start, f)
 
-    # global_opts(f)
-
-    # print("after global optimize:")
-    # print(f)
-
 
 def continue_():
     cont = _CUR_TRACE.value.continue_to
@@ -342,7 +338,8 @@ def trace_while(cond_block: Callable[[], InteralBool]) -> Iterator[None]:
     while_end = mk_internal_label("while_end", id)
 
     with trace_to_fragment(emit=True):
-        label(while_cond)
+        with track_caller():
+            label(while_cond)
         cond = cond_block()
         with track_caller():
             branch(cond, while_body, while_end)
@@ -408,7 +405,7 @@ def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[V
 
         start = mk_internal_label(f"[{describe_fn(fn)}]", private=False)
 
-        with trace_to_fragment() as res:
+        with with_status(describe_fn(fn)), trace_to_fragment() as res:
             with add_debug_info(DebugInfo(describe=repr(fn))):
                 label(start)
             with add_debug_info(DebugInfo(describe=f"args of {describe_fn(fn)}")):

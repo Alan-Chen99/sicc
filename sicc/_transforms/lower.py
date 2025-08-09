@@ -2,6 +2,7 @@ from typing import Iterator
 
 from .._core import Block
 from .._core import BoundInstr
+from .._core import Comment
 from .._core import Fragment
 from .._diagnostic import add_debug_info
 from .._instructions import EmitLabel
@@ -10,9 +11,10 @@ from .._instructions import RawInstr
 from .._tracing import internal_transform
 
 _LOWER_KEEP = (
+    Comment,
     EmitLabel,
-    RawInstr,
     EndPlaceholder,
+    RawInstr,
 )
 
 

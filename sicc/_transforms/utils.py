@@ -17,6 +17,7 @@ from .._diagnostic import Report
 from .._diagnostic import register_exclusion
 from .._tracing import internal_transform
 from ..config import verbose
+from ..config import with_status
 
 register_exclusion(__file__)
 
@@ -51,7 +52,7 @@ class Transform[**P, R]:
         else:
             before = None
 
-        with internal_transform(frag):
+        with internal_transform(frag), with_status(self.fn.__qualname__):
             try:
                 logging.debug(f"running {self.fn.__qualname__}")
                 ctx = TransformCtx(frag, {})

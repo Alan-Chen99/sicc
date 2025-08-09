@@ -1,6 +1,7 @@
 from .._core import AlwaysUnpack
 from .._core import Block
 from .._core import ReadMVar
+from .._core import Var
 from .._core import WriteMVar
 from .._instructions import Bundle
 from .._instructions import Jump
@@ -58,9 +59,10 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
         return False
     (pred_block,) = pred_blocks
 
-    if len(list(graph.successors(preds[0]))) >= 3:
-        # previous block goes to many places; such as a function return
-        # it may not be a good idea to move stuff into it, so we dont do this opt for now
+    if (pred_end := pred_block.end.isinst(Jump)) and isinstance(pred_end.inputs_[0], Var):
+        # previous block looks like a function return
+        # the optimization would be correct;
+        # but it may not be a good idea to move stuff into it, so we dont do this opt for now
         return False
 
     # handled in fuse

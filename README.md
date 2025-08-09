@@ -2,36 +2,10 @@
 
 SICC is yet another compiler for Stationeers IC10. It compiles to minimize code size.
 
-**This is a WIP and does not yet work; see main.py, and run python main.py to see what it currently does**.
-
 This works by writing python code which gets **traced** and then compiled into IC10.
+See `examples/explained.py` for how this works.
 
-The python code you will write will approximately look like:
-
-```python
-@sicc.wrap_main
-def main():
-    # sicc will run your function once;
-
-    for x in ["door1", "door2"]:  # python control flow will execute at "compile time"
-        # let sicc know you want an operation by *staging* it (calling it once)
-        GlassDoors(x).On = True
-
-        # spedcial control flow to condition for stuff at runtime
-        with if_(GlassDoors(x).Lock):
-            GlassDoors(x).On = False
-
-    # the above will get *traced* as:
-
-    # GlassDoors("door1").On = True
-    # if GlassDoors("door1").Lock:
-    #     GlassDoors("door1").On = False
-    # GlassDoors("door2").On = True
-    # if GlassDoors("door2").Lock:
-    #     GlassDoors("door2").On = False
-
-    # and then the compiler will compile this into assembly
-```
+**This is a WIP; currently output may not be correct or even valid. API is subject to change without notice.**.
 
 ## Project Goals
 

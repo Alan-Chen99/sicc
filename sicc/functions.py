@@ -1,5 +1,15 @@
 # autoflake: skip_file
 
+# arith
+from ._api import add as add
+from ._api import div as div
+from ._api import mul as mul
+from ._api import sub as sub
+
+# bool
+from ._api import and_ as and_
+from ._api import or_ as or_
+
 # comparison
 from ._api import greater_than as greater_than
 from ._api import greater_than_or_eq as greater_than_or_eq

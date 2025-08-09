@@ -32,6 +32,7 @@ from rich.traceback import Traceback
 
 from . import _utils
 from ._utils import Cell
+from .config import show_src_info
 from .config import verbose
 
 _TRACEBACK_SUPPRESS: Cell[set[str]] = Cell(set())
@@ -227,6 +228,9 @@ class DebugInfo:
         return self
 
     def location_info_brief(self) -> str:
+        if not show_src_info.value:
+            return ""
+
         if desc := self.describe:
             return desc
         # if loc := self.location:

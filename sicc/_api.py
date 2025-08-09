@@ -9,11 +9,16 @@ from typing import Callable
 from typing import Final
 from typing import Never
 from typing import Protocol
+from typing import Self
 from typing import TypeVar
 from typing import Unpack
 from typing import overload
+from typing import override
+
+from rich.text import Text
 
 from . import _functions as _f
+from ._core import Comment
 from ._core import InstrBase
 from ._core import InstrTypedWithArgs_api
 from ._core import Label
@@ -24,7 +29,9 @@ from ._core import Value
 from ._core import Var
 from ._core import VarT
 from ._core import can_cast_implicit_many
+from ._core import can_cast_implicit_many_or_err
 from ._core import get_type
+from ._core import get_types
 from ._core import promote_types
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
@@ -34,13 +41,23 @@ from ._diagnostic import register_exclusion
 from ._diagnostic import track_caller
 from ._instructions import AddF
 from ._instructions import AddI
+from ._instructions import AndB
+from ._instructions import AndI
 from ._instructions import BlackBox
+from ._instructions import DivF
 from ._instructions import Jump
+from ._instructions import MulF
+from ._instructions import MulI
 from ._instructions import Not
+from ._instructions import OrB
+from ._instructions import OrI
 from ._instructions import PredEq
 from ._instructions import PredLE
 from ._instructions import PredLT
 from ._instructions import PredNEq
+from ._instructions import Select
+from ._instructions import SubF
+from ._instructions import SubI
 from ._instructions import UnreachableChecked
 from ._tracing import _CUR_SCOPE
 from ._tracing import RawSubr
@@ -87,6 +104,9 @@ class VarRead[T: VarT](abc.ABC):
     @abc.abstractmethod
     def _read(self) -> Var[T]: ...
 
+    @abc.abstractmethod
+    def _get_type(self) -> type[T]: ...
+
     def __check_co(self) -> VarRead[VarT]:  # pyright: ignore[reportUnusedFunction]
         return self
 
@@ -98,15 +118,27 @@ class VarRead[T: VarT](abc.ABC):
     __add__ = late_fn(lambda: add)
     __radd__ = late_fn(lambda: add)
 
+    __sub__ = late_fn(lambda: sub)
+    __rsub__ = late_fn(lambda: sub._rev_same_sig())
+
+    __mul__ = late_fn(lambda: mul)
+    __rmul__ = late_fn(lambda: mul)
+
+    __truediv__ = late_fn(lambda: div)
+    __rtruediv__ = late_fn(lambda: div._rev_same_sig())
+
     __invert__ = late_fn(lambda: bool_not)
 
-    def __eq__[T1: VarT](  # pyright: ignore[reportIncompatibleMethodOverride]
-        self: UserValue[T1], other: UserValue[T1]
+    __and__ = late_fn(lambda: and_)
+    __or__ = late_fn(lambda: or_)
+
+    def __eq__(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, other: Any
     ) -> Variable[bool]:
         return equal(self, other)
 
-    def __ne__[T1: VarT](  # pyright: ignore[reportIncompatibleMethodOverride]
-        self: UserValue[T1], other: UserValue[T1]
+    def __ne__(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, other: Any
     ) -> Variable[bool]:
         return not_equal(self, other)
 
@@ -132,9 +164,9 @@ def _get_label(l: ValLabelLike) -> Value[Label]:
 def _get_type[T: VarT](v: UserValue[T]) -> type[T]:
     if isinstance(v, VarT):
         return type(v)
-    if isinstance(v, Variable):
-        return v._inner.type
-    raise TypeError(f"unsupported type: {v}")
+    if not isinstance(v, VarRead):  # pyright: ignore[reportUnnecessaryIsInstance]
+        raise TypeError(f"unsupported type: {v}")  # pyright: ignore[reportUnreachable]
+    return v._get_type()
 
 
 class Variable[T: VarT](VarRead[T]):
@@ -165,8 +197,13 @@ class Variable[T: VarT](VarRead[T]):
         ans._inner.write(v)
         return ans
 
+    @override
     def _read(self) -> Var[T]:
         return self._inner.read()
+
+    @override
+    def _get_type(self) -> type[T]:
+        return self._inner.type
 
     @property
     def value(self) -> Variable[T]:
@@ -222,9 +259,16 @@ class Function[Ts: tuple[Any, ...]]:
 
             return Variable._from_val(ans)
 
-        raise TypeError()
+        can_cast_implicit_many_or_err(arg_types, self._instrs[-1].in_types)
+        assert False
 
     call = __call__
+
+    def _rev_same_sig(self) -> Self:
+        def inner(a1: Any, a2: Any) -> Any:
+            return self.call(a2, a1)
+
+        return cast_unchecked(inner)
 
 
 class _BoundFunction[V, Ts: tuple[Any, ...]](Protocol):
@@ -390,6 +434,12 @@ def undef() -> VarRead[Never]:
 ################################################################################
 
 add = Function(AddI(), AddF())
+sub = Function(SubI(), SubF())
+mul = Function(MulI(), MulF())
+div = Function(DivF())
+
+or_ = Function(OrB(), OrI())
+and_ = Function(AndB(), AndI())
 
 unreachable_checked = Function(UnreachableChecked())
 
@@ -419,6 +469,12 @@ def black_box[T: VarT](v: UserValue[T]) -> Variable[T]:
     return Function(BlackBox(_get_type(v))).call(v)
 
 
+def comment(x: str, *args: UserValue) -> None:
+    args_ = [_get(v) for v in args]
+    # with track_caller():
+    return Comment(Text(x, "ic10.comment"), *get_types(*args_)).call(*args_)
+
+
 ################################################################################
 
 
@@ -446,3 +502,31 @@ def loop() -> AbstractContextManager[None]:
 
 
 ################################################################################
+
+
+@overload
+def select[T: VarT](pred: Bool, on_true: UserValue[T], on_false: UserValue[T]) -> Variable[T]: ...
+@overload
+def select[V](pred: Bool, on_true: V, on_false: V) -> V: ...
+
+
+def select[V](pred: Bool, on_true: V, on_false: V) -> V:
+    pred_ = _get(pred)
+
+    true_vars, true_tree = pytree.flatten(cast_unchecked(on_true))
+    false_vars, false_tree = pytree.flatten(cast_unchecked(on_false))
+
+    if true_tree != false_tree:
+        raise ValueError(f"incompatible types: {true_tree} and {false_tree}")
+
+    assert len(true_vars) == len(false_vars)
+
+    ans_vars: list[Any] = []
+
+    for x, y in zip(true_vars, false_vars):
+        x_ = _get(x)
+        y_ = _get(y)
+        typ = promote_types(get_type(x_), get_type(y_))
+        ans_vars.append(Variable._from_val(Select(typ).call(pred_, x_, y_)))
+
+    return cast_unchecked(true_tree.unflatten(ans_vars))

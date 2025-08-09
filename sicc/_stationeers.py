@@ -2,27 +2,35 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 from typing import Any
-from typing import ClassVar
+from typing import Generic
 from typing import Self
+from typing import TypeVar
 from typing import cast
 from typing import overload
 from typing import override
 
+import rich.repr
 from rich.pretty import pretty_repr
 
 from ._api import Function
 from ._api import Str
 from ._api import UserValue
 from ._api import VarRead
+from ._api import _get_type
 from ._core import AnyType
-from ._core import AsLiteral
+from ._core import AsRaw
+from ._core import AsRawCtx
 from ._core import BoundInstr
 from ._core import EffectRes
+from ._core import RawText
+from ._core import Var
 from ._core import VarT
 from ._diagnostic import register_exclusion
 from ._instructions import AsmInstrBase
 from ._instructions import EffectExternal
+from ._tree_utils import dataclass as optree_dataclass
 from ._tree_utils import dataclasses
 from ._tree_utils import pytree
 
@@ -30,24 +38,45 @@ register_exclusion(__file__)
 
 
 class BatchMode(Enum):
-    AVG = "Average"
-    SUM = "Sum"
-    MIN = "Minimum"
-    MAX = "Maximum"
+    AVG = 0
+    SUM = 1
+    MIN = 2
+    MAX = 3
 
-    def as_literal(self) -> str:
-        return self.value
+    def as_raw(self, ctx: AsRawCtx) -> RawText:
+        return RawText.str(repr(self.value))
 
     def __repr__(self) -> str:
         return self.name
 
 
-@dataclass
-class LogicType(AsLiteral):
+class Color(Enum):
+    Blue = 0
+    Gray = 1
+    Green = 2
+    Orange = 3
+    Red = 4
+    Yellow = 5
+    White = 6
+    Black = 7
+    Brown = 8
+    Khaki = 9
+    Pink = 10
+    Purple = 11
+
+    def __repr__(self) -> str:
+        return self.name
+
+    def as_raw(self, ctx: AsRawCtx) -> RawText:
+        return RawText.str(repr(self.value))
+
+
+@dataclass(frozen=True)
+class LogicType(AsRaw):
     name: str
 
     def __repr__(self) -> str:
-        return f"LogicType.{self.name}"
+        return self.name
 
     @staticmethod
     def create(val: ValLogicTypeLike) -> UserValue[LogicType]:
@@ -55,17 +84,41 @@ class LogicType(AsLiteral):
             return LogicType(val)
         return val
 
-    def as_literal(self) -> str:
-        return f"LogicType.{self.name}"
+    def as_raw(self, ctx: AsRawCtx) -> RawText:
+        if ctx.instr is not None and ctx.instr.instr.src_instr in [
+            LoadBatch,
+            StoreBatch,
+            LoadBatchNamed,
+            StoreBatchNamed,
+        ]:
+            return RawText.str(self.name)
+        return RawText.str(f"LogicType.{self.name}")
 
 
-class Pin(AsLiteral):
+class Pin(AsRaw):
     # TODO
     pass
 
 
 ValLogicTypeLike = UserValue[LogicType] | str
 ValBatchMode = UserValue[BatchMode]
+
+
+class Yield(AsmInstrBase):
+    opcode = "yield"
+    in_types = ()
+    out_types = ()
+
+    @override
+    def reads(self, instr: BoundInstr[Self]) -> EffectRes:
+        return EffectExternal()
+
+    @override
+    def writes(self, instr: BoundInstr[Self]) -> EffectRes:
+        return EffectExternal()
+
+
+yield_ = Function(Yield())
 
 
 class LoadBatch[T: VarT](AsmInstrBase):
@@ -112,39 +165,40 @@ class StoreBatchNamed[T: VarT](AsmInstrBase):
         return EffectExternal()
 
 
-_did_register_optree: set[type[DeviceBase]] = set()
+_did_register_optree: set[type[DeviceBase[Any, Any]]] = set()
+
+DT_co = TypeVar("DT_co", covariant=True, bound=Str, default=Str)
+N_co = TypeVar("N_co", covariant=True, bound=Str | None, default=Str | None)
 
 
 @dataclass
-class DeviceBase:
-    device_type: Str
-    name: Str | None = None
-
-    _did_register_optree: ClassVar[bool] = False
+class DeviceBase(Generic[DT_co, N_co]):
+    device_type: DT_co
+    name: N_co
 
     def __init__(
         self,
-        name: Str | None = None,
         *,
-        device_type: Str | None = None,
-        pin: Pin | None = None,
+        _device_type: DT_co,
+        _name: N_co,
+        _pin: Pin | None = None,
     ) -> None:
         if not type(self) in _did_register_optree:
             pytree.register_node_class()(type(self))
             _did_register_optree.add(type(self))
 
-        if pin is not None:
+        if _pin is not None:
             raise NotImplementedError()
 
-        if device_type is None:
-            assert type(self) != DeviceBase
-            device_type = type(self).__name__
+        self.device_type = _device_type
+        self.name = _name
 
-        self.device_type = device_type
-        self.name = name
-
-    def __rich_repr__(self):
-        yield self.device_type
+    def __rich_repr__(self) -> rich.repr.Result:
+        if not (
+            isinstance(self.device_type, str)
+            and self.device_type == f"Structure{type(self).__name__}"
+        ):
+            yield self.device_type
         if self.name is not None:
             yield self.name
 
@@ -162,8 +216,21 @@ class DeviceBase:
             return DeviceLogicType(self, LogicType.create(logic_type), AnyType).get(bm)
         return DeviceLogicType(self, LogicType.create(logic_type), AnyType)
 
-    def __getattr__(self, name: str) -> DeviceLogicType[Any, Self]:
+    def __setitem__(self, logic_type: ValLogicTypeLike, val: UserValue):
+        self[logic_type].set(val)
+
+    def _getattr(self, name: str) -> DeviceLogicType[Any, Self]:
         return self[name]
+
+    def _setattr(self, name: str, val: UserValue) -> None:
+        if name and name[0].isupper():
+            self[name].set(val)
+        else:
+            super().__setattr__(name, val)
+
+    if not TYPE_CHECKING:
+        __getattr__ = _getattr
+        __setattr__ = _setattr
 
     def tree_flatten(self):
         return (self.device_type, self.name), None, None
@@ -172,15 +239,31 @@ class DeviceBase:
     def tree_unflatten(cls, metadata: Any, children: Any) -> Self:
         device_type, name = cast(tuple[Str, Str | None], children)
         ans = cls.__new__(cls)
-        DeviceBase.__init__(ans, device_type=device_type, name=name)
+        DeviceBase.__init__(ans, _device_type=device_type, _name=name)
         return ans
 
 
-@dataclasses.dataclass
-class DeviceLogicType[T: VarT = Any, D: DeviceBase = DeviceBase]:
-    device: D
+class Device[D: Str = Str, N: Str | None = Str | None](DeviceBase[D, N]):
+    def __init__(self, device_type: D, name: N = None) -> None:
+        super().__init__(_device_type=device_type, _name=name)
+
+
+T = TypeVar("T", bound=VarT, default=Any)
+D_co = TypeVar("D_co", covariant=True, bound=DeviceBase, default=DeviceBase)
+
+
+@optree_dataclass(eq=False)
+class DeviceLogicType(Generic[T, D_co], VarRead[T]):
+    device: D_co
     logic_type: UserValue[LogicType]
     typ: type[T] = dataclasses.field(pytree_node=False)  # pyright: ignore[reportUnknownMemberType]
+
+    def __rich_repr__(self) -> rich.repr.Result:
+        yield self.device
+        yield self.logic_type
+
+    def __repr__(self) -> str:
+        return pretty_repr(self)
 
     def get(self, mode: ValBatchMode) -> VarRead[T]:
         if self.device.name is None:
@@ -192,11 +275,10 @@ class DeviceLogicType[T: VarT = Any, D: DeviceBase = DeviceBase]:
         )
 
     def set(self, val: UserValue[T]) -> None:
+        typ = _get_type(val) if self.typ == AnyType else self.typ
         if self.device.name is None:
-            return Function(StoreBatch(self.typ)).call(
-                self.device.device_type, self.logic_type, val
-            )
-        return Function(StoreBatchNamed(self.typ)).call(
+            return Function(StoreBatch(typ)).call(self.device.device_type, self.logic_type, val)
+        return Function(StoreBatchNamed(typ)).call(
             self.device.device_type, self.device.name, self.logic_type, val
         )
 
@@ -216,9 +298,23 @@ class DeviceLogicType[T: VarT = Any, D: DeviceBase = DeviceBase]:
     def max(self) -> VarRead[T]:
         return self.get(BatchMode.MAX)
 
+    @override
+    def _read(self) -> Var[T]:
+        return self.avg._read()
+
+    @override
+    def _get_type(self) -> type[T]:
+        return self.typ
+
+
+class DeviceTyped(DeviceBase[str]):
+    def __init__(self, name: Str | None = None):
+        device_type = f"Structure{type(self).__name__}"
+        super().__init__(_device_type=device_type, _name=name)
+
 
 @dataclass
-class FieldDesc[T: VarT]:
+class FieldDesc[T: VarT = Any]:
     typ: type[T]
     logic_type: LogicType | None = None
 
@@ -236,10 +332,5 @@ class FieldDesc[T: VarT]:
         DeviceLogicType(obj, self.logic_type, self.typ).set(val)
 
 
-class Device(DeviceBase):
-    def __init__(self, device_type: Str, name: Str | None = None) -> None:
-        super().__init__(name, device_type=device_type)
-
-
-def mk_field[T: VarT](typ: type[T], logic_type: LogicType | None = None) -> FieldDesc[T]:
+def mk_field[T: VarT](typ: type[T] = AnyType, logic_type: LogicType | None = None) -> FieldDesc[T]:
     return FieldDesc(typ, logic_type)

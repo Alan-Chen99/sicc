@@ -96,8 +96,6 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
                 if x == cur.end:
                     continue
                 for alt_b in f.blocks.values():
-                    print("attempt fuse", cur.end, target)
-                    print("alt_b", alt_b.end, is_fusable(alt_b, target))
                     if alt_b.end == x and is_fusable(alt_b, target):
                         return False
 
@@ -154,16 +152,6 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
             if isinstance(f_l, Label) and attempt_fuse(b, f_l):
                 return True
 
-        # targets = res.instr_jumps[b.end]
-
-        # if len(targets) != 1:
-        #     continue
-        # (target,) = targets
-        # if isinstance(target, External):
-        #     continue
-        # if not index.labels[target].private:
-        #     continue
-
     return False
 
 
@@ -184,7 +172,8 @@ def fuse_blocks_all(ctx: TransformCtx) -> bool:
 
 def force_fuse_into_one(f: Fragment, start: Label) -> None:
     if len(f.blocks) == 1:
-        assert f.blocks[start].end.isinst(EndPlaceholder)
+        if not f.blocks[start].end.isinst(EndPlaceholder):
+            f.blocks[start].contents.append(EndPlaceholder().bind(()))
         return
 
     start_block = f.blocks[start]

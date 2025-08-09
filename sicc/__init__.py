@@ -10,6 +10,7 @@ from ._cli import program as program
 from ._api import UserValue as UserValue
 from ._api import Variable as Variable
 from ._stationeers import BatchMode as BatchMode
+from ._stationeers import Color as Color
 from ._stationeers import LogicType as LogicType
 
 # UserValue aliases
@@ -40,12 +41,19 @@ from ._api import return_ as return_
 from ._api import subr as subr
 
 # dataclasses
+from ._tree_utils import dataclass as dataclass
 from ._tree_utils import dataclasses as dataclasses
 from ._tree_utils import pytree as pytree
 
-dataclass = dataclasses.dataclass
 field = dataclasses.field  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
 # devices
 from ._stationeers import Device as Device
 from ._stationeers import DeviceBase as DeviceBase
+from ._stationeers import DeviceLogicType as DeviceLogicType
+from ._stationeers import DeviceTyped as DeviceTyped
+
+# functions
+from ._api import comment as comment
+from ._api import select as select
+from ._stationeers import yield_ as yield_

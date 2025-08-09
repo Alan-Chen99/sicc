@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import zlib
 from dataclasses import dataclass
 from dataclasses import field
 from enum import Enum
@@ -15,6 +16,7 @@ from typing import Protocol
 from typing import Self
 from typing import TypeGuard
 from typing import TypeVar
+from typing import cast
 from typing import overload
 from typing import override
 from typing import runtime_checkable
@@ -47,6 +49,7 @@ if TYPE_CHECKING:
     from ._api import Variable
     from ._instructions import Bundle
     from ._instructions import EmitLabel
+    from ._instructions import RawInstr
 
 
 register_exclusion(__file__)
@@ -88,23 +91,40 @@ class RegInfo:
         return self.allocated_reg
 
 
+@dataclass
+class RawText:
+    """part of final assembly"""
+
+    text: Text
+
+    @staticmethod
+    def str(s: str, style: str = "ic10.other") -> RawText:
+        return RawText(Text(s, style))
+
+
+@dataclass
+class AsRawCtx:
+    instr: BoundInstr[RawInstr] | None
+    linenums: LineNums
+
+
 @runtime_checkable
-class AsLiteral(Protocol):
-    def as_literal(self) -> VarT: ...
+class AsRaw(Protocol):
+    def as_raw(self, ctx: AsRawCtx) -> RawText: ...
 
 
-class AnyType(AsLiteral):
-    def as_literal(self) -> VarT:
+class AnyType(AsRaw):
+    def as_raw(self, ctx: AsRawCtx):
         assert False, "unreachable"
 
 
-class Undef(AsLiteral):
+class Undef(AsRaw):
     @staticmethod
     def undef() -> Any:
         return Undef()
 
-    def as_literal(self) -> VarT:
-        return 0
+    def as_raw(self, ctx: AsRawCtx) -> RawText:
+        return RawText.str("0")
 
     def __repr__(self) -> str:
         return "undef"
@@ -199,7 +219,7 @@ def known_distinct(x: EffectBase, y: EffectBase) -> bool:
     return False
 
 
-VarT = bool | int | float | str | Label | AsLiteral
+VarT = bool | int | float | str | Label | AsRaw
 
 LabelLike = Label | str
 
@@ -226,7 +246,7 @@ def can_cast_implicit(t1: type[VarT], t2: type[VarT]) -> bool:
     if t1 == t2:
         return True
 
-    if t1 == AnyType:
+    if t1 == AnyType and t2 != Label:
         return True
     if t1 == Undef:
         return True
@@ -259,6 +279,11 @@ def can_cast_implicit_many(t1: VarTS, t2: VarTS) -> bool:
         if not can_cast_implicit(x, y):
             return False
     return True
+
+
+def can_cast_implicit_many_or_err(t1: VarTS, t2: VarTS) -> None:
+    if not can_cast_implicit_many(t1, t2):
+        raise TypeError(f"not possible to use {t1} as {t2}")
 
 
 def can_cast_val[T: VarT](v: Value, typ: type[T]) -> TypeGuard[Value[T]]:
@@ -369,8 +394,9 @@ class InstrBase(abc.ABC):
     def jumps_to(self, instr: BoundInstr[Any], /) -> Iterable[InternalValLabel]:
         """if overriding this, "jumps" variable have no effect"""
         if self.jumps:
-            for x in instr.inputs:
-                if can_cast_val(x, Label):
+            for xt, x in zip(instr.check_type().instr.in_types, instr.inputs):
+                if xt == Label:
+                    assert can_cast_val(x, Label)
                     yield x
 
     # impure operations MUST override reads and/or writes
@@ -520,16 +546,14 @@ class InstrBase(abc.ABC):
             _ck_val(x)
         in_types = self.in_types
         arg_types = get_types(*args)
-        if not can_cast_implicit_many(arg_types, in_types):
-            raise TypeError(f"not possible to use {arg_types} as {in_types}")
+        can_cast_implicit_many_or_err(arg_types, in_types)
 
     def check_outputs(self, *args: Var) -> None:
         for x in args:
             _ck_val(x)
         out_types = self.out_types
         arg_types = get_types(*args)
-        if not can_cast_implicit_many(out_types, arg_types):
-            raise TypeError(f"not possible to use {out_types} as {arg_types}")
+        can_cast_implicit_many_or_err(out_types, arg_types)
 
     def bind[*I, O, S](
         self: InstrTypedWithArgs[tuple[*I], O, S], out_vars: O, /, *args: *I
@@ -721,6 +745,34 @@ class BoundInstr(Generic[B_co], ByIdMixin):
 
     def is_side_effect_free(self) -> bool:
         return not self.writes()
+
+
+################################################################################
+
+
+class Comment(InstrBase):
+    def __init__(self, text: Text, *arg_types: type[VarT]) -> None:
+        self.text = text
+        self.in_types = cast(TypeList[tuple[Value, ...]], TypeList(arg_types))
+        self.out_types = ()
+
+    @override
+    def format(self, instr: BoundInstr[Self]) -> Text:
+        ans = Text()
+        ans += Text("Comment", "ic10.jump")
+        ans += " "
+        ans += self.text
+        for x in instr.inputs:
+            ans += " "
+            ans += format_val(x)
+        return ans
+
+    @override
+    def writes(self, instr: BoundInstr[Self]) -> EffectRes:
+        # dont reorder with external operations
+        from ._instructions import EffectExternal
+
+        return EffectExternal()
 
 
 ################################################################################
@@ -1041,10 +1093,41 @@ class Fragment:
 ################################################################################
 
 
+def _crc32(s: str) -> int:
+    val = zlib.crc32(s.encode())
+    if val >= 2**31:
+        val -= 2**32
+    return val
+
+
 @dataclass
 class LineNums:
     instr_lines: dict[BoundInstr, int]
     label_lines: dict[Label, int]
+
+
+def format_raw_val(x: Value, ctx: AsRawCtx) -> RawText:
+    style = get_style(get_type(x))
+
+    if isinstance(x, bool):
+        x = 1 if x else 0
+    if isinstance(x, int | float):
+        return RawText(Text(repr(x), style))
+
+    if isinstance(x, str):
+        hash_text = Text.assemble("HASH(", ('"' + x + '"', style), ")")
+        hash_num = Text(repr(_crc32(x)), style)
+        if len(hash_text) <= len(hash_num):
+            return RawText(hash_text)
+        return RawText(hash_num)
+
+    if isinstance(x, Label):
+        return RawText(Text(repr(ctx.linenums.label_lines[x]), style))
+
+    if isinstance(x, Var):
+        return RawText(Text(x.reg.allocated.value, style))
+
+    return x.as_raw(ctx)
 
 
 @dataclass
@@ -1105,7 +1188,7 @@ class TracedProgram:
         label_lines: dict[Label, int] = {}
 
         for instr in instrs:
-            if i := instr.isinst(RawInstr):
+            if (i := instr.isinst(RawInstr)) or (i := instr.isinst(Comment)):
                 instr_lines[i] = c
                 c += 1
             elif i := instr.isinst(EmitLabel):
@@ -1119,6 +1202,38 @@ class TracedProgram:
 
         return LineNums(instr_lines, label_lines)
 
+    def gen_asm(self) -> RawText:
+        from ._instructions import EmitLabel
+        from ._instructions import EndPlaceholder
+        from ._instructions import RawInstr
+
+        linenums = self._get_linenums()
+        instrs = self._as_instrs()
+
+        ans = Text()
+        for instr in instrs:
+            if i := instr.isinst(RawInstr):
+                ans += i.instr.format_raw(i, AsRawCtx(i, linenums)).text
+            elif i := instr.isinst(Comment):
+                ans += Text("# ", "ic10.comment")
+                ans += i.instr.text
+                for x in i.inputs_:
+                    ans += " "
+                    ans += format_val(x)
+                ans += "\n"
+            elif i := instr.isinst(EmitLabel):
+                pass
+            elif i := instr.isinst(EndPlaceholder):
+                c = linenums.instr_lines[i]
+                if c in linenums.label_lines.values():
+                    ans += Text(f"# noop (jump here to exit)\n", "ic10.comment")
+                    c += 1
+                ans += Text(f"# {c} lines total (not including this line)", "ic10.comment")
+            else:
+                assert False
+
+        return RawText(ans)
+
     def __rich__(self) -> RenderableType:
         if not self.did_regalloc:
             return self.frag.__rich__("Program")
@@ -1128,7 +1243,6 @@ class TracedProgram:
         def gen():
             instrs = self._as_instrs()
 
-            # prev_is_label = True
             prev_cont = True
             for x in instrs:
                 if not prev_cont:
@@ -1137,8 +1251,9 @@ class TracedProgram:
                 yield x.__rich__()
 
         with FORMAT_SCOPE_CONTEXT.bind(self.frag.scope), FORMAT_LINENUMS.bind(linenums):
-            return Panel(
-                Group(*gen()),
-                title=Text("Program", "ic10.title"),
-                title_align="left",
-            )
+            return Group(*gen())
+            # return Panel(
+            #     Group(*gen()),
+            #     title=Text("Program", "ic10.title"),
+            #     title_align="left",
+            # )
