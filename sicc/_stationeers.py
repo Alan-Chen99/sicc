@@ -269,7 +269,7 @@ class DeviceLogicType(Generic[T, D_co], VarRead[T]):
     def __repr__(self) -> str:
         return pretty_repr(self)
 
-    def get(self, mode: ValBatchMode = BatchMode.AVG) -> Variable[T]:
+    def get(self, mode: ValBatchMode = BatchMode.AVG) -> VarRead[T]:
         if self.device.name is None:
             return Function(LoadBatch(self.typ)).call(
                 self.device.device_type, self.logic_type, mode
@@ -287,19 +287,19 @@ class DeviceLogicType(Generic[T, D_co], VarRead[T]):
         )
 
     @property
-    def avg(self) -> Variable[T]:
+    def avg(self) -> VarRead[T]:
         return self.get(BatchMode.AVG)
 
     @property
-    def sum(self) -> Variable[T]:
+    def sum(self) -> VarRead[T]:
         return self.get(BatchMode.SUM)
 
     @property
-    def min(self) -> Variable[T]:
+    def min(self) -> VarRead[T]:
         return self.get(BatchMode.MIN)
 
     @property
-    def max(self) -> Variable[T]:
+    def max(self) -> VarRead[T]:
         return self.get(BatchMode.MAX)
 
     @override

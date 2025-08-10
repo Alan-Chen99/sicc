@@ -581,6 +581,11 @@ class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
             title_align="left",
         )
 
+    @override
+    def regalloc_prefs(self, instr: BoundInstr[Any], /) -> Iterable[RegallocPref]:
+        for part in instr.unpack_untyped():
+            yield from part.regalloc_prefs()
+
 
 class PredBranch(
     Bundle[
@@ -680,7 +685,7 @@ class CondJumpAndLink(
 
 
 @dataclass
-class AsmBlock(InstrBase):
+class AsmBlockInner(InstrBase):
     """
     a block:
     add [a] a 1
@@ -698,6 +703,10 @@ class AsmBlock(InstrBase):
     note that even though it appears that b is never read, it actually "is":
     if the branch skips the b assignment, the prev value of b will be the result
     so it is neccessary for us to have "b_init" as a arg
+
+    a_init and a_out must be allocated the same register, etc
+    to make sure that this is always possible, we wrap this with a bundle "AsmBlock"
+    which insert a Move on each argument
     """
 
     # opcode, out_vars, in_vars
@@ -723,8 +732,8 @@ class AsmBlock(InstrBase):
     @override
     def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
         for out_var, out_init in zip(instr.outputs_, instr.inputs_[: self.n_vars]):
-            if not isinstance(out_init, Var):
-                yield Move(out_var.type).bind((out_var,), out_init)
+            assert isinstance(out_init, Var)
+            assert out_init.reg.allocated == out_var.reg.allocated
 
         for opcode, vars in self.lines:
             yield RawInstr.make(
@@ -775,7 +784,11 @@ class AsmBlock(InstrBase):
 
         return Panel(
             mk_group(),
-            title=Text("AsmBlock", "ic10.jump"),
+            title=Text(type(self).__name__, "ic10.jump"),
             # title=self.format(instr),
             title_align="left",
         )
+
+
+class AsmBlock(Bundle[*tuple[BoundInstr[AsmBlockInner | Move], ...]]):
+    pass

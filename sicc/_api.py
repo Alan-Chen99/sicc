@@ -22,6 +22,7 @@ from rich.text import Text
 
 from . import _functions as _f
 from ._core import AnyType
+from ._core import BoundInstr
 from ._core import Comment
 from ._core import InstrBase
 from ._core import InstrTypedWithArgs_api
@@ -49,10 +50,12 @@ from ._instructions import AddI
 from ._instructions import AndB
 from ._instructions import AndI
 from ._instructions import AsmBlock
+from ._instructions import AsmBlockInner
 from ._instructions import BlackBox
 from ._instructions import DivF
 from ._instructions import EffectExternal
 from ._instructions import Jump
+from ._instructions import Move
 from ._instructions import MulF
 from ._instructions import MulI
 from ._instructions import Not
@@ -142,12 +145,12 @@ class VarRead[T: VarT](abc.ABC):
 
     def __eq__(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, other: Any
-    ) -> Variable[bool]:
+    ) -> VarRead[bool]:
         return equal(self, other)
 
     def __ne__(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, other: Any
-    ) -> Variable[bool]:
+    ) -> VarRead[bool]:
         return not_equal(self, other)
 
     __lt__ = late_fn(lambda: less_than)
@@ -236,8 +239,8 @@ class Variable[T: VarT](VarRead[T]):
         return repr(self._inner)
 
     @staticmethod
-    def _from_val[T1: VarT](v: Value[T1]) -> Variable[T1]:
-        ans = Variable(get_type(v))
+    def _from_val_ro[T1: VarT](v: Value[T1]) -> Variable[T1]:
+        ans = Variable(get_type(v), _read_only=True)
         ans._inner.write(v)
         return ans
 
@@ -303,7 +306,7 @@ class Function[Ts: tuple[Any, ...]]:
                 return None
             assert isinst(ans, Var)
 
-            return Variable._from_val(ans)
+            return Variable._from_val_ro(ans)
 
         can_cast_implicit_many_or_err(arg_types, self._instrs[-1].in_types)
         assert False
@@ -352,7 +355,7 @@ class State[T = Any]:
 
         with track_caller():
             vars_ = [x.read() for x in self._vars]
-        vars = [Variable._from_val(x) for x in vars_]
+        vars = [Variable._from_val_ro(x) for x in vars_]
         return cast_unchecked(pytree.unflatten(self._tree, vars))
 
     def write(self, v: T):
@@ -389,7 +392,7 @@ class TracedSubr[F = Any]:
             vals_ = tuple(_get(cast_unchecked(x)) for x in vals)
             out_vars = self.subr.call(*vals_)
 
-            out_vars_ = [Variable._from_val(x) for x in out_vars]
+            out_vars_ = [Variable._from_val_ro(x) for x in out_vars]
             return cast_unchecked(pytree.unflatten(self.ret_tree, out_vars_))
 
         return inner
@@ -412,7 +415,7 @@ def trace_to_subr[**P, R](
 
     @functools.wraps(fn)
     def inner(*args: Var) -> tuple[Var, ...]:
-        ar, kw = arg_tree.unflatten(Variable._from_val(x) for x in args)
+        ar, kw = arg_tree.unflatten(Variable._from_val_ro(x) for x in args)
 
         exit = mk_internal_label("trace_to_subr_ret")
 
@@ -496,23 +499,23 @@ less_than = Function(PredLT())
 less_than_or_eq = Function(PredLE())
 
 
-def greater_than(x: Float, y: Float) -> Variable[bool]:
+def greater_than(x: Float, y: Float) -> VarRead[bool]:
     return less_than(y, x)
 
 
-def greater_than_or_eq(x: Float, y: Float) -> Variable[bool]:
+def greater_than_or_eq(x: Float, y: Float) -> VarRead[bool]:
     return less_than_or_eq(y, x)
 
 
-def equal[T: VarT](x: UserValue[T], y: UserValue[T]) -> Variable[bool]:
+def equal[T: VarT](x: UserValue[T], y: UserValue[T]) -> VarRead[bool]:
     return Function(PredEq(promote_types(_get_type(x), _get_type(y)))).call(x, y)
 
 
-def not_equal[T: VarT](x: UserValue[T], y: UserValue[T]) -> Variable[bool]:
+def not_equal[T: VarT](x: UserValue[T], y: UserValue[T]) -> VarRead[bool]:
     return Function(PredNEq(promote_types(_get_type(x), _get_type(y)))).call(x, y)
 
 
-def black_box[T: VarT](v: UserValue[T]) -> Variable[T]:
+def black_box[T: VarT](v: UserValue[T]) -> VarRead[T]:
     return Function(BlackBox(_get_type(v))).call(v)
 
 
@@ -574,7 +577,7 @@ def select[V](pred: Bool, on_true: V, on_false: V) -> V:
         x_ = _get(x)
         y_ = _get(y)
         typ = promote_types(get_type(x_), get_type(y_))
-        ans_vars.append(Variable._from_val(Select(typ).call(pred_, x_, y_)))
+        ans_vars.append(Variable._from_val_ro(Select(typ).call(pred_, x_, y_)))
 
     return cast_unchecked(true_tree.unflatten(ans_vars))
 
@@ -621,31 +624,43 @@ def asm_block(*lines: AsmBlockLine) -> None:
 
     it is NOT allowed to jump out of the block and jump back in
     """
-    out_mvars: OrderedSet[MVar] = OrderedSet(())
+    mvars: OrderedSet[MVar] = OrderedSet(())
 
     for _opcode, *args in lines:
         for v in args:
             if isinstance(v, Variable) and not v._read_only:
-                out_mvars.add(v._inner)
+                mvars.add(v._inner)
 
-    arg_all: OrderedSet[MVar | Value] = OrderedSet(out_mvars)
+    arg_vals: OrderedSet[Value] = OrderedSet(())
 
     def handle_arg(v: UserValue) -> int:
         if isinstance(v, Variable) and not v._read_only:
-            return out_mvars.index(v._inner)
-        return arg_all.add(_get(v))
+            return mvars.index(v._inner)
+        return arg_vals.add(_get(v)) + len(mvars)
 
     linespecs: list[tuple[str, tuple[int, ...]]] = []
 
     for opcode, *args in lines:
         linespecs.append((opcode, tuple(handle_arg(x) for x in args)))
 
-    out_vars = AsmBlock(
-        lines=linespecs,
-        in_types=TypeList(x.type if isinstance(x, MVar) else get_type(x) for x in arg_all),
-        out_types=TypeList(x.type for x in out_mvars),
-    ).emit(*(x.read(allow_undef=True) if isinstance(x, MVar) else x for x in arg_all))
+    in_vars: list[Var] = []
+    move_instrs: list[BoundInstr[Move]] = []
 
-    assert len(out_vars) == len(out_mvars)
-    for mv, v in zip(out_mvars, out_vars):
+    for mv in mvars:
+        val = mv.read(allow_undef=True)
+        (move_var,), move_instr = Move(val.type).create_bind(val)
+        in_vars.append(move_var)
+        move_instrs.append(move_instr)
+
+    out_vars, inner_instr = AsmBlockInner(
+        lines=linespecs,
+        in_types=TypeList([mv.type for mv in mvars] + [get_type(x) for x in arg_vals]),
+        out_types=TypeList(mv.type for mv in mvars),
+    ).create_bind(*in_vars, *arg_vals)
+
+    with track_caller():
+        AsmBlock.from_parts(*move_instrs, inner_instr).emit()
+
+    assert len(out_vars) == len(mvars)
+    for mv, v in zip(mvars, out_vars):
         mv.write(v)

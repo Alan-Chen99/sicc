@@ -52,12 +52,13 @@ def parent(x: Float) -> Float:
 def main():
 
     a = Autolathe()["X"].avg
-    y = Autolathe()["Y"].avg
+    # y = Autolathe()["Y"].avg
 
-    x = Variable(int)
+    x = Variable(int, a)
 
+    # x.value += 1
     asm_block(
-        ("raw1", x, a.value, y),
+        ("raw1", x, 1, a),
         # ("raw2", a, y, Variable(bool), x),
     )
 

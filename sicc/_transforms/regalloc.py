@@ -346,7 +346,10 @@ def regalloc_try_fuse(ctx: TransformCtx) -> RegallocFuseRes:
         if x != y and can_fuse(x, y):
             perform_fuse(x, y)
         else:
-            assert not tie.force
+            if tie.force:
+                raise RuntimeError(
+                    f"unable to satisfy requirement that {tie.v1} and {tie.v2} is allocated the same register"
+                )
 
     ########################################
     # handle preferred_reg

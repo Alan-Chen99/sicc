@@ -92,12 +92,18 @@ def main():
     # x is of type "Variable", representing a traced value
     # it is a regular python object;
     # the compiler does not know that it is assigned to "x".
+    #
     # if you run a function with this "Variable" object as argument,
     # the compiler will see that you wanted to use the variable.
-    x = f.add(1, 2)
+    x_readonly = f.add(1, 2)
+    # the return of f.add is not mutable; if you want a mutable variable,
+    # create one with Variable
+    x = Variable(x_readonly)
+
     # refers to the same "Variable" python object as x
     x_alias = x
 
+    reveal_type(x_readonly)  # pyright only: Type of "x" is "VarRead[int]"
     reveal_type(x)  # pyright only: Type of "x" is "Variable[int]"
 
     comment("x:", x)
@@ -124,21 +130,21 @@ def main():
 
     ##
     # 16: Comment part 3
-    # 17: add [%r0] 1 2
-    # 18: Comment x: %r0
-    # 19: Comment x_alias: %r0
-    # 20: add [%r0] 1 0
-    # 21: add [%r1] 1 1
-    # 22: add [%r2] 1 2
-    # 23: Comment var 0: %r0
-    # 24: Comment var 1: %r1
-    # 25: Comment var 2: %r2
-    # 26: add [%r0] 3 4
-    # 27: Comment x: %r0
-    # 28: Comment x_alias: %r0
-    # 29: add [%r1] %r0 5.1
-    # 30: Comment new x: %r1
-    # 31: Comment x_alias: %r0
+    # 17: add [%ra] 1 2
+    # 18: Comment x: %ra
+    # 19: Comment x_alias: %ra
+    # 20: add [%ra] 1 0
+    # 21: add [%r0] 1 1
+    # 22: add [%r1] 1 2
+    # 23: Comment var 0: %ra
+    # 24: Comment var 1: %r0
+    # 25: Comment var 2: %r1
+    # 26: add [%ra] 3 4
+    # 27: Comment x: %ra
+    # 28: Comment x_alias: %ra
+    # 29: add [%r0] %ra 5.1
+    # 30: Comment new x: %r0
+    # 31: Comment x_alias: %ra
     ##
 
     ########################################

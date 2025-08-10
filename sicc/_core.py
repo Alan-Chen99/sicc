@@ -46,7 +46,7 @@ from .config import verbose
 
 if TYPE_CHECKING:
     from ._api import UserValue
-    from ._api import Variable
+    from ._api import VarRead
     from ._instructions import Bundle
     from ._instructions import EmitLabel
     from ._instructions import RawInstr
@@ -559,7 +559,7 @@ class InstrBase(abc.ABC):
     @overload
     def _static_out_typing_helper_api[A: VarT](
         self: _InstrTypedOut[tuple[type[A]]],
-    ) -> Variable[A]: ...
+    ) -> VarRead[A]: ...
     def _static_out_typing_helper_api(self: Any) -> Any: ...
 
     @overload
