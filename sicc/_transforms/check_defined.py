@@ -1,6 +1,7 @@
 import networkx as nx
 
 from .._core import AlwaysUnpack
+from .._core import ReadMVar
 from .._diagnostic import mk_warn
 from .._utils import cast_unchecked_val
 from .basic import get_index
@@ -52,7 +53,11 @@ def check_mvars_defined(ctx: TransformCtx) -> None:
             continue
         res = compute_mvar_lifetime(ctx, v.v, AlwaysUnpack())
 
-        undef_uses = [use for use in v.uses if res.reachable[use].possible_undef]
+        undef_uses = [
+            use
+            for use in v.uses
+            if res.reachable[use].possible_undef and not use.check_type(ReadMVar).instr.allow_undef
+        ]
         if len(undef_uses) > 0:
             err = mk_warn(f"mvar {v.v} ({v.v.type.__name__}) can not be proved to be initialized")
             for i, u in enumerate(undef_uses):

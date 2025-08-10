@@ -68,9 +68,11 @@ def global_opts(f: Fragment):
     writeback_mvar_use(f)
     optimize_frag(f)
     run_phases(f, *GLOBAL_OPTS)
+    # fuse_blocks_all(f, efficient_only=True)
+    fuse_blocks_all(f)
 
 
 def regalloc_and_lower(f: Fragment):
-    fuse_blocks_all(f)
+    # fuse_blocks_all(f)
     regalloc(f)
     lower_instrs(f)

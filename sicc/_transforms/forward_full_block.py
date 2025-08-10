@@ -84,7 +84,7 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
         if not support_mvar_analysis(ctx, mv, AlwaysUnpack()):
             return False
         lifetime = compute_mvar_lifetime(ctx, mv, AlwaysUnpack())
-        if pred_block.end in lifetime.reachable:
+        if (lt := lifetime.reachable.get(pred_block.end)) and len(lt.possible_defs) > 0:
             return False
 
     pred_block.contents = pred_block.contents[:-1] + b.body + [pred_block.end]

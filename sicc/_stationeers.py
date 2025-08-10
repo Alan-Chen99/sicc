@@ -17,6 +17,7 @@ from rich.pretty import pretty_repr
 from ._api import Function
 from ._api import Str
 from ._api import UserValue
+from ._api import Variable
 from ._api import VarRead
 from ._api import _get_type
 from ._core import AnyType
@@ -208,7 +209,7 @@ class DeviceBase(Generic[DT_co, N_co]):
     @overload
     def __getitem__(self, logic_type: ValLogicTypeLike) -> DeviceLogicType[Any, Self]: ...
     @overload
-    def __getitem__(self, logic_type: tuple[ValLogicTypeLike, ValBatchMode]) -> VarRead[Any]: ...
+    def __getitem__(self, logic_type: tuple[ValLogicTypeLike, ValBatchMode]) -> Variable[Any]: ...
 
     def __getitem__(self, logic_type: ValLogicTypeLike | tuple[ValLogicTypeLike, ValBatchMode]):
         if isinstance(logic_type, tuple):
@@ -268,7 +269,7 @@ class DeviceLogicType(Generic[T, D_co], VarRead[T]):
     def __repr__(self) -> str:
         return pretty_repr(self)
 
-    def get(self, mode: ValBatchMode) -> VarRead[T]:
+    def get(self, mode: ValBatchMode = BatchMode.AVG) -> Variable[T]:
         if self.device.name is None:
             return Function(LoadBatch(self.typ)).call(
                 self.device.device_type, self.logic_type, mode
@@ -286,19 +287,19 @@ class DeviceLogicType(Generic[T, D_co], VarRead[T]):
         )
 
     @property
-    def avg(self) -> VarRead[T]:
+    def avg(self) -> Variable[T]:
         return self.get(BatchMode.AVG)
 
     @property
-    def sum(self) -> VarRead[T]:
+    def sum(self) -> Variable[T]:
         return self.get(BatchMode.SUM)
 
     @property
-    def min(self) -> VarRead[T]:
+    def min(self) -> Variable[T]:
         return self.get(BatchMode.MIN)
 
     @property
-    def max(self) -> VarRead[T]:
+    def max(self) -> Variable[T]:
         return self.get(BatchMode.MAX)
 
     @override

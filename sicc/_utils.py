@@ -122,7 +122,8 @@ def is_eq_typed[T](x: T) -> Callable[[T], bool]:
 
 def disjoint_union[T](xs: OrderedSet[T], ys: OrderedSet[T]) -> OrderedSet[T]:
     ans = xs.union(ys)
-    assert len(ans) == len(xs) + len(ys)
+    if not len(ans) == len(xs) + len(ys):
+        raise ValueError(f"expected disjoint, but {xs & ys} are in both")
     return ans
 
 

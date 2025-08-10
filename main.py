@@ -46,21 +46,38 @@ def parent(x: Float) -> Float:
     return x + 5
 
 
-@program(loop=False)
+@program(
+    loop=True,
+)
 def main():
-    d1, d2, d3, d4 = [Autolathe(f"MyAutolathe{i}") for i in range(4)]
 
-    print("d1", d1)
+    a = Autolathe()["X"].avg
+    y = Autolathe()["Y"].avg
 
-    check_device(d1)
-    check_device(d2)
-    check_device(d3)
-    check_device(d4)
+    x = Variable(int)
 
-    with while_(lambda: parent(1) > 0):
-        yield_()
-        with if_(~d1.On):
-            break_()
+    asm_block(
+        ("raw1", x, a.value, y),
+        # ("raw2", a, y, Variable(bool), x),
+    )
+
+    comment("result", x)
+
+    return
+
+    # d1, d2, d3, d4 = [Autolathe(f"MyAutolathe{i}") for i in range(4)]
+
+    # print("d1", d1)
+
+    # check_device(d1)
+    # check_device(d2)
+    # check_device(d3)
+    # check_device(d4)
+
+    # with while_(lambda: parent(1) > 0):
+    #     yield_()
+    #     with if_(~d1.On):
+    #         break_()
 
 
 if __name__ == "__main__":

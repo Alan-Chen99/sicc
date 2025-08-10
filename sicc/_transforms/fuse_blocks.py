@@ -164,9 +164,11 @@ def fuse_blocks_trivial_jumps(ctx: TransformCtx) -> bool:
 
 
 @LoopingTransform
-def fuse_blocks_all(ctx: TransformCtx) -> bool:
+def fuse_blocks_all(ctx: TransformCtx, efficient_only: bool = False) -> bool:
     if _fuse_blocks_impl(ctx, trivial_only=False, efficient_only=True):
         return True
+    if efficient_only:
+        return False
     return _fuse_blocks_impl(ctx, trivial_only=False, efficient_only=False)
 
 

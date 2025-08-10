@@ -12,6 +12,7 @@ from .._core import BoundInstr
 from .._core import MVar
 from .._core import NeverUnpack
 from .._core import ReadMVar
+from .._core import Undef
 from .._core import UnpackPolicy
 from .._core import WriteMVar
 from .._instructions import Move
@@ -137,8 +138,9 @@ def compute_mvar_lifetime(
 
     ########################################
 
-    for use in uses:
-        assert len(res[use].possible_defs) >= 1
+    # for use in uses:
+    #     if len(res[use].possible_defs) == 0:
+    #         use.debug.error("use of mvar that can never be defined").throw()
 
     # sort since iteration may not be deterministic
     return MvarLifetimeRes(v.v, dict(sorted(res.items())))
@@ -162,6 +164,22 @@ def elim_mvars_read_writes(ctx: TransformCtx, unpack: UnpackPolicy = AlwaysUnpac
         reachable = res.reachable
 
         ########################################
+        # any use that always reads undef?
+        for use in v.uses:
+            if len(reachable[use].possible_defs) == 0:
+                if not use.check_type(ReadMVar).instr.allow_undef:
+                    err = use.debug.error("variable is always uninitialized when used here")
+                    err.note("in instruction", use)
+                    err.note("defined here", v.v.debug)
+
+                @f.replace_instr(use)
+                def _():
+                    (out_v,) = use.check_type(ReadMVar).outputs_
+                    return Move(out_v.type).bind((out_v,), Undef.undef())
+
+                return True
+
+        ########################################
         # remove defs that can never be read
         for d in v.defs:
             (suc,) = graph.successors(d)
@@ -179,18 +197,22 @@ def elim_mvars_read_writes(ctx: TransformCtx, unpack: UnpackPolicy = AlwaysUnpac
                 continue
 
             if reachable[use].possible_undef:
-                # here values may "wrap around" if it goes def -> jump out -> jump back -> use
+                # here you possibly needs to read a "older" value of the def
                 # we cant do the opt in this case
                 # ex:
                 #
-                # start:
-                # x = f()
-                # if g():
-                #    s.write(x)
-                # h(read(s))
-                # return
+                # while True:
+                #     x = f()
+                #     if g():
+                #         s.write(x)
+                #     h(read(s))
+                #     return
                 #
-                # here s may be undefined, and we should not replace read(s) with x
+                # here s may be "x" from the previous iteration of the loop;
+                # we can not replace read(s) with x
+                #
+                # this case is not possible if there is no path external -> [no write] -> read;
+                # see logic below
                 continue
 
             def_vals = set(x.inputs_[0] for x in reachable[use].possible_defs)

@@ -16,6 +16,7 @@ from rich.text import Text
 
 from ._api import loop
 from ._diagnostic import describe_fn
+from ._diagnostic import register_exclusion
 from ._diagnostic import show_pending_diagnostics
 from ._tracing import TracedProgram
 from ._tracing import trace_program
@@ -23,6 +24,8 @@ from .config import Config
 from .config import console_setup
 from .config import with_rich_spinner
 from .config import with_status
+
+register_exclusion(__file__)
 
 
 class SuppressExit(Exception):

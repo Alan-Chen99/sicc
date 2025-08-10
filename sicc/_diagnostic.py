@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import gc
 import linecache
+import logging
 import os
 import sys
 import weakref
@@ -303,6 +304,7 @@ class Report:
     def new(
         *parts: RenderableType, border_style: str = "traceback.border", depth: int = 0
     ) -> Report:
+        logging.info("created diagnostic report")
         ans = Report(
             trace=get_trace(depth + 1) if verbose.value >= 1 else None,
             border_style=border_style,
@@ -327,7 +329,7 @@ class Report:
         self.add(txt + Text(msg), *parts)
         return self
 
-    def throw(self):
+    def throw(self) -> Never:
         raise CompilerError(self)
 
     def fatal(self) -> Never:

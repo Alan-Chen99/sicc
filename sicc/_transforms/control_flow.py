@@ -252,6 +252,8 @@ def handle_deterministic_var_jump(ctx: TransformCtx) -> bool:
     def _(instr: BoundInstr):
         if not instr.is_pure():
             return None
+        if instr.continues:
+            return None
         targets = res.instr_jumps[instr]
         if len(targets) != 1:
             return None

@@ -10,20 +10,25 @@ from typing import Final
 from typing import Never
 from typing import Protocol
 from typing import Self
+from typing import Sequence
+from typing import TypedDict
 from typing import TypeVar
 from typing import Unpack
 from typing import overload
 from typing import override
 
+from ordered_set import OrderedSet
 from rich.text import Text
 
 from . import _functions as _f
+from ._core import AnyType
 from ._core import Comment
 from ._core import InstrBase
 from ._core import InstrTypedWithArgs_api
 from ._core import Label
 from ._core import MVar
 from ._core import Scope
+from ._core import TypeList
 from ._core import Undef
 from ._core import Value
 from ._core import Var
@@ -43,8 +48,10 @@ from ._instructions import AddF
 from ._instructions import AddI
 from ._instructions import AndB
 from ._instructions import AndI
+from ._instructions import AsmBlock
 from ._instructions import BlackBox
 from ._instructions import DivF
+from ._instructions import EffectExternal
 from ._instructions import Jump
 from ._instructions import MulF
 from ._instructions import MulI
@@ -55,6 +62,7 @@ from ._instructions import PredEq
 from ._instructions import PredLE
 from ._instructions import PredLT
 from ._instructions import PredNEq
+from ._instructions import RawInstr
 from ._instructions import Select
 from ._instructions import SubF
 from ._instructions import SubI
@@ -161,12 +169,23 @@ def _get_label(l: ValLabelLike) -> Value[Label]:
     return _get(l)
 
 
+def mk_label(l: str | None = None) -> Label:
+    """make a label to be emitted later"""
+    return ensure_label(l)
+
+
 def _get_type[T: VarT](v: UserValue[T]) -> type[T]:
     if isinstance(v, VarT):
         return type(v)
     if not isinstance(v, VarRead):  # pyright: ignore[reportUnnecessaryIsInstance]
-        raise TypeError(f"unsupported type: {v}")  # pyright: ignore[reportUnreachable]
+        raise TypeError(  # pyright: ignore[reportUnreachable]
+            f"unsupported type: {type(v)} (value: {v})"
+        )
     return v._get_type()
+
+
+class VariableOpts(TypedDict, total=False):
+    _read_only: bool
 
 
 class Variable[T: VarT](VarRead[T]):
@@ -178,13 +197,38 @@ class Variable[T: VarT](VarRead[T]):
     """
 
     _inner: MVar[T]
+    _read_only: bool
 
-    def __init__(self, x: type[T] | UserValue[T]) -> None:
-        if isinstance(x, type):
-            self._inner = mk_mvar(x)
+    @overload
+    def __init__(self, typ: type[T], /, **kwargs: Unpack[VariableOpts]) -> None: ...
+    @overload
+    def __init__(self, init: UserValue[T], /, **kwargs: Unpack[VariableOpts]) -> None: ...
+    @overload
+    def __init__(
+        self, typ: type[T], init: UserValue[T], /, **kwargs: Unpack[VariableOpts]
+    ) -> None: ...
+    def __init__(
+        self,
+        init_or_typ: type[T] | UserValue[T],
+        init: UserValue[T] | None = None,
+        /,
+        **kwargs: Unpack[VariableOpts],
+    ) -> None:
+        read_only = kwargs.get("_read_only", False)
+
+        self._read_only = read_only
+
+        if init is not None:
+            assert isinstance(init_or_typ, type)
+            self._inner = mk_mvar(init_or_typ)
+            self._inner.write(_get(init))
             return
 
-        x_val = _get(x)
+        if isinstance(init_or_typ, type):
+            self._inner = mk_mvar(init_or_typ)
+            return
+
+        x_val = _get(init_or_typ)
         self._inner = mk_mvar(get_type(x_val))
         self._inner.write(x_val)
 
@@ -206,11 +250,13 @@ class Variable[T: VarT](VarRead[T]):
         return self._inner.type
 
     @property
-    def value(self) -> Variable[T]:
-        return Variable(self)
+    def value(self) -> VarRead[T]:
+        return Variable(self, _read_only=True)
 
     @value.setter
     def value(self, v: UserValue[T]):
+        if self._read_only:
+            raise TypeError(f"writing read-only variable {self}")
         self._inner.write(_get(v))
 
 
@@ -428,7 +474,8 @@ def subr():
 
 
 def undef() -> VarRead[Never]:
-    return Variable(Undef.undef())
+    """return the undef constant"""
+    return Variable(Undef.undef(), _read_only=True)
 
 
 ################################################################################
@@ -530,3 +577,75 @@ def select[V](pred: Bool, on_true: V, on_false: V) -> V:
         ans_vars.append(Variable._from_val(Select(typ).call(pred_, x_, y_)))
 
     return cast_unchecked(true_tree.unflatten(ans_vars))
+
+
+################################################################################
+
+
+def asm(opcode: str, outputs: Sequence[Variable[Any]], /, *args: UserValue) -> None:
+    """
+    this feature is in development and may produce incorret output without warning
+    """
+    args_ = [_get(x) for x in args]
+
+    instr = RawInstr(
+        opcode=opcode,
+        in_types=TypeList(get_types(*args_)),
+        out_types=TypeList(x._get_type() for x in outputs),
+        continues=True,
+        _reads=[EffectExternal()],
+        _writes=[EffectExternal()],
+        jumps=True,
+    )
+    out_vars = instr.emit(*args_)
+    assert len(out_vars) == len(outputs)
+    for out_v, uvar in zip(out_vars, outputs):
+        uvar._inner.write(out_v)
+
+
+def asm_fn(opcode: str, /, *args: UserValue) -> Variable[Any]:
+    """
+    this feature is in development and may produce incorret output without warning
+    """
+    out_var = Variable(AnyType)
+    asm(opcode, [out_var], *args)
+    return Variable(out_var)
+
+
+AsmBlockLine = tuple[str, *tuple[UserValue, ...]]
+
+
+def asm_block(*lines: AsmBlockLine) -> None:
+    """
+    this feature is in development and may produce incorret output without warning
+
+    it is NOT allowed to jump out of the block and jump back in
+    """
+    out_mvars: OrderedSet[MVar] = OrderedSet(())
+
+    for _opcode, *args in lines:
+        for v in args:
+            if isinstance(v, Variable) and not v._read_only:
+                out_mvars.add(v._inner)
+
+    arg_all: OrderedSet[MVar | Value] = OrderedSet(out_mvars)
+
+    def handle_arg(v: UserValue) -> int:
+        if isinstance(v, Variable) and not v._read_only:
+            return out_mvars.index(v._inner)
+        return arg_all.add(_get(v))
+
+    linespecs: list[tuple[str, tuple[int, ...]]] = []
+
+    for opcode, *args in lines:
+        linespecs.append((opcode, tuple(handle_arg(x) for x in args)))
+
+    out_vars = AsmBlock(
+        lines=linespecs,
+        in_types=TypeList(x.type if isinstance(x, MVar) else get_type(x) for x in arg_all),
+        out_types=TypeList(x.type for x in out_mvars),
+    ).emit(*(x.read(allow_undef=True) if isinstance(x, MVar) else x for x in arg_all))
+
+    assert len(out_vars) == len(out_mvars)
+    for mv, v in zip(out_mvars, out_vars):
+        mv.write(v)

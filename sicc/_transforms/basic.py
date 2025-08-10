@@ -327,11 +327,14 @@ def rename_private_vars(ctx: TransformCtx) -> None:
 
 
 def map_vars(f: Fragment, new_vars: dict[Var, Var]) -> None:
+    def get_new(x: Var) -> Var:
+        return new_vars.get(x, x)
+
     @f.map_instrs
     def _(instr: BoundInstr) -> MapInstrsRes:
         return instr.instr.bind(  # pyright: ignore
-            tuple(new_vars[x] for x in instr.outputs),
-            *(new_vars[x] if isinstance(x, Var) else x for x in instr.inputs),
+            tuple(get_new(x) for x in instr.outputs),
+            *(get_new(x) if isinstance(x, Var) else x for x in instr.inputs),
         )
 
 
@@ -405,7 +408,9 @@ def map_mvars(f: Fragment, new_mvars: dict[MVar, MVar]) -> None:
 
         if any(isinstance(x, EffectMvar) for x in instr.reads()):
             if i := instr.isinst(ReadMVar):
-                return ReadMVar(get_new(i.instr.s)).bind(i.outputs_, *i.inputs_)
+                return ReadMVar(get_new(i.instr.s), allow_undef=i.instr.allow_undef).bind(
+                    i.outputs_, *i.inputs_
+                )
             raise TypeError(instr)
 
         if any(isinstance(x, EffectMvar) for x in instr.writes()):

@@ -18,14 +18,17 @@ from .._core import FORMAT_VAL_FN
 from .._core import AlwaysUnpack
 from .._core import BoundInstr
 from .._core import MVar
+from .._core import NeverUnpack
 from .._core import ReadMVar
+from .._core import RegallocExtend
+from .._core import RegallocSkip
+from .._core import RegallocTie
 from .._core import RegInfo
 from .._core import Register
 from .._core import Value
 from .._core import Var
 from .._core import WriteMVar
 from .._diagnostic import mk_error
-from .._instructions import Move
 from .._tracing import mk_mvar
 from .._tracing import mk_var
 from .._utils import ByIdMixin
@@ -34,8 +37,6 @@ from .._utils import cast_unchecked_val
 from .._utils import disjoint_union
 from .._utils import get_id
 from .._utils import in_typed
-from .._utils import isinst
-from .._utils import mk_ordered_set
 from ..config import verbose
 from .basic import MVarInfo
 from .basic import VarInfo
@@ -73,19 +74,21 @@ class RegallocLifetimeRes:
 
 @CachedFn
 def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
+    f = ctx.frag
     index = get_index.call_cached(ctx, AlwaysUnpack())
+    index_nounpack = get_index.call_cached(ctx, NeverUnpack())
     graph = build_control_flow_graph.call_cached(ctx, out_unpack=AlwaysUnpack())
 
-    lifetimes: dict[AnyVar, OrderedSet[CfgNode]] = {
-        x: mk_ordered_set() for x in list(index.mvars) + list(index.vars)
-    }
+    lifetimes: dict[AnyVar, OrderedSet[CfgNode]] = {}
 
     def handle_one(info: VarInfo | MVarInfo, reachable: set[CfgNode]) -> Iterator[CfgNode]:
         for instr in info.defs:
             yield instr
 
         for instr in info.uses:
-            if any(suc in reachable for suc in graph.successors(instr)):
+            if isinstance(info.v, Var) and RegallocExtend(info.v) in instr.regalloc_prefs():
+                yield instr
+            elif any(suc in reachable for suc in graph.successors(instr)):
                 yield instr
 
         for instr in reachable:
@@ -100,6 +103,12 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
         lifetimes[mv.v] = OrderedSet(handle_one(mv, set(res.reachable)))
 
     for v in index.vars.values():
+        v_nounpack = index_nounpack.vars[v.v]
+        if len(v_nounpack.uses) == 0 and in_typed(
+            RegallocSkip(v.v), v_nounpack.def_instr.regalloc_prefs()
+        ):
+            continue
+
         hide_defs = cast_unchecked_val(graph)(
             nx.restricted_view(  # pyright: ignore[reportUnknownMemberType]
                 graph, [v.def_instr], []
@@ -107,6 +116,7 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
         )
         reachable: set[CfgNode] = set()
         for use in v.uses:
+            reachable.add(use)
             reachable |= nx.ancestors(hide_defs, use)  # pyright: ignore[reportUnknownMemberType]
 
         # note: vars are never live at "external" due to their invariant
@@ -177,7 +187,11 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
             if x < y and may_conflict(x, y):
                 conflict_graph.add_edge(x, y)
 
-    return RegallocLifetimeRes(lifetimes=lifetimes, conflict_graph=conflict_graph)
+    ans = RegallocLifetimeRes(lifetimes=lifetimes, conflict_graph=conflict_graph)
+    if verbose.value >= 1:
+        with ans.with_anno():
+            print(f.__rich__("live vars at end of each instruction:"))
+    return ans
 
 
 def _can_fuse(x: RegInfo, y: RegInfo) -> bool:
@@ -244,10 +258,8 @@ class RegallocFuseRes:
     group_conflict_graph: "nx.Graph[VarGroup]"
 
     def annotate(self, instr: BoundInstr) -> Text:
-        if edge := _get_possible_fuse(instr):
-            x, y = edge
-            x, y = self.groups[x], self.groups[y]
-            if x == y:
+        if ties := _get_possible_fuse(instr):
+            if all(self.groups[tie.v1] == self.groups[tie.v2] for tie in ties):
                 return Text("fused", "ic10.comment")
             else:
                 return Text("fuse failure", "ic10.comment")
@@ -255,8 +267,11 @@ class RegallocFuseRes:
         return Text()
 
     def format_val(self, v: Value | MVar) -> str:
-        if isinstance(v, MVar | Var) and (g := self.groups.get(v)):
-            return f"{v!r}{g.show()}"
+        if isinstance(v, MVar | Var):
+            if g := self.groups.get(v):
+                return f"{v!r}{g.show()}"
+            else:
+                return f"{v!r}[skip]"
         return repr(v)
 
     @contextmanager
@@ -265,28 +280,8 @@ class RegallocFuseRes:
             yield
 
 
-def _get_possible_fuse(instr: BoundInstr) -> tuple[AnyVar, AnyVar] | None:
-    if i := instr.isinst(Move):
-        (x,) = i.inputs_
-        (y,) = i.outputs_
-        if not isinst(x, Var):
-            return None
-
-    elif i := instr.isinst(ReadMVar):
-        x = i.instr.s
-        (y,) = i.outputs_
-
-    elif i := instr.isinst(WriteMVar):
-        (x,) = i.inputs_
-        y = i.instr.s
-        if not isinst(x, Var):
-            return None
-
-    else:
-        return None
-
-    x, y = sorted([x, y])
-    return x, y
+def _get_possible_fuse(instr: BoundInstr) -> list[RegallocTie]:
+    return [x.normalize() for x in instr.regalloc_prefs() if isinstance(x, RegallocTie)]
 
 
 @CachedFn
@@ -337,21 +332,21 @@ def regalloc_try_fuse(ctx: TransformCtx) -> RegallocFuseRes:
     ########################################
     # fuse trivial assignment x := y
 
-    possible_fuses: dict[tuple[AnyVar, AnyVar], int] = {}
+    possible_fuses: dict[RegallocTie, int] = {}
 
     for instr in index.instrs_unpacked():
-        if edge := _get_possible_fuse(instr):
-            possible_fuses[edge] = possible_fuses.get(edge, 0) + 1
-
-    # print("possible_fuses", possible_fuses)
+        for tie in _get_possible_fuse(instr):
+            possible_fuses[tie] = possible_fuses.get(tie, 0) + 100 if tie.force else 1
 
     possible_fuses_ = sorted(possible_fuses.items(), key=lambda item: item[1], reverse=True)
-    for (x, y), _w in possible_fuses_:
-        x = groups[x]
-        y = groups[y]
+    for tie, _w in possible_fuses_:
+        x = groups[tie.v1]
+        y = groups[tie.v2]
 
-        if can_fuse(x, y):
+        if x != y and can_fuse(x, y):
             perform_fuse(x, y)
+        else:
+            assert not tie.force
 
     ########################################
     # handle preferred_reg

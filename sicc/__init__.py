@@ -9,6 +9,7 @@ from ._cli import program as program
 # types
 from ._api import UserValue as UserValue
 from ._api import Variable as Variable
+from ._core import Label as Label
 from ._stationeers import BatchMode as BatchMode
 from ._stationeers import Color as Color
 from ._stationeers import LogicType as LogicType
@@ -23,8 +24,12 @@ from ._stationeers import ValBatchMode as ValBatchMode
 from ._stationeers import ValLogicTypeLike as ValLogicTypeLike
 
 # control flow primitives
+from ._api import asm as asm
+from ._api import asm_block as asm_block
+from ._api import asm_fn as asm_fn
 from ._api import branch as branch
 from ._api import jump as jump
+from ._api import mk_label as mk_label
 from ._tracing import exit_program as exit_program
 from ._tracing import label as label
 
@@ -56,4 +61,5 @@ from ._stationeers import DeviceTyped as DeviceTyped
 # functions
 from ._api import comment as comment
 from ._api import select as select
+from ._api import undef as undef
 from ._stationeers import yield_ as yield_

@@ -91,6 +91,39 @@ class RegInfo:
         return self.allocated_reg
 
 
+@dataclass(frozen=True)
+class RegallocSkip:
+    """allow a output var to be skipped if it is not used anywhere"""
+
+    v: Var
+
+
+@dataclass(frozen=True)
+class RegallocTie:
+    """v1 and v2 should try to be allocated the same reg"""
+
+    v1: Var | MVar
+    v2: Var | MVar
+    force: bool
+
+    def normalize(self) -> RegallocTie:
+        v1, v2 = sorted([self.v1, self.v2])
+        return RegallocTie(v1, v2, self.force)
+
+
+@dataclass(frozen=True)
+class RegallocExtend:
+    """
+    by default, a input reg can be reused as a output.
+    this marks a input reg as not the case
+    """
+
+    v: Var
+
+
+RegallocPref = RegallocSkip | RegallocTie | RegallocExtend
+
+
 @dataclass
 class RawText:
     """part of final assembly"""
@@ -118,6 +151,7 @@ class AnyType(AsRaw):
         assert False, "unreachable"
 
 
+@dataclass(frozen=True)
 class Undef(AsRaw):
     @staticmethod
     def undef() -> Any:
@@ -302,6 +336,14 @@ class _InstrTypedOut[O](Protocol):
     out_types: Final[O]
 
 
+class InstrTypedWithArgsIn[I](Protocol):
+    def _static_in_typing_helper(self, x: I, /) -> None: ...
+
+
+class InstrTypedWithArgsOut[O](Protocol):
+    def _static_out_typing_helper(self) -> O: ...
+
+
 class InstrTypedWithArgs[I, O, S = InstrBase](Protocol):
     def _self(self) -> S: ...
     def _static_in_typing_helper(self, x: I, /) -> None: ...
@@ -412,6 +454,13 @@ class InstrBase(abc.ABC):
         """does it contain EmitLabel or equirvalent?"""
         return []
 
+    def regalloc_prefs(self, instr: BoundInstr[Any], /) -> Iterable[RegallocPref]:
+        """
+        FIXME:
+        currently RegallocSkip are accessed not-unpacked while RegallocTie are accessed as always-unpacked
+        """
+        return []
+
     def format_expr_part(self, instr: BoundInstr[Any], /) -> Text:
         ans = Text()
         mark = self.jumps and any(get_type(x) == Label for x in instr.inputs)
@@ -463,8 +512,6 @@ class InstrBase(abc.ABC):
         ans += self.format_comment(instr)
 
         return ans
-
-    # format_with_args: Callable[..., Text] = _default_format
 
     ################################################################################
     # stub methods for static typing
@@ -624,11 +671,11 @@ class BoundInstr(Generic[B_co], ByIdMixin):
     # TODO: organize these methods
 
     @property
-    def inputs_[I1, O1](self: BoundInstr[InstrTypedWithArgs[I1, O1]]) -> I1:
+    def inputs_[I1](self: BoundInstr[InstrTypedWithArgsIn[I1]]) -> I1:
         return cast_unchecked(self.inputs)
 
     @property
-    def outputs_[I1, O1](self: BoundInstr[InstrTypedWithArgs[I1, O1]]) -> O1:
+    def outputs_[O1](self: BoundInstr[InstrTypedWithArgsOut[O1]]) -> O1:
         return cast_unchecked(self.outputs)
 
     def check_scope(self):
@@ -746,6 +793,10 @@ class BoundInstr(Generic[B_co], ByIdMixin):
     def is_side_effect_free(self) -> bool:
         return not self.writes()
 
+    def regalloc_prefs(self) -> list[RegallocPref]:
+        assert isinstance(self.instr, InstrBase)
+        return list(self.instr.regalloc_prefs(self))
+
 
 ################################################################################
 
@@ -789,8 +840,8 @@ class MVar[T: VarT = Any](ByIdMixin):
     reg: RegInfo
     debug: DebugInfo
 
-    def read(self) -> Var[T]:
-        return ReadMVar(self).call()
+    def read(self, allow_undef: bool = False) -> Var[T]:
+        return ReadMVar(self, allow_undef=allow_undef).call()
 
     def write(self, v: Value[T]) -> None:
         () = WriteMVar(self).emit(v)
@@ -820,14 +871,15 @@ class ReadMVar[T: VarT = Any](InstrBase):
 
     jumps = False
 
-    def __init__(self, s: MVar[T]) -> None:
+    def __init__(self, s: MVar[T], allow_undef: bool) -> None:
         self.s = s
         self.in_types = ()
         self.out_types = (s.type,)
+        self.allow_undef = allow_undef
 
     @override
     def format_expr_part(self, instr: BoundInstr[Self], /) -> Text:
-        return self.s._format()
+        return self.s._format() + (" (allow_undef)" if self.allow_undef else "")
 
     @override
     def reads(self, instr: BoundInstr[Self], /) -> EffectBase:
@@ -845,6 +897,11 @@ class ReadMVar[T: VarT = Any](InstrBase):
         else:
             mv = mk_var(self.s.type, reg=self.s.reg, debug=self.s.debug)
             yield Move(self.s.type).bind((opt,), mv)
+
+    @override
+    def regalloc_prefs(self, instr: BoundInstr[Self]) -> Iterable[RegallocPref]:
+        (out_var,) = instr.outputs_
+        yield RegallocTie(instr.instr.s, out_var, force=False)
 
 
 class WriteMVar[T: VarT = Any](InstrBase):
@@ -877,6 +934,12 @@ class WriteMVar[T: VarT = Any](InstrBase):
         else:
             mv = mk_var(self.s.type, reg=self.s.reg, debug=self.s.debug)
             yield Move(self.s.type).bind((mv,), ipt)
+
+    @override
+    def regalloc_prefs(self, instr: BoundInstr[Self]) -> Iterable[RegallocPref]:
+        (arg,) = instr.inputs_
+        if isinstance(arg, Var):
+            yield RegallocTie(arg, instr.instr.s, force=False)
 
 
 ################################################################################

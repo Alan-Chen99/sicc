@@ -6,11 +6,9 @@ from typing import Any
 from typing import Iterable
 from typing import Iterator
 from typing import Self
-from typing import TypedDict
-from typing import Unpack
+from typing import Sequence
 from typing import cast
 from typing import final
-from typing import overload
 from typing import override
 
 from ordered_set import OrderedSet
@@ -29,8 +27,13 @@ from ._core import InstrBase
 from ._core import InternalValLabel
 from ._core import Label
 from ._core import RawText
+from ._core import RegallocExtend
+from ._core import RegallocPref
+from ._core import RegallocSkip
+from ._core import RegallocTie
 from ._core import Register
 from ._core import TypeList
+from ._core import Undef
 from ._core import Value
 from ._core import Var
 from ._core import VarT
@@ -88,10 +91,20 @@ class RawInstr(InstrBase):
     in_types: TypeList[tuple[Value, ...]]  # pyright: ignore[reportIncompatibleVariableOverride]
     out_types: TypeList[tuple[Var, ...]]  # pyright: ignore[reportIncompatibleVariableOverride]
 
+    _reads: list[EffectBase]
+    _writes: list[EffectBase]
     continues: bool
     jumps: bool
 
     src_instr: type[InstrBase] | None = None
+
+    @override
+    def reads(self, instr: BoundInstr[Self]):
+        return self._reads
+
+    @override
+    def writes(self, instr: BoundInstr[Self]):
+        return self._writes
 
     @staticmethod
     def make(
@@ -100,6 +113,8 @@ class RawInstr(InstrBase):
         *args: Value,
         continues: bool = True,
         jumps: bool = True,
+        reads: Sequence[EffectBase] = (),
+        writes: Sequence[EffectBase] = (),
         src_instr: type[InstrBase] | None = None,
     ) -> BoundInstr[RawInstr]:
         out_vars = tuple(out_vars)
@@ -109,8 +124,10 @@ class RawInstr(InstrBase):
             out_types=TypeList(get_types(*out_vars)),
             continues=continues,
             jumps=jumps,
+            _reads=list(reads),
+            _writes=list(writes),
             src_instr=src_instr,
-        ).bind_untyped(out_vars, *args)
+        ).bind(out_vars, *args)
 
     @override
     def format(self, instr: BoundInstr[Self]) -> Text:
@@ -151,38 +168,6 @@ class RawInstr(InstrBase):
         return RawText(ans)
 
 
-class RawAsmOpts(TypedDict, total=False):
-    continues: bool
-    jumps: bool
-
-
-@overload
-def raw_asm[T: VarT](
-    opcode: str, out_type: type[T], /, *args: Value, **kwargs: Unpack[RawAsmOpts]
-) -> Var[T]: ...
-@overload
-def raw_asm(opcode: str, out_type: None, /, *args: Value, **kwargs: Unpack[RawAsmOpts]) -> None: ...
-
-
-def raw_asm[T: VarT](
-    opcode: str, out_type: type[T] | None, /, *args: Value, **kwargs: Unpack[RawAsmOpts]
-) -> Var[T] | None:
-    kwargs.setdefault("continues", True)
-    kwargs.setdefault("jumps", True)
-
-    if out_type is None:
-        () = RawInstr(opcode, TypeList(get_types(*args)), TypeList(), **kwargs).emit(*args)
-        return None
-    else:
-        (ans,) = RawInstr(
-            opcode,
-            TypeList(get_types(*args)),
-            TypeList((out_type,)),
-            **kwargs,
-        ).emit(*args)
-        return ans.check_type(out_type)
-
-
 class AsmInstrBase(InstrBase):
     """instr that lowers directly to an asm op"""
 
@@ -217,10 +202,18 @@ class Move[T: VarT = Any](AsmInstrBase):
         (ipt,) = instr.inputs_
         (opt,) = instr.outputs_
 
-        if isinstance(ipt, Var) and ipt.reg.allocated == opt.reg.allocated:
+        if ipt == Undef.undef():
+            return
+        elif isinstance(ipt, Var) and ipt.reg.allocated == opt.reg.allocated:
             return
         else:
             yield from super().lower(instr)
+
+    @override
+    def regalloc_prefs(self, instr: BoundInstr[Self]) -> Iterable[RegallocPref]:
+        (arg,) = instr.inputs_
+        if isinstance(arg, Var):
+            yield RegallocTie(arg, instr.outputs_[0], force=False)
 
 
 class EndPlaceholder(InstrBase):
@@ -589,7 +582,6 @@ class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
         )
 
 
-@dataclass
 class PredBranch(
     Bundle[
         BoundInstr[PredicateBase],
@@ -607,6 +599,11 @@ class PredBranch(
         )
         yield Jump().bind((), f_l)
 
+    @override
+    def regalloc_prefs(self, instr: BoundInstr[Self]) -> Iterable[RegallocPref]:
+        pred, _br = instr.unpack()
+        yield RegallocSkip(pred.outputs_[0])
+
 
 class PredCondJump(
     Bundle[
@@ -623,6 +620,11 @@ class PredCondJump(
 
         assert pred.instr.opcode.startswith("s")
         yield RawInstr.make("b" + pred.instr.opcode.removeprefix("s"), [], *pred.inputs, label)
+
+    @override
+    def regalloc_prefs(self, instr: BoundInstr[Self]) -> Iterable[RegallocPref]:
+        pred, _br = instr.unpack()
+        yield RegallocSkip(pred.outputs_[0])
 
 
 class JumpAndLink(
@@ -667,3 +669,113 @@ class CondJumpAndLink(
             yield write_mv
             yield PredCondJump.from_parts(pred, cjump)
             yield emit_label
+
+    @override
+    def regalloc_prefs(self, instr: BoundInstr[Self]) -> Iterable[RegallocPref]:
+        _write_mv, pred, _cjump, _emit_label = instr.unpack()
+        yield RegallocSkip(pred.outputs_[0])
+
+
+################################################################################
+
+
+@dataclass
+class AsmBlock(InstrBase):
+    """
+    a block:
+    add [a] a 1
+    breq a 0 +2
+    add [b] a x
+    add [a] a 2
+
+    will have:
+    inputs: [a_init, b_init, 1, x, 2] (init vals of outs followed by consts)
+    outputs: [a_out, b_out]
+
+    x is considerred a "const" bc it is never written
+    a, b are written so they are out vars
+
+    note that even though it appears that b is never read, it actually "is":
+    if the branch skips the b assignment, the prev value of b will be the result
+    so it is neccessary for us to have "b_init" as a arg
+    """
+
+    # opcode, out_vars, in_vars
+    lines: list[tuple[str, tuple[int, ...]]]
+
+    in_types: TypeList[tuple[Value, ...]]  # pyright: ignore[reportIncompatibleVariableOverride]
+    out_types: TypeList[tuple[Var, ...]]  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @property
+    def n_vars(self) -> int:
+        return len(self.out_types)
+
+    @override
+    def regalloc_prefs(self, instr: BoundInstr[Self]) -> Iterable[RegallocPref]:
+        for in_const in instr.inputs_[self.n_vars :]:
+            if isinstance(in_const, Var):
+                yield RegallocExtend(in_const)
+
+        for out_var, out_init in zip(instr.outputs_, instr.inputs_[: self.n_vars]):
+            if isinstance(out_init, Var):
+                yield RegallocTie(out_var, out_init, force=True)
+
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        for out_var, out_init in zip(instr.outputs_, instr.inputs_[: self.n_vars]):
+            if not isinstance(out_init, Var):
+                yield Move(out_var.type).bind((out_var,), out_init)
+
+        for opcode, vars in self.lines:
+            yield RawInstr.make(
+                opcode,
+                (),
+                *[instr.outputs_[x] if x < self.n_vars else instr.inputs_[x] for x in vars],
+            )
+
+    @override
+    def reads(self, instr: BoundInstr[Self]) -> EffectBase:
+        return EffectExternal()
+
+    @override
+    def writes(self, instr: BoundInstr[Self]) -> EffectBase:
+        return EffectExternal()
+
+    @override
+    def format_with_anno(self, instr: BoundInstr[Self]) -> RenderableType:
+        comment = self.format_comment(instr)
+
+        @group()
+        def mk_group() -> Iterator[RenderableType]:
+            if len(comment) > 0:
+                yield comment[2:]
+
+            def fmt(v: int) -> Text:
+                if v < self.n_vars:
+                    return Text(f"%{chr(ord('a') + v)}", "bold")
+                return format_val(instr.inputs_[v])
+
+            for i in range(self.n_vars):
+                ans = Text()
+                ans += fmt(i)
+                ans += Text.assemble("(", format_val(instr.outputs_[i]), ")")
+                ans += " := "
+                ans += format_val(instr.inputs_[i])
+
+                yield ans
+
+            for opcode, vars in self.lines:
+                ans = Text()
+                ans += Text(opcode, "ic10.raw_opcode")
+                for arg in vars:
+                    ans += " "
+                    ans += fmt(arg)
+
+                yield ans
+
+        return Panel(
+            mk_group(),
+            title=Text("AsmBlock", "ic10.jump"),
+            # title=self.format(instr),
+            title_align="left",
+        )
