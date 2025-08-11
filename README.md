@@ -15,6 +15,8 @@ Install [uv](https://github.com/astral-sh/uv) and run
 git clone https://github.com/Alan-Chen99/sicc-template.git
 cd sicc-template
 uv sync
+# optional: upgrade to latest git version
+# uv lock --upgrade
 source ./.venv/bin/activate
 python main.py
 ```
