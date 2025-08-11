@@ -7,6 +7,7 @@ theme = Theme(
         "ic10.int": "",
         "ic10.float": "",
         "ic10.str": "green",
+        "ic10.undef": "bold reverse red",
         "ic10.other": "magenta red",
         #
         "ic10.opcode": "",

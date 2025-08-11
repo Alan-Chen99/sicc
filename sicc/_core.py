@@ -158,7 +158,7 @@ class Undef(AsRaw):
         return Undef()
 
     def as_raw(self, ctx: AsRawCtx) -> RawText:
-        return RawText.str("0")
+        return RawText.str("0", "ic10.undef")
 
     def __repr__(self) -> str:
         return "undef"
@@ -370,6 +370,8 @@ def get_style(typ: type[VarT]) -> str:
         return "ic10." + typ.__name__
     if issubclass(typ, Label):
         return "ic10.label"
+    if issubclass(typ, Undef):
+        return "ic10.undef"
     return "ic10.other"
 
 
@@ -810,7 +812,7 @@ class Comment(InstrBase):
     @override
     def format(self, instr: BoundInstr[Self]) -> Text:
         ans = Text()
-        ans += Text("Comment", "ic10.jump")
+        ans += Text("*", "ic10.jump")
         ans += " "
         ans += self.text
         for x in instr.inputs:

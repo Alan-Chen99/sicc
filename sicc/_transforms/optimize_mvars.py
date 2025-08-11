@@ -17,6 +17,7 @@ from .._core import UnpackPolicy
 from .._core import WriteMVar
 from .._instructions import Move
 from .._utils import cast_unchecked_val
+from ..config import verbose
 from .basic import get_index
 from .control_flow import CfgNode
 from .control_flow import build_control_flow_graph
@@ -169,7 +170,8 @@ def elim_mvars_read_writes(ctx: TransformCtx, unpack: UnpackPolicy = AlwaysUnpac
             if len(reachable[use].possible_defs) == 0:
                 if not use.check_type(ReadMVar).instr.allow_undef:
                     err = use.debug.error("variable is always uninitialized when used here")
-                    err.note("in instruction", use)
+                    if verbose.value >= 1:
+                        err.note("in instruction", use)
                     err.note("defined here", v.v.debug)
 
                 @f.replace_instr(use)

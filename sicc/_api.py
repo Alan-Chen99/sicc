@@ -622,12 +622,14 @@ def asm_block(*lines: AsmBlockLine) -> None:
     """
     this feature is in development and may produce incorret output without warning
 
-    it is NOT allowed to jump out of the block and jump back in
+    it is NOT allowed to jump out of the block
     """
     mvars: OrderedSet[MVar] = OrderedSet(())
 
     for _opcode, *args in lines:
         for v in args:
+            if _get_type(v) == Label:
+                raise TypeError(f"using label {v} as argument to asm_block is unsupported")
             if isinstance(v, Variable) and not v._read_only:
                 mvars.add(v._inner)
 
