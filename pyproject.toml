@@ -12,6 +12,17 @@ dependencies = [
   "rich>=14.0.0",
 ]
 
+[project.scripts]
+sicc = "sicc._cli:main"
+
+[build-system]
+requires = ["uv_build>=0.8.7,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "sicc"
+module-root = ""
+
 [dependency-groups]
 dev = [
   "autoflake>=2.3.1",
@@ -19,6 +30,8 @@ dev = [
   "black>=25.1.0",
   "ipython>=9.4.0",
   "pyright>=1.1.403",
+  "pytest-cov>=6.2.1",
+  "pytest>=8.4.1",
 ]
 
 [tool.black]
@@ -30,9 +43,7 @@ line_length = 100
 treat_all_comments_as_code = true
 force_single_line = true
 group_by_package = true
-
-# [tool.autoflake]
-# ignore-init-module-imports = true
+known_first_party = ["sicc", "test_utils"]
 
 [tool.pyright]
 exclude = [".venv"]

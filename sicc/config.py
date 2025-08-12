@@ -63,6 +63,9 @@ def console_setup() -> None:
     """
     setup logging, traceback, theme
     """
+    # ensure "register_exclusion" all gets called
+    from ._diagnostic import TRACEBACK_SUPPRESS
+
     format = "%(message)s"
     if verbose.value >= 2:
         level = logging.DEBUG
@@ -78,7 +81,10 @@ def console_setup() -> None:
         handlers=[RichHandler(show_time=False)],
     )
     reconfigure(theme=theme, width=console_width.value)
-    rich.traceback.install()
+    if verbose.value >= 1:
+        rich.traceback.install()
+    else:
+        rich.traceback.install(suppress=TRACEBACK_SUPPRESS.value)
 
 
 ################################################################################

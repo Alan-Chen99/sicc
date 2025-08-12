@@ -1,0 +1,5 @@
+_BLACKBOX r0 1
+blt r0 1 3
+# true_branch
+# noop (jump here to exit)
+# 4 lines total (not including this line)

@@ -189,13 +189,13 @@ class AsmInstrBase(InstrBase):
 ################################################################################
 
 
-class Move[T: VarT = Any](AsmInstrBase):
+class MoveBase[O: VarT, I: VarT](AsmInstrBase):
     jumps = False
 
-    def __init__(self, typ: type[T]) -> None:
+    def __init__(self, in_typ: type[I], out_typ: type[O]) -> None:
         self.opcode = "move"
-        self.in_types = (typ,)
-        self.out_types = (typ,)
+        self.in_types = (in_typ,)
+        self.out_types = (out_typ,)
 
     @override
     def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
@@ -214,6 +214,15 @@ class Move[T: VarT = Any](AsmInstrBase):
         (arg,) = instr.inputs_
         if isinstance(arg, Var):
             yield RegallocTie(arg, instr.outputs_[0], force=False)
+
+
+class Move[T: VarT = Any](MoveBase[T, T]):
+    def __init__(self, typ: type[T]) -> None:
+        super().__init__(typ, typ)
+
+
+class Transmute[O: VarT, I: VarT](MoveBase[O, I]):
+    pass
 
 
 class EndPlaceholder(InstrBase):

@@ -10,7 +10,7 @@ from .branch import handle_const_or_not_branch
 from .branch import inline_pred_to_branch
 from .check_defined import check_mvars_defined
 from .check_defined import check_vars_defined
-from .control_flow import handle_deterministic_var_jump
+from .control_flow import handle_deterministic_jump
 from .control_flow import remove_unreachable_code
 from .forward_full_block import forward_remove_full_block
 from .fuse_blocks import fuse_blocks_all
@@ -23,6 +23,7 @@ from .optimize_mvars import elim_mvars_read_writes
 from .optimize_mvars import writeback_mvar_use
 from .regalloc import regalloc
 from .remove_trivial_vars import remove_trivial_vars_
+from .utils import frag_is_global
 from .utils import run_phases
 
 FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
@@ -35,7 +36,7 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
     remove_trivial_blocks,
     #
     remove_unused_side_effect_free,
-    handle_deterministic_var_jump,
+    handle_deterministic_jump,
     fuse_blocks_trivial_jumps,
     handle_const_or_not_branch,
     #
@@ -64,12 +65,13 @@ def global_checks(f: Fragment):
 
 
 def global_opts(f: Fragment):
-    optimize_frag(f)
-    writeback_mvar_use(f)
-    optimize_frag(f)
-    run_phases(f, *GLOBAL_OPTS)
-    # fuse_blocks_all(f, efficient_only=True)
-    fuse_blocks_all(f)
+    with frag_is_global.bind(True):
+        optimize_frag(f)
+        writeback_mvar_use(f)
+        optimize_frag(f)
+        run_phases(f, *GLOBAL_OPTS)
+        # fuse_blocks_all(f, efficient_only=True)
+        fuse_blocks_all(f)
 
 
 def regalloc_and_lower(f: Fragment):

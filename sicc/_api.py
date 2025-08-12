@@ -69,6 +69,7 @@ from ._instructions import RawInstr
 from ._instructions import Select
 from ._instructions import SubF
 from ._instructions import SubI
+from ._instructions import Transmute
 from ._instructions import UnreachableChecked
 from ._tracing import _CUR_SCOPE
 from ._tracing import RawSubr
@@ -159,6 +160,12 @@ class VarRead[T: VarT](abc.ABC):
     __gt__ = late_fn(lambda: greater_than)
     __ge__ = late_fn(lambda: greater_than_or_eq)
 
+    def transmute[O: VarT](self, out_type: type[O] = AnyType) -> VarRead[O]:
+        """
+        currently often generate extra move instructions; might get fixed later
+        """
+        return Function(Transmute(self._get_type(), out_type)).call(self)
+
 
 def _get[T: VarT](v: UserValue[T]) -> Value[T]:
     if isinstance(v, VarT):
@@ -239,7 +246,7 @@ class Variable[T: VarT](VarRead[T]):
         return repr(self._inner)
 
     @staticmethod
-    def _from_val_ro[T1: VarT](v: Value[T1]) -> Variable[T1]:
+    def _from_val_ro[T1: VarT](v: Value[T1]) -> VarRead[T1]:
         ans = Variable(get_type(v), _read_only=True)
         ans._inner.write(v)
         return ans
@@ -257,7 +264,7 @@ class Variable[T: VarT](VarRead[T]):
         return Variable(self, _read_only=True)
 
     @value.setter
-    def value(self, v: UserValue[T]):
+    def value(self, v: UserValue[T]) -> None:
         if self._read_only:
             raise TypeError(f"writing read-only variable {self}")
         self._inner.write(_get(v))
@@ -456,21 +463,24 @@ class Subr[F]:
         self.fn = fn
         self._subr: TracedSubr[F] | None = None
 
-    @property
-    def __call__[**P, R](self: Subr[Callable[P, R]]) -> Callable[P, R]:
-        def inner(*args: P.args, **kwargs: P.kwargs) -> R:
-            if self._subr is None:
-                self._subr = trace_to_subr(self.fn, *args, **kwargs)
-            return self._subr.call(*args, **kwargs)
-
-        return inner
+    def __call__[**P, R](self: Subr[Callable[P, R]], *args: P.args, **kwargs: P.kwargs) -> R:
+        if self._subr is None:
+            self._subr = trace_to_subr(self.fn, *args, **kwargs)
+        return self._subr.call(*args, **kwargs)
 
 
-def subr():
-    def inner[F](fn: F) -> Subr[F]:
+@dataclass
+class SubrFactory:
+    inline_always: bool
+
+    def __call__[F](self, fn: F) -> Subr[F]:
+        if self.inline_always:
+            raise NotImplementedError()
         return Subr(fn)
 
-    return inner
+
+def subr(*, inline_always: bool = False) -> SubrFactory:
+    return SubrFactory(inline_always=inline_always)
 
 
 ################################################################################
@@ -536,6 +546,12 @@ def branch(cond: Bool, on_true: ValLabelLike, on_false: ValLabelLike) -> None:
     return _f.branch(_get(cond), _get_label(on_true), _get_label(on_false))
 
 
+def cjump(cond: Bool, on_true: ValLabelLike) -> None:
+    cont = mk_internal_label("cjump_cont")
+    _f.branch(_get(cond), _get_label(on_true), cont)
+    label(cont)
+
+
 def if_(cond: Bool) -> AbstractContextManager[None]:
     return trace_if(_get(cond))
 
@@ -548,14 +564,76 @@ def while_(cond_fn: Callable[[], Bool]) -> AbstractContextManager[None]:
 
 
 def loop() -> AbstractContextManager[None]:
-    return while_(lambda: True)
+    return trace_while(lambda: True)
 
 
 ################################################################################
 
 
+type _CallableOr[T] = Callable[[], T] | T
+
+
 @overload
-def select[T: VarT](pred: Bool, on_true: UserValue[T], on_false: UserValue[T]) -> Variable[T]: ...
+def cond[T: VarT](
+    pred: Bool, on_true: _CallableOr[UserValue[T]], on_false: _CallableOr[UserValue[T]]
+) -> VarRead[T]: ...
+@overload
+def cond[V](pred: Bool, on_true: _CallableOr[V], on_false: _CallableOr[V]) -> V: ...
+
+
+def cond(pred: Bool, on_true: Any, on_false: Any) -> Any:
+    pred_ = _get(pred)
+
+    true_l = mk_internal_label("cond_true_branch")
+    false_l = mk_internal_label("cond_false_branch")
+    true_l2 = mk_internal_label("cond_true_branch_2")
+    false_l2 = mk_internal_label("cond_false_branch_2")
+    end_l = mk_internal_label("cond_end")
+
+    _f.branch(pred_, true_l, false_l)
+
+    def get_val(f: _CallableOr[Any]) -> Any:
+        if callable(f):
+            return f()
+        return f
+
+    label(true_l)
+    true_out, true_tree = pytree.flatten(get_val(on_true))
+    true_vals = [_get(x) for x in true_out]
+    jump(true_l2)
+
+    label(false_l)
+    false_out, false_tree = pytree.flatten(get_val(on_false))
+    false_vals = [_get(x) for x in false_out]
+    jump(false_l2)
+
+    if true_tree != false_tree:
+        raise ValueError(f"incompatible types: {true_tree} and {false_tree}")
+
+    assert len(true_vals) == len(false_vals)
+
+    ans_mvars: list[MVar] = []
+
+    for x, y in zip(true_vals, false_vals):
+        typ = promote_types(get_type(x), get_type(y))
+        ans_mvars.append(mk_mvar(typ))
+
+    label(true_l2)
+    for x, mv in zip(true_vals, ans_mvars):
+        mv.write(x)
+    jump(end_l)
+
+    label(false_l2)
+    for x, mv in zip(false_vals, ans_mvars):
+        mv.write(x)
+    jump(end_l)
+
+    label(end_l)
+    return cast_unchecked(true_tree.unflatten([Variable._from_val_ro(x.read()) for x in ans_mvars]))
+
+
+@overload
+def select[T: VarT](pred: Bool, on_true: UserValue[T], on_false: UserValue[T]) -> VarRead[T]: ...
 @overload
 def select[V](pred: Bool, on_true: V, on_false: V) -> V: ...
 
@@ -571,7 +649,7 @@ def select[V](pred: Bool, on_true: V, on_false: V) -> V:
 
     assert len(true_vars) == len(false_vars)
 
-    ans_vars: list[Any] = []
+    ans_vars: list[VarRead[Any]] = []
 
     for x, y in zip(true_vars, false_vars):
         x_ = _get(x)
@@ -589,6 +667,10 @@ def asm(opcode: str, outputs: Sequence[Variable[Any]], /, *args: UserValue) -> N
     """
     this feature is in development and may produce incorret output without warning
     """
+    for x in outputs:
+        assert isinstance(x, Variable)
+        assert not x._read_only
+
     args_ = [_get(x) for x in args]
 
     instr = RawInstr(
@@ -606,13 +688,13 @@ def asm(opcode: str, outputs: Sequence[Variable[Any]], /, *args: UserValue) -> N
         uvar._inner.write(out_v)
 
 
-def asm_fn(opcode: str, /, *args: UserValue) -> Variable[Any]:
+def asm_fn(opcode: str, /, *args: UserValue) -> VarRead[Any]:
     """
     this feature is in development and may produce incorret output without warning
     """
     out_var = Variable(AnyType)
     asm(opcode, [out_var], *args)
-    return Variable(out_var)
+    return out_var.value
 
 
 AsmBlockLine = tuple[str, *tuple[UserValue, ...]]

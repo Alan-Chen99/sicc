@@ -1,0 +1,64 @@
+# part 1
+sbn -324331872 1884244228 Open 1
+sbn -324331872 122190226 Open 1
+# part 2
+# part 2, iteration 0
+# trace-time if
+sbn -324331872 1884244228 Open 0
+lbn ra -324331872 1884244228 Open 0
+bne ra 1 11
+# runtime if
+sbn -324331872 1884244228 Lock 1
+# part 2, iteration 1
+lbn ra -324331872 122190226 Open 0
+bne ra 1 16
+# runtime if
+sbn -324331872 122190226 Lock 1
+# part 3
+add ra 1 2
+# x: %ra
+# x_alias: %ra
+add ra 1 0
+add r0 1 1
+add r1 1 2
+# var 0: %ra
+# var 1: %r0
+# var 2: %r1
+add ra 3 4
+# x: %ra
+# x_alias: %ra
+add r0 ra 5.1
+# new x: %r0
+# x_alias: %ra
+# part 4
+add ra 2 1
+# y: %ra
+# part 5
+lbn ra -324331872 -44753248 On 3
+# On: %ra
+lbn ra -324331872 -44753248 Lock 1
+# Lock: %ra
+move r1 1442257217
+jal 58
+move r1 -855750405
+jal 58
+# return vals: %r0 %r0
+# part 6
+yield
+lbn ra -324331872 1442257217 On 3
+beq ra 0 46
+lbn ra -324331872 -855750405 On 3
+beq ra 0 46
+# jump in and out of loops
+lbn ra -324331872 1442257217 Lock 3
+bne ra 0 52
+lbn ra -324331872 -855750405 Lock 3
+beq ra 0 52
+yield
+j 56
+lbn r0 -324331872 r1 On 3
+# On: %r0
+lbn r0 -324331872 r1 Lock 1
+# Lock: %r0
+j ra
+# 63 lines total (not including this line)

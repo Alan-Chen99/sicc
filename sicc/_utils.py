@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import importlib.util
+import os
+import sys
+import zlib
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
+from types import ModuleType
 from typing import Any
 from typing import Callable
 from typing import Final
@@ -71,6 +77,9 @@ class Cell[T]:
     def value(self, val: T):
         self.set(val)
 
+    def __bool__(self) -> bool:
+        return bool(self.get(False))
+
 
 ################################################################################
 
@@ -117,6 +126,18 @@ def is_eq_typed[T](x: T) -> Callable[[T], bool]:
     return inner
 
 
+def mk_ordered_set() -> OrderedSet[Any]:  # makes type check happy
+    return OrderedSet(())
+
+
+@dataclass
+class ReprAs:
+    x: str
+
+    def __repr__(self) -> str:
+        return self.x
+
+
 ################################################################################
 
 
@@ -125,6 +146,13 @@ def disjoint_union[T](xs: OrderedSet[T], ys: OrderedSet[T]) -> OrderedSet[T]:
     if not len(ans) == len(xs) + len(ys):
         raise ValueError(f"expected disjoint, but {xs & ys} are in both")
     return ans
+
+
+def crc32(s: str) -> int:
+    val = zlib.crc32(s.encode())
+    if val >= 2**31:
+        val -= 2**32
+    return val
 
 
 ################################################################################
@@ -168,9 +196,6 @@ class ByIdMixin:
         return (_TYPE_TO_IDX[type(id1)], id1) < (_TYPE_TO_IDX[type(id2)], id2)
 
 
-################################################################################
-
-
 class Singleton(ByIdMixin):
     def __init__(self) -> None:
         self.id = type(self).__module__ + "." + type(self).__qualname__
@@ -179,5 +204,20 @@ class Singleton(ByIdMixin):
         return type(self).__name__
 
 
-def mk_ordered_set() -> OrderedSet[Any]:  # makes type check happy
-    return OrderedSet(())
+################################################################################
+
+
+def load_module_from_file(file_path: Path, module_name: str) -> ModuleType:
+    assert file_path.exists()
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+
+    prev_path = sys.path.copy()
+    try:
+        sys.path.insert(0, os.getcwd())
+        spec.loader.exec_module(module)
+    finally:
+        sys.path = prev_path
+    return module

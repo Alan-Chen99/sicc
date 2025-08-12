@@ -1,0 +1,17 @@
+lbn r0 -324331872 -44753248 C1 0
+move r1 1
+ble 1 r0 4
+move r1 2
+# cond_consts %r1
+lbn r0 -324331872 -44753248 C2 0
+move r1 1
+ble 1 r0 9
+move r1 2
+# cond_const_fn %r1
+lbn r0 -324331872 -44753248 C3 0
+blt r0 1 14
+lbn r0 -324331872 -44753248 X 0
+j 15
+lbn r0 -324331872 -44753248 Y 0
+# cond_device_var %r0
+# 16 lines total (not including this line)

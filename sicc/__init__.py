@@ -3,13 +3,16 @@
 # modules
 from . import functions as functions
 
-# core
+# high level
+from ._cli import Program as Program
 from ._cli import program as program
+from ._diagnostic import show_pending_diagnostics as show_pending_diagnostics
 
 # types
 from ._api import UserValue as UserValue
 from ._api import Variable as Variable
 from ._core import Label as Label
+from ._core import nan as nan
 from ._stationeers import BatchMode as BatchMode
 from ._stationeers import Color as Color
 from ._stationeers import LogicType as LogicType
@@ -28,12 +31,14 @@ from ._api import asm as asm
 from ._api import asm_block as asm_block
 from ._api import asm_fn as asm_fn
 from ._api import branch as branch
+from ._api import cond as cond
 from ._api import jump as jump
 from ._api import mk_label as mk_label
 from ._tracing import exit_program as exit_program
 from ._tracing import label as label
 
 # control flow high level
+from ._api import cjump as cjump
 from ._api import if_ as if_
 from ._api import loop as loop
 from ._api import while_ as while_
@@ -55,7 +60,6 @@ field = dataclasses.field  # pyright: ignore[reportUnknownMemberType, reportUnkn
 # devices
 from ._stationeers import Device as Device
 from ._stationeers import DeviceBase as DeviceBase
-from ._stationeers import DeviceLogicType as DeviceLogicType
 from ._stationeers import DeviceTyped as DeviceTyped
 
 # functions

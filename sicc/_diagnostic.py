@@ -36,7 +36,7 @@ from ._utils import Cell
 from .config import show_src_info
 from .config import verbose
 
-_TRACEBACK_SUPPRESS: Cell[set[str]] = Cell(set())
+TRACEBACK_SUPPRESS: Cell[set[str]] = Cell(set())
 
 
 def register_exclusion(filename: str | ModuleType):
@@ -47,7 +47,7 @@ def register_exclusion(filename: str | ModuleType):
         f = os.path.dirname(f)
     else:
         f = filename
-    _TRACEBACK_SUPPRESS.value.add(f)
+    TRACEBACK_SUPPRESS.value.add(f)
 
 
 register_exclusion(__file__)
@@ -56,12 +56,21 @@ register_exclusion(_utils.__file__)
 register_exclusion(contextlib)
 
 
+class SuppressExit(Exception):
+    """
+    exception indicating that caller should exit with code without showing a backtrace
+    """
+
+    def __init__(self, code: int):
+        self.code = code
+
+
 def get_location(depth: int = 0) -> Frame:
     frame = sys._getframe(depth + 1)
     while True:
         if frame.f_back is None:
             break
-        if not any(frame.f_code.co_filename.startswith(x) for x in _TRACEBACK_SUPPRESS.value):
+        if not any(frame.f_code.co_filename.startswith(x) for x in TRACEBACK_SUPPRESS.value):
             break
         frame = frame.f_back
 
@@ -78,7 +87,7 @@ def get_location(depth: int = 0) -> Frame:
 
 def format_location(loc: Frame):
     stack = Stack("", "", frames=[loc])
-    return Traceback(Trace([stack]), suppress=_TRACEBACK_SUPPRESS.value)._render_stack(stack)
+    return Traceback(Trace([stack]), suppress=TRACEBACK_SUPPRESS.value)._render_stack(stack)
 
 
 def get_trace(depth: int = 0) -> Trace:
@@ -108,7 +117,7 @@ def get_trace(depth: int = 0) -> Trace:
 
 def format_backtrace(trace: Trace, max_frames: int = 100):
     stack = Stack("", "", frames=trace.stacks[0].frames[-max_frames:])
-    return Traceback(trace, suppress=_TRACEBACK_SUPPRESS.value)._render_stack(stack)
+    return Traceback(trace, suppress=TRACEBACK_SUPPRESS.value)._render_stack(stack)
 
 
 def frame_short_desc(frame: Frame) -> str:
@@ -171,6 +180,7 @@ def check_must_use():
     gc.collect()
     for x in mustuse_ctxs.value:
         x.check()
+    mustuse_ctxs.value = []
 
 
 @contextmanager
@@ -335,7 +345,7 @@ class Report:
     def fatal(self) -> Never:
         show_pending_diagnostics()
         self.show()
-        exit(1)
+        raise SuppressExit(1)
 
     def __rich__(self) -> RenderableType:
         def gen():
@@ -407,5 +417,5 @@ def track_caller(depth: int = 0) -> Iterator[None]:
         yield
 
 
-def describe_fn(fn: Any):
+def describe_fn(fn: Any) -> str:
     return fn.__module__ + "." + fn.__qualname__

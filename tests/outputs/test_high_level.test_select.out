@@ -1,0 +1,6 @@
+lbn r0 -324331872 -44753248 C 0
+lbn r1 -324331872 -44753248 X 0
+lbn r2 -324331872 -44753248 Y 0
+select r0 r0 r1 r2
+# cond %r0
+# 5 lines total (not including this line)

@@ -16,6 +16,7 @@ from .._diagnostic import CompilerError
 from .._diagnostic import Report
 from .._diagnostic import register_exclusion
 from .._tracing import internal_transform
+from .._utils import Cell
 from ..config import verbose
 from ..config import with_status
 
@@ -27,6 +28,9 @@ class TransformCtx:
     frag: Fragment
 
     _cache: dict[Any, Any]
+
+
+frag_is_global: Cell[bool] = Cell(False)
 
 
 class Transform[**P, R]:

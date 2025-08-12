@@ -16,12 +16,15 @@ from .._core import NeverUnpack
 from .._core import UnpackPolicy
 from .._core import Var
 from .._instructions import Jump
+from .._instructions import UnreachableChecked
+from .._utils import Cell
 from .._utils import Singleton
 from .basic import get_index
 from .utils import CachedFn
 from .utils import LoopingTransform
 from .utils import Transform
 from .utils import TransformCtx
+from .utils import frag_is_global
 
 
 class External(Singleton):
@@ -117,6 +120,10 @@ def compute_label_provenance(
             G.add_edge(ef.loc, instr)
         for instr in ef.writes_instrs:
             G.add_edge(instr, ef.loc)
+
+        if not isinstance(ef.loc, EffectMvar) and not frag_is_global.value:
+            G.add_edge(external, ef.loc)
+            G.add_edge(ef.loc, external)
 
     for x, y in index.effect_conflicts.edges:
         G.add_edge(x, y)
@@ -238,7 +245,7 @@ def remove_unreachable_code(ctx: TransformCtx) -> None:
 
 
 @LoopingTransform
-def handle_deterministic_var_jump(ctx: TransformCtx) -> bool:
+def handle_deterministic_jump(ctx: TransformCtx) -> bool:
     f"""
     replace a jump %var with only one possible target,
     or a branch [...] %var label where var is always same as label
@@ -248,19 +255,30 @@ def handle_deterministic_var_jump(ctx: TransformCtx) -> bool:
     f = ctx.frag
     res = compute_label_provenance.call_cached(ctx)
 
+    changed = Cell(False)
+
     @f.map_instrs
     def _(instr: BoundInstr):
         if not instr.is_pure():
             return None
         if instr.continues:
             return None
+
         targets = res.instr_jumps[instr]
+        if len(targets) == 0 and instr.isinst(Jump):
+            instr.debug.warn("no possible target for jump")
+            changed.value = True
+            return UnreachableChecked().bind(())
+
         if len(targets) != 1:
             return None
         (target,) = targets
         if isinstance(target, External):
             return None
+        if (i := instr.isinst(Jump)) and i.inputs_[0] == target:
+            return None
 
+        changed.value = True
         return Jump().bind((), target)
 
-    return False
+    return changed.value

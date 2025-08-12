@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import abc
-import zlib
+import math
 from dataclasses import dataclass
 from dataclasses import field
 from enum import Enum
@@ -37,7 +37,9 @@ from ._diagnostic import register_exclusion
 from ._diagnostic import show_pending_diagnostics
 from ._utils import ByIdMixin
 from ._utils import Cell
+from ._utils import ReprAs
 from ._utils import cast_unchecked
+from ._utils import crc32
 from ._utils import disjoint_union
 from ._utils import get_id
 from ._utils import narrow_unchecked
@@ -146,9 +148,12 @@ class AsRaw(Protocol):
     def as_raw(self, ctx: AsRawCtx) -> RawText: ...
 
 
-class AnyType(AsRaw):
+class AnyType_(AsRaw):
     def as_raw(self, ctx: AsRawCtx):
         assert False, "unreachable"
+
+
+AnyType: type[Any] = AnyType_
 
 
 @dataclass(frozen=True)
@@ -163,6 +168,8 @@ class Undef(AsRaw):
     def __repr__(self) -> str:
         return "undef"
 
+
+nan = math.nan
 
 type VarTS = tuple[type[VarT], ...]
 
@@ -191,8 +198,7 @@ class Var(Generic[T_co], ByIdMixin):
     debug: DebugInfo
 
     def check_type[T: VarT](self, typ: type[T]) -> Var[T]:
-        if not can_cast_implicit(self.type, typ):
-            raise TypeError(f"not possible to use {self.type} as {typ}")
+        can_cast_implicit_or_err(self.type, typ)
         return cast_unchecked(self)
 
     def __repr__(self) -> str:
@@ -280,7 +286,7 @@ def can_cast_implicit(t1: type[VarT], t2: type[VarT]) -> bool:
     if t1 == t2:
         return True
 
-    if t1 == AnyType and t2 != Label:
+    if t1 == AnyType:
         return True
     if t1 == Undef:
         return True
@@ -293,6 +299,11 @@ def can_cast_implicit(t1: type[VarT], t2: type[VarT]) -> bool:
         return True
 
     return False
+
+
+def can_cast_implicit_or_err(t1: type[VarT], t2: type[VarT]) -> None:
+    if not can_cast_implicit(t1, t2):
+        raise TypeError(f"not possible to use {t1} as {t2}")
 
 
 def promote_types(t1: type[VarT], t2: type[VarT]) -> type[VarT]:
@@ -317,7 +328,9 @@ def can_cast_implicit_many(t1: VarTS, t2: VarTS) -> bool:
 
 def can_cast_implicit_many_or_err(t1: VarTS, t2: VarTS) -> None:
     if not can_cast_implicit_many(t1, t2):
-        raise TypeError(f"not possible to use {t1} as {t2}")
+        t1_ = tuple(ReprAs(x.__name__) for x in t1)
+        t2_ = tuple(ReprAs(x.__name__) for x in t2)
+        raise TypeError(f"not possible to use {t1_} as {t2_}")
 
 
 def can_cast_val[T: VarT](v: Value, typ: type[T]) -> TypeGuard[Value[T]]:
@@ -1158,13 +1171,6 @@ class Fragment:
 ################################################################################
 
 
-def _crc32(s: str) -> int:
-    val = zlib.crc32(s.encode())
-    if val >= 2**31:
-        val -= 2**32
-    return val
-
-
 @dataclass
 class LineNums:
     instr_lines: dict[BoundInstr, int]
@@ -1181,7 +1187,7 @@ def format_raw_val(x: Value, ctx: AsRawCtx) -> RawText:
 
     if isinstance(x, str):
         hash_text = Text.assemble("HASH(", ('"' + x + '"', style), ")")
-        hash_num = Text(repr(_crc32(x)), style)
+        hash_num = Text(repr(crc32(x)), style)
         if len(hash_text) <= len(hash_num):
             return RawText(hash_text)
         return RawText(hash_num)
