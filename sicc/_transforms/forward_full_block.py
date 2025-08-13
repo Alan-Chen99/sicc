@@ -1,6 +1,5 @@
 from .._core import AlwaysUnpack
 from .._core import Block
-from .._core import ReadMVar
 from .._core import Var
 from .._core import WriteMVar
 from .._instructions import Bundle
@@ -38,7 +37,8 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
     for i in b.contents:
         # TODO: is_side_effect_free would be correct here if the op is garanteed
         # to not fail. does failure (read from non-exist device for ex) cause problem?
-        safe_side_effect_free = i.is_pure() or i.isinst(ReadMVar)
+        # safe_side_effect_free = i.is_pure() or i.isinst(ReadMVar)
+        safe_side_effect_free = i.is_side_effect_free()
         if not (safe_side_effect_free or i.isinst(WriteMVar)):
             return False
 

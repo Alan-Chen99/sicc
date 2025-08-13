@@ -1,0 +1,11 @@
+jal 6
+jal 6
+lb ra 336213101 On 0
+move r0 2
+ble 1 ra 7
+j 9
+j ra
+move r0 1
+yield
+# res %r0
+# 10 lines total (not including this line)

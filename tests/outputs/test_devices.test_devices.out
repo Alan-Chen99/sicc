@@ -1,0 +1,28 @@
+lb r0 336213101 ImportCount 2
+# all:min: %r0
+lb r0 336213101 ExportCount 0
+add r0 r0 1
+# all:arith: %r0
+lb r0 336213101 RequiredPower 0
+# all:bystr: %r0
+sb 336213101 On 1
+sb 336213101 Lock 1
+lbn r0 336213101 1300988483 ImportCount 2
+# named:min: %r0
+lbn r0 336213101 1300988483 ExportCount 0
+add r0 r0 1
+# named:arith: %r0
+lbn r0 336213101 1300988483 RequiredPower 0
+# named:bystr: %r0
+sbn 336213101 1300988483 On 1
+sbn 336213101 1300988483 Lock 1
+lbn r0 336213101 -729623559 ImportCount 2
+# max:min: %r0
+lbn r0 336213101 -729623559 ExportCount 3
+add r0 r0 1
+# max:arith: %r0
+lbn r0 336213101 -729623559 RequiredPower 3
+# max:bystr: %r0
+sbn 336213101 -729623559 On 1
+sbn 336213101 -729623559 Lock 1
+# 27 lines total (not including this line)

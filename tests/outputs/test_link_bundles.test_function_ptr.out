@@ -1,0 +1,26 @@
+move r2 7
+move r3 3
+j 13
+move r2 9
+move r3 6
+j 13
+j 24
+sbn 336213101 r1 On 1
+j ra
+lbn r0 336213101 r1 On 0
+blt r0 1 12
+sbn 336213101 r1 Activate 1
+j ra
+move r1 982299349
+jal r2
+move r1 1300988483
+jal r2
+move r1 -729623559
+jal r2
+move r1 -1551506577
+jal r2
+move r1 1038186188
+jal r2
+j r3
+# noop (jump here to exit)
+# 25 lines total (not including this line)

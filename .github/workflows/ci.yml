@@ -12,6 +12,9 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
     env:
       PYTHONIOENCODING: utf-8
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -35,8 +38,20 @@ jobs:
       - name: basedpyright
         run: uv run basedpyright .
 
+      - name: remove previous test outputs
+        run: rm tests/outputs/*
+
       - name: pytest
         run: uv run pytest -s --cov=sicc --cov-branch --cov-report=xml
+
+      - name: check pytest outputs
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "tracked test outputs are not up to date"
+            git status
+            git diff
+            exit 1
+          fi
 
       - name: Upload coverage reports to Codecov
         if: matrix.os == 'ubuntu-latest'

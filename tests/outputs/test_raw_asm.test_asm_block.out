@@ -1,0 +1,6 @@
+lb r1 336213101 On 0
+move r0 r1
+add r0 r1 1
+jltr r0 0 -1
+# result %r0
+# 5 lines total (not including this line)

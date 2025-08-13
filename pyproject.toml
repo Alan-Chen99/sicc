@@ -59,3 +59,10 @@ reportUnusedVariable = "warning"
 
 reportUnreachable = "warning"
 reportUnnecessaryTypeIgnoreComment = "warning"
+
+[tool.coverage.run]
+omit = [
+  #
+  "sicc/_cli.py",
+  "sicc/devices.py",
+]

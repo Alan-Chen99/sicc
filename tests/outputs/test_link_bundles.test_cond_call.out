@@ -1,0 +1,12 @@
+lb r1 336213101 On 0
+lb r0 336213101 PrefabHash 0
+bleal 1 r1 7
+lb r1 336213101 Power 0
+lb r0 336213101 PrefabHash 0
+bneal r1 2 7
+j 10
+slt r0 3 r0
+sb 336213101 Activate r0
+j ra
+# noop (jump here to exit)
+# 11 lines total (not including this line)

@@ -1,6 +1,7 @@
 # autoflake: skip_file
 
 # modules
+from . import devices as devices
 from . import functions as functions
 
 # high level

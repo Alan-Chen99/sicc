@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 import sys
 import zlib
 from contextlib import contextmanager
@@ -216,7 +215,7 @@ def load_module_from_file(file_path: Path, module_name: str) -> ModuleType:
 
     prev_path = sys.path.copy()
     try:
-        sys.path.insert(0, os.getcwd())
+        sys.path.insert(0, str(file_path.parent))
         spec.loader.exec_module(module)
     finally:
         sys.path = prev_path
