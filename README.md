@@ -1,5 +1,8 @@
 # Stationeers IC10 Compiler (SICC)
 
+[![CI](https://github.com/Alan-Chen99/sicc/actions/workflows/ci.yml/badge.svg)](https://github.com/Alan-Chen99/sicc/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/github/alan-chen99/sicc/graph/badge.svg?token=X8IE0XQ7NW)](https://codecov.io/github/alan-chen99/sicc)
+
 SICC is yet another compiler for Stationeers IC10. It compiles to minimize code size.
 
 This works by writing python code which gets **traced** and then compiled into IC10.
@@ -19,6 +22,7 @@ uv sync
 # uv lock --upgrade
 source ./.venv/bin/activate
 python main.py
+# or: sicc main.py
 ```
 
 ## Project Goals
