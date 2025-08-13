@@ -96,14 +96,7 @@ cappa_group = cappa.Group(name="Config", section=2)
 class Config:
     verbose: Annotated[
         int,
-        Arg(
-            short="-v",
-            count=True,
-            group=cappa_group,
-            propagate=True,
-            show_default=False,
-            help="does not currrently work correctly; see https://github.com/DanCardin/cappa/issues/232",
-        ),
+        Arg(short="-v", count=True, group=cappa_group, propagate=True, show_default=False),
         Arg(long="--verbosity", group=cappa_group, propagate=True),
     ] = 0
 

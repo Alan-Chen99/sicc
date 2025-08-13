@@ -5,7 +5,7 @@ description = "Stationeers IC10 Compiler"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-  "cappa>=0.29.1",
+  "cappa>=0.30.0",
   "networkx>=3.5",
   "optree>=0.17.0",
   "ordered-set>=4.1.0",
