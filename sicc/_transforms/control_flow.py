@@ -158,7 +158,7 @@ def compute_label_provenance(
             for x in child.jumps_to():
                 if isinstance(x, Label):
                     yield preprocess(x)
-                if isinstance(x, Var) and x.type == Label:
+                if isinstance(x, Var):
                     yield from reaches_label[x]
 
     res = {instr: sorted(set(handle_one(instr))) for instr in out_index.instrs_unpacked()}

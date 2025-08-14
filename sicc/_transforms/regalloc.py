@@ -142,9 +142,9 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
         if (i := index.vars[v].def_instr.isinst(ReadMVar)) and i.instr.s == mv:
             # we want to know whether mv will get overwritten within the lifetime of v
             for mv_write in index.mvars[mv].defs:
-                assert (mv_write := mv_write.isinst(WriteMVar))
-                if in_typed(mv_write, lifetimes[v]) and mv_write.inputs_[0] != v:
-                    return True
+                if in_typed(mv_write, lifetimes[v]):
+                    if not ((w := mv_write.isinst(WriteMVar)) and w.inputs_[0] == v):
+                        return True
             return False
 
         # mv contains a read of v?
@@ -164,7 +164,9 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
 
             else:
                 info = reachable[c]
-                if not all(x.inputs_[0] == v for x in info.possible_defs):
+                if not all(
+                    (x_ := x.isinst(WriteMVar)) and x_.inputs_[0] == v for x in info.possible_defs
+                ):
                     # mv maybe something other than v at c
                     return True
 
@@ -172,7 +174,7 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
                 # if that is not the case, we must have start -> v:=f(1) -> mv:=v -> v:=f(1) -> c
                 # this would imply a path start -> v:=f(1) -> c, so c is "possible_undef"
 
-                if info.possible_undef:
+                if info.external_path:
                     return False
 
                 # here we can conclude that mv and v does not conflict at c

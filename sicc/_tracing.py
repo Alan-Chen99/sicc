@@ -9,6 +9,7 @@ from typing import Iterator
 from ordered_set import OrderedSet
 from rich import print as print  # autoflake: skip
 
+from ._core import FORMAT_ANNOTATE
 from ._core import Block
 from ._core import BoundInstr
 from ._core import Fragment
@@ -154,6 +155,7 @@ def trace_to_fragment(
     break_to: Label | None = None,
     else_hook: Callable[[], AbstractContextManager[None]] | None = None,
 ) -> Iterator[Cell[Fragment]]:
+    from ._transforms import compute_label_provenance
     from ._transforms import optimize_frag
 
     res: Cell[Fragment] = Cell()
@@ -192,7 +194,11 @@ def trace_to_fragment(
     f.finish()
     if verbose.value >= 1:
         print("raw traced:")
-        print(f)
+        if verbose.value >= 2:
+            with FORMAT_ANNOTATE.bind(compute_label_provenance(f).annotate):
+                print(f)
+        else:
+            print(f)
     if optimize:
         optimize_frag(f)
         if verbose.value >= 1:
@@ -222,6 +228,7 @@ PROGRAM_EXIT_TO: Cell[Label] = Cell()
 def trace_program() -> Iterator[Cell[TracedProgram]]:
     from ._transforms import optimize_frag
     from ._transforms.basic import mark_all_private_except
+    from ._transforms.utils import frag_is_global
 
     ans: Cell[TracedProgram] = Cell()
 
@@ -250,7 +257,8 @@ def trace_program() -> Iterator[Cell[TracedProgram]]:
 
     f = res.value
     mark_all_private_except(f, [start])
-    optimize_frag(f)
+    with frag_is_global.bind(True):
+        optimize_frag(f)
 
     if verbose.value >= 1:
         print("after optimize with marked private:")

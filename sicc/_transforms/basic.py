@@ -20,6 +20,7 @@ from .._core import UnpackPolicy
 from .._core import Var
 from .._core import WriteMVar
 from .._core import known_distinct
+from .._instructions import AsmBlock
 from .._instructions import Bundle
 from .._instructions import EmitLabel
 from .._instructions import EndPlaceholder
@@ -117,6 +118,9 @@ class Index:
 
     def instrs_unpacked(self) -> list[BoundInstr]:
         return [i.i for i in self.instrs.values() if i.children is None]
+
+    def is_part_of_bundle(self, instr: BoundInstr) -> bool:
+        return self.instrs[instr].parent is not None
 
 
 @CachedFn
@@ -405,6 +409,13 @@ def map_mvars(f: Fragment, new_mvars: dict[MVar, MVar]) -> None:
             block = Block(list(i.instr.parts(i)) + [EndPlaceholder().bind(())], i.debug)
             block.map_instrs(map_fn)
             return type(i.instr).from_block(block)
+
+        if i := instr.isinst(AsmBlock):
+            new_lines = [
+                (opcode, tuple(x if isinstance(x, int) else get_new(x) for x in args))
+                for opcode, args in i.instr.lines
+            ]
+            return AsmBlock(new_lines, i.instr.in_types, i.instr.out_types).bind((), *i.inputs_)
 
         if any(isinstance(x, EffectMvar) for x in instr.reads()):
             if i := instr.isinst(ReadMVar):

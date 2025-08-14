@@ -1,0 +1,7 @@
+lb r0 336213101 Lock 0
+lb r1 336213101 On 0
+blt r1 1 4
+move r2 r0
+# x: %r2
+j 0
+# 6 lines total (not including this line)

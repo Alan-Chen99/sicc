@@ -10,8 +10,8 @@ from typing import Callable
 from typing import Never
 
 import cappa
-from cappa.arg import Arg
-from cappa.destructure import Destructure
+from cappa import Arg
+from cappa import Destructured
 from rich import print as print  # autoflake: skip
 from rich.rule import Rule
 from rich.text import Text
@@ -67,9 +67,7 @@ def program(*, loop: bool = False) -> Callable[[Callable[[], None]], Program]:
 @cappa.command(name=sys.argv[0])
 @dataclass
 class CliTied:
-    config: Annotated[Config, Arg(destructure=Destructure(), hidden=True)] = field(
-        default_factory=Config
-    )
+    config: Annotated[Destructured[Config], Arg(hidden=True)] = field(default_factory=Config)
     cmd: cappa.Subcommands[Asm | Ir | Optimize | None] = None
 
     def call(self, prog: Program) -> Never:
@@ -96,9 +94,7 @@ class Cli:
     name: Annotated[str | None, Arg(short="-p", long="--program")] = None
     """program name, if there are multiple"""
 
-    config: Annotated[Config, Arg(destructure=Destructure(), hidden=True)] = field(
-        default_factory=Config
-    )
+    config: Annotated[Destructured[Config], Arg(hidden=True)] = field(default_factory=Config)
     cmd: cappa.Subcommands[Asm | Ir | Optimize | None] = None
 
     def call(self) -> Never:

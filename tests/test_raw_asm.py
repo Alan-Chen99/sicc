@@ -8,12 +8,18 @@ d = Autolathe()
 @wrap_test
 @program()
 def test_asm_block():
-    x = Variable(d.On)
+    x = Variable(float, d.ExportCount)
     y = Variable(x)
+    z = Variable(int)
+
+    with if_(False):
+        out = label("out")
+        x.value += 1
 
     asm_block(
-        ("add", x, y, 1),
-        ("jltr", x, 0, -1),
+        ("move", z, 10),
+        ("add", x, y, z),
+        ("jlt", x, 0, out),
     )
 
-    comment("result", x)
+    comment("result", x, y)

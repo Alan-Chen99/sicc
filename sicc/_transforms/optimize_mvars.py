@@ -14,9 +14,11 @@ from .._core import NeverUnpack
 from .._core import ReadMVar
 from .._core import Undef
 from .._core import UnpackPolicy
+from .._core import Var
 from .._core import WriteMVar
 from .._instructions import Move
 from .._utils import cast_unchecked_val
+from .._utils import isinst
 from ..config import verbose
 from .basic import get_index
 from .control_flow import CfgNode
@@ -29,22 +31,22 @@ from .utils import TransformCtx
 
 @dataclass
 class LifetimeResPerInstr:
-    # only constructed if cur is not a WriteMvar
+    # only constructed if cur is not a [def and not use]
 
     # the mvar value BEFORE cur may be used latter at ...
     # note: this means:
-    # includes cur, if cur is a ReadMVar
+    # includes cur, if cur is a use, or a [def and use]
     # if cur is WriteMvar, this would be empty by definition;
     # note that cur would then not be in reachable and we dont construct the object in this case
-    possible_uses: list[BoundInstr[ReadMVar]]
+    possible_uses: list[BoundInstr]
 
     # the value of the mvar BEFORE cur may come from ...
     # if possible uses is empty, this is empty too, even if it may have a value
     # a def -> external -> cur counts
-    possible_defs: list[BoundInstr[WriteMVar]]
+    possible_defs: list[BoundInstr]
 
     # is there a path external -> cur touching no defs?
-    possible_undef: bool = False
+    external_path: bool = False
 
 
 @dataclass
@@ -68,17 +70,22 @@ class MvarLifetimeRes:
 def support_mvar_analysis(
     ctx: TransformCtx, v_: MVar, unpack: UnpackPolicy = NeverUnpack()
 ) -> bool:
+    """
+    note: previously operations other than WriteMVar and ReadMVar is not supported
+    this is no longer the case and now this function only checks if v is private
+    this function may get removed in future
+    """
     index = get_index.call_cached(ctx, unpack)
     v = index.mvars[v_]
 
     if not v.private:
         return False
 
-    # not sufficiently expanded
-    if not all(x.isinst(WriteMVar) for x in v.defs):
-        return False
-    if not all(x.isinst(ReadMVar) for x in v.uses):
-        return False
+    # # not sufficiently expanded
+    # if not all(x.isinst(WriteMVar) for x in v.defs):
+    #     return False
+    # if not all(x.isinst(ReadMVar) for x in v.uses):
+    #     return False
 
     return True
 
@@ -92,16 +99,13 @@ def compute_mvar_lifetime(
     assert support_mvar_analysis(ctx, v_, unpack=unpack)
     v = index.mvars[v_]
 
-    defs = [d.check_type(WriteMVar) for d in v.defs]
-    uses = [u.check_type(ReadMVar) for u in v.uses]
-
     ########################################
     # get the subgraph where a value set to v
     # may get used
     # "ancestors" call wraps around "external"
 
     hide_defs = cast_unchecked_val(graph)(
-        nx.restricted_view(graph, defs, []),  # pyright: ignore[reportUnknownMemberType]
+        nx.restricted_view(graph, v.defs - v.uses, []),  # pyright: ignore[reportUnknownMemberType]
     )
     res: dict[CfgNode, LifetimeResPerInstr] = {}
 
@@ -112,7 +116,7 @@ def compute_mvar_lifetime(
         res[x] = ans
         return ans
 
-    for use in uses:
+    for use in v.uses:
         get(use).possible_uses.append(use)
         for anc in nx.ancestors(hide_defs, use):  # pyright: ignore[reportUnknownMemberType]
             get(anc).possible_uses.append(use)
@@ -123,7 +127,7 @@ def compute_mvar_lifetime(
     # include external, if it can reach any use without reaching a def first
     reachable = set(res)
 
-    for d in defs:
+    for d in v.defs:
         subgraph = graph.subgraph(reachable | {d})
         des = nx.descendants(subgraph, d)  # pyright: ignore[reportUnknownMemberType]1
         for x in des:
@@ -132,16 +136,14 @@ def compute_mvar_lifetime(
     subgraph = graph.subgraph(reachable | {external})
     des = nx.descendants(subgraph, external)  # pyright: ignore[reportUnknownMemberType]1
     for x in des:
-        res[x].possible_undef = True
+        res[x].external_path = True
 
     if external in reachable:
-        res[external].possible_undef = True
+        res[external].external_path = True
+    else:
+        assert len(des) == 0
 
     ########################################
-
-    # for use in uses:
-    #     if len(res[use].possible_defs) == 0:
-    #         use.debug.error("use of mvar that can never be defined").throw()
 
     # sort since iteration may not be deterministic
     return MvarLifetimeRes(v.v, dict(sorted(res.items())))
@@ -167,16 +169,18 @@ def elim_mvars_read_writes(ctx: TransformCtx, unpack: UnpackPolicy = AlwaysUnpac
         ########################################
         # any use that always reads undef?
         for use in v.uses:
+            if not (use := use.isinst(ReadMVar)):
+                continue
+
             if len(reachable[use].possible_defs) == 0:
-                if not use.check_type(ReadMVar).instr.allow_undef:
-                    err = use.debug.error("variable is always uninitialized when used here")
-                    if verbose.value >= 1:
-                        err.note("in instruction", use)
-                    err.note("defined here", v.v.debug)
+                err = use.debug.error("variable is always uninitialized when used here")
+                if verbose.value >= 1:
+                    err.note("in instruction", use)
+                err.note("defined here", v.v.debug)
 
                 @f.replace_instr(use)
                 def _():
-                    (out_v,) = use.check_type(ReadMVar).outputs_
+                    (out_v,) = use.outputs_
                     return Move(out_v.type).bind((out_v,), Undef.undef())
 
                 return True
@@ -184,77 +188,74 @@ def elim_mvars_read_writes(ctx: TransformCtx, unpack: UnpackPolicy = AlwaysUnpac
         ########################################
         # remove defs that can never be read
         for d in v.defs:
+            if not (d := d.isinst(WriteMVar)):
+                continue
+
             (suc,) = graph.successors(d)
             if suc not in reachable:
-                if index.instrs[d].parent is None:
-                    f.replace_instr(d)(lambda: [])
-                    return True
+                f.replace_instr(d)(lambda: [])
+                return True
 
         ########################################
-        # try to replace a use with one of the defs
+        # replace a use with one of the defs
         for use in v.uses:
-            # try to replace use with one of the defs
-
-            if index.instrs[use].parent is not None:
+            if not (use := use.isinst(ReadMVar)):
                 continue
 
-            if reachable[use].possible_undef:
-                # here you possibly needs to read a "older" value of the def
-                # we cant do the opt in this case
-                # ex:
-                #
-                # while True:
-                #     x = f()
-                #     if g():
-                #         s.write(x)
-                #     h(read(s))
-                #     return
-                #
-                # here s may be "x" from the previous iteration of the loop;
-                # we can not replace read(s) with x
-                #
-                # this case is not possible if there is no path external -> [no write] -> read;
-                # see logic below
+            possible_defs = reachable[use].possible_defs
+
+            if any(not d.isinst(WriteMVar) for d in possible_defs):
                 continue
 
-            def_vals = set(x.inputs_[0] for x in reachable[use].possible_defs)
+            def_instrs = [x.check_type(WriteMVar) for x in possible_defs]
+            def_vals = set(x.inputs_[0] for x in def_instrs)
 
-            if len(def_vals) > 1:
+            if len(def_vals) != 1:
                 continue
             (def_val,) = def_vals
 
-            # here we have:
-            # the program starts from "external"
-            # (1) all paths "external" -> "use" passes through one of {defs}
-            # (2) the last element in {defs} this touches must be in {pd}
-            # suppose {pd} is all "v := arg" and arg is defined in "argdef"
-            # (3) we want to not have: external -[0]-> pd* -[1]-> argdef -[2]-> use. (pd not in [1, 2]) suppose we do:
-            # (3.1) all of {pd} depends on argdef, so there is some path external -[3]-> argdef,
-            #       where none of {pd} is in [3]
-            # (3.2) external -[3]-> argdef -[2]-> use is a path external -> use passing through none of {pd}, contradiction
-            # This means that at "use" we can just read the value defined in "argdef".
+            # at "use", the value comes from one of the defs: "v := arg"
+            # we want to know whether v still have the same value as "arg" at "use"
+
+            # by definition v is not changed, so we want to know whether "arg" gets changed
+            # if it does, this happens as:
+            # pd -> argdef -> use
+            # where this path does not pass through any defs of v
+
+            # concrete examples of problematic case:
+            #
+            # while True:
+            #     x = f() # argdef
+            #     if g():
+            #         s.write(x) # pd
+            #     h(read(s)) # use
+
+            if not isinst(def_val, Var):
+                # constant; ok for opt
+                pass
+            else:
+                # abort if exist a path pd -> argdef -> use not passing through any of {pd}
+
+                argdef = index.vars[def_val].def_instr
+                subgraph = graph.subgraph(graph.nodes - set(v.defs))
+
+                # result satisfies ssa invariant?
+                if nx.has_path(graph.subgraph(graph.nodes - {argdef}), external, use):
+                    # result is potentially sound, but not valid ssa
+                    continue
+
+                if nx.has_path(subgraph, argdef, use):
+                    # has a argdef -> use
+                    # we abort here atm
+                    # TODO: potentially also check pd -> argdef and allow the opt if no path
+                    continue
 
             @f.replace_instr(use)
             def _():
-                (out_v,) = use.check_type(ReadMVar).outputs_
+                (out_v,) = use.outputs_
                 return Move(v.v.type).bind((out_v,), def_val)
 
             return True
-
-        ########################################
-        # remove defs that writes the same thing as the current value
-        for d in v.defs:
-            if index.instrs[d].parent is not None:
-                continue
-
-            (pred,) = graph.predecessors(d)
-            if pred not in reachable:
-                continue
-            prev_vals = set(x.inputs_[0] for x in reachable[pred].possible_defs)
-            (def_val,) = d.check_type(WriteMVar).inputs_
-            if prev_vals == {def_val}:
-                f.replace_instr(d)(lambda: [])
-                return True
 
     return False
 

@@ -745,7 +745,7 @@ class BoundInstr(Generic[B_co], ByIdMixin):
             assert narrow_unchecked(self, BoundInstr)
         return repr(self.instr.format(self).plain)
 
-    def isinst[T: InstrBase](self, instr_type: type[T]) -> BoundInstr[T] | None:
+    def isinst[T](self, instr_type: type[T] | tuple[type[T], ...]) -> BoundInstr[T] | None:
         if isinstance(self.instr, instr_type):
             return cast_unchecked(self)
         return None
@@ -872,6 +872,12 @@ class MVar[T: VarT = Any](ByIdMixin):
         ans.append(FORMAT_VAL_FN(self), get_style(self.type))
         return Text() + ans
 
+    def _as_var_with_reg(self) -> Var[T]:
+        from ._tracing import mk_var
+
+        assert self.reg.allocated_reg is not None
+        return mk_var(self.type, reg=self.reg, debug=self.debug)
+
 
 @dataclass(frozen=True)
 class EffectMvar(EffectBase):
@@ -903,15 +909,13 @@ class ReadMVar[T: VarT = Any](InstrBase):
     @override
     def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
         from ._instructions import Move
-        from ._tracing import mk_var
 
         (opt,) = instr.outputs_
 
         if opt.reg.allocated == self.s.reg.allocated:
             return
         else:
-            mv = mk_var(self.s.type, reg=self.s.reg, debug=self.s.debug)
-            yield Move(self.s.type).bind((opt,), mv)
+            yield Move(self.s.type).bind((opt,), self.s._as_var_with_reg())
 
     @override
     def regalloc_prefs(self, instr: BoundInstr[Self]) -> Iterable[RegallocPref]:
@@ -940,15 +944,13 @@ class WriteMVar[T: VarT = Any](InstrBase):
     @override
     def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
         from ._instructions import Move
-        from ._tracing import mk_var
 
         (ipt,) = instr.inputs_
 
         if isinstance(ipt, Var) and ipt.reg.allocated == self.s.reg.allocated:
             return
         else:
-            mv = mk_var(self.s.type, reg=self.s.reg, debug=self.s.debug)
-            yield Move(self.s.type).bind((mv,), ipt)
+            yield Move(self.s.type).bind((self.s._as_var_with_reg(),), ipt)
 
     @override
     def regalloc_prefs(self, instr: BoundInstr[Self]) -> Iterable[RegallocPref]:

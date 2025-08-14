@@ -1,6 +1,10 @@
 from typing import Callable
 
+from rich import print as print  # autoflake: skip
+
+from .._core import FORMAT_ANNOTATE
 from .._core import Fragment
+from ..config import verbose
 from .basic import remove_unused_side_effect_free
 from .basic import rename_private_labels
 from .basic import rename_private_mvars
@@ -10,6 +14,7 @@ from .branch import handle_const_or_not_branch
 from .branch import inline_pred_to_branch
 from .check_defined import check_mvars_defined
 from .check_defined import check_vars_defined
+from .control_flow import compute_label_provenance
 from .control_flow import handle_deterministic_jump
 from .control_flow import remove_unreachable_code
 from .forward_full_block import forward_remove_full_block
@@ -61,7 +66,14 @@ def optimize_frag(f: Fragment) -> None:
 
 def global_checks(f: Fragment):
     check_vars_defined(f)
-    check_mvars_defined(f)
+    with frag_is_global.bind(True):
+        if verbose.value >= 1:
+            with FORMAT_ANNOTATE.bind(compute_label_provenance(f).annotate):
+                print(
+                    f.__rich__("{possible jump targets} and [possible values Label vars can take]")
+                )
+
+        check_mvars_defined(f)
 
 
 def global_opts(f: Fragment):

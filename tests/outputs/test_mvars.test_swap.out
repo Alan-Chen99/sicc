@@ -1,0 +1,14 @@
+lb r2 336213101 X 0
+move r0 r2
+lb r1 336213101 Y 0
+lb r3 336213101 Lock 0
+blt r3 1 7
+move r0 r1
+move r1 r2
+# vals1: %r0 %r1
+move r2 r1
+move r1 r0
+move r0 r2
+# vals2: %r2 %r1
+j 8
+# 13 lines total (not including this line)

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import Iterable
 from typing import Iterator
+from typing import Never
 from typing import Self
 from typing import Sequence
 from typing import cast
@@ -22,12 +23,13 @@ from ._core import AsRawCtx
 from ._core import Block
 from ._core import BoundInstr
 from ._core import EffectBase
+from ._core import EffectMvar
 from ._core import EffectRes
 from ._core import InstrBase
 from ._core import InternalValLabel
 from ._core import Label
+from ._core import MVar
 from ._core import RawText
-from ._core import RegallocExtend
 from ._core import RegallocPref
 from ._core import RegallocSkip
 from ._core import RegallocTie
@@ -246,6 +248,10 @@ class UnreachableChecked(InstrBase):
     @override
     def writes(self, instr: BoundInstr[Self]) -> None:
         return
+
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Never:
+        instr.debug.error("expected unreachable, but that can not be proved").fatal()
 
 
 class BlackBox[T: VarT](AsmInstrBase):
@@ -694,70 +700,34 @@ class CondJumpAndLink(
 
 
 @dataclass
-class AsmBlockInner(InstrBase):
-    """
-    a block:
-    add [a] a 1
-    breq a 0 +2
-    add [b] a x
-    add [a] a 2
-
-    will have:
-    inputs: [a_init, b_init, 1, x, 2] (init vals of outs followed by consts)
-    outputs: [a_out, b_out]
-
-    x is considerred a "const" bc it is never written
-    a, b are written so they are out vars
-
-    note that even though it appears that b is never read, it actually "is":
-    if the branch skips the b assignment, the prev value of b will be the result
-    so it is neccessary for us to have "b_init" as a arg
-
-    a_init and a_out must be allocated the same register, etc
-    to make sure that this is always possible, we wrap this with a bundle "AsmBlock"
-    which insert a Move on each argument
-    """
-
-    # opcode, out_vars, in_vars
-    lines: list[tuple[str, tuple[int, ...]]]
+class AsmBlock(InstrBase):
+    lines: list[tuple[str, tuple[MVar | int, ...]]]
 
     in_types: TypeList[tuple[Value, ...]]  # pyright: ignore[reportIncompatibleVariableOverride]
-    out_types: TypeList[tuple[Var, ...]]  # pyright: ignore[reportIncompatibleVariableOverride]
-
-    @property
-    def n_vars(self) -> int:
-        return len(self.out_types)
-
-    @override
-    def regalloc_prefs(self, instr: BoundInstr[Self]) -> Iterable[RegallocPref]:
-        for in_const in instr.inputs_[self.n_vars :]:
-            if isinstance(in_const, Var):
-                yield RegallocExtend(in_const)
-
-        for out_var, out_init in zip(instr.outputs_, instr.inputs_[: self.n_vars]):
-            if isinstance(out_init, Var):
-                yield RegallocTie(out_var, out_init, force=True)
+    out_types: tuple[()]
 
     @override
     def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
-        for out_var, out_init in zip(instr.outputs_, instr.inputs_[: self.n_vars]):
-            assert isinstance(out_init, Var)
-            assert out_init.reg.allocated == out_var.reg.allocated
-
         for opcode, vars in self.lines:
             yield RawInstr.make(
                 opcode,
                 (),
-                *[instr.outputs_[x] if x < self.n_vars else instr.inputs_[x] for x in vars],
+                *[instr.inputs_[x] if isinstance(x, int) else x._as_var_with_reg() for x in vars],
             )
 
     @override
-    def reads(self, instr: BoundInstr[Self]) -> EffectBase:
-        return EffectExternal()
+    def reads(self, instr: BoundInstr[Self]):
+        for _opcode, args in self.lines:
+            for x in args:
+                if not isinstance(x, int):
+                    yield EffectMvar(x)
 
     @override
-    def writes(self, instr: BoundInstr[Self]) -> EffectBase:
-        return EffectExternal()
+    def writes(self, instr: BoundInstr[Self]):
+        for _opcode, args in self.lines:
+            for x in args:
+                if not isinstance(x, int):
+                    yield EffectMvar(x)
 
     @override
     def format_with_anno(self, instr: BoundInstr[Self]) -> RenderableType:
@@ -768,26 +738,15 @@ class AsmBlockInner(InstrBase):
             if len(comment) > 0:
                 yield comment[2:]
 
-            def fmt(v: int) -> Text:
-                if v < self.n_vars:
-                    return Text(f"%{chr(ord('a') + v)}", "bold")
-                return format_val(instr.inputs_[v])
-
-            for i in range(self.n_vars):
-                ans = Text()
-                ans += fmt(i)
-                ans += Text.assemble("(", format_val(instr.outputs_[i]), ")")
-                ans += " := "
-                ans += format_val(instr.inputs_[i])
-
-                yield ans
-
             for opcode, vars in self.lines:
                 ans = Text()
                 ans += Text(opcode, "ic10.raw_opcode")
                 for arg in vars:
                     ans += " "
-                    ans += fmt(arg)
+                    if isinstance(arg, int):
+                        ans += format_val(instr.inputs_[arg])
+                    else:
+                        ans += arg._format()
 
                 yield ans
 
@@ -797,7 +756,3 @@ class AsmBlockInner(InstrBase):
             # title=self.format(instr),
             title_align="left",
         )
-
-
-class AsmBlock(Bundle[*tuple[BoundInstr[AsmBlockInner | Move], ...]]):
-    pass

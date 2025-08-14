@@ -22,11 +22,11 @@ from rich.text import Text
 
 from . import _functions as _f
 from ._core import AnyType
-from ._core import BoundInstr
 from ._core import Comment
 from ._core import InstrBase
 from ._core import InstrTypedWithArgs_api
 from ._core import Label
+from ._core import LabelLike
 from ._core import MVar
 from ._core import Scope
 from ._core import TypeList
@@ -50,12 +50,10 @@ from ._instructions import AddI
 from ._instructions import AndB
 from ._instructions import AndI
 from ._instructions import AsmBlock
-from ._instructions import AsmBlockInner
 from ._instructions import BlackBox
 from ._instructions import DivF
 from ._instructions import EffectExternal
 from ._instructions import Jump
-from ._instructions import Move
 from ._instructions import MulF
 from ._instructions import MulI
 from ._instructions import Not
@@ -697,54 +695,45 @@ def asm_fn(opcode: str, /, *args: UserValue) -> VarRead[Any]:
     return out_var.value
 
 
-AsmBlockLine = tuple[str, *tuple[UserValue, ...]]
+AsmBlockLine = LabelLike | tuple[str, *tuple[UserValue, ...]]
 
 
-def asm_block(*lines: AsmBlockLine) -> None:
+def asm_block(*lines_: AsmBlockLine) -> None:
     """
-    this feature is in development and may produce incorret output without warning
-
-    it is NOT allowed to jump out of the block
+    each argument is a instruction, which is one of:
+    (1) (opcode, operands, ...)
+        opcode may read all operands and write to any operand Variable that is not read-only
+    (2) str | Label (not implemented yet)
     """
     mvars: OrderedSet[MVar] = OrderedSet(())
 
+    for l in lines_:
+        if isinstance(l, LabelLike):
+            raise NotImplementedError()
+
+    lines = [x for x in lines_ if isinstance(x, tuple)]
+
     for _opcode, *args in lines:
         for v in args:
-            if _get_type(v) == Label:
-                raise TypeError(f"using label {v} as argument to asm_block is unsupported")
             if isinstance(v, Variable) and not v._read_only:
                 mvars.add(v._inner)
 
-    arg_vals: OrderedSet[Value] = OrderedSet(())
+    inputs: list[Value] = []
 
-    def handle_arg(v: UserValue) -> int:
+    def handle_arg(v: UserValue) -> int | MVar:
         if isinstance(v, Variable) and not v._read_only:
-            return mvars.index(v._inner)
-        return arg_vals.add(_get(v)) + len(mvars)
+            return v._inner
+        idx = len(inputs)
+        inputs.append(_get(v))
+        return idx
 
-    linespecs: list[tuple[str, tuple[int, ...]]] = []
+    linespecs: list[tuple[str, tuple[MVar | int, ...]]] = []
 
     for opcode, *args in lines:
         linespecs.append((opcode, tuple(handle_arg(x) for x in args)))
 
-    in_vars: list[Var] = []
-    move_instrs: list[BoundInstr[Move]] = []
-
-    for mv in mvars:
-        val = mv.read(allow_undef=True)
-        (move_var,), move_instr = Move(val.type).create_bind(val)
-        in_vars.append(move_var)
-        move_instrs.append(move_instr)
-
-    out_vars, inner_instr = AsmBlockInner(
+    AsmBlock(
         lines=linespecs,
-        in_types=TypeList([mv.type for mv in mvars] + [get_type(x) for x in arg_vals]),
-        out_types=TypeList(mv.type for mv in mvars),
-    ).create_bind(*in_vars, *arg_vals)
-
-    with track_caller():
-        AsmBlock.from_parts(*move_instrs, inner_instr).emit()
-
-    assert len(out_vars) == len(mvars)
-    for mv, v in zip(mvars, out_vars):
-        mv.write(v)
+        in_types=TypeList([get_type(x) for x in inputs]),
+        out_types=(),
+    ).call(*inputs)
