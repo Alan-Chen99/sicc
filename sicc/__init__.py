@@ -62,6 +62,17 @@ field = dataclasses.field  # pyright: ignore[reportUnknownMemberType, reportUnkn
 from ._stationeers import Device as Device
 from ._stationeers import DeviceBase as DeviceBase
 from ._stationeers import DeviceTyped as DeviceTyped
+from ._stationeers import Pin as Pin
+from ._stationeers import pin as pin
+
+db = pin("db")
+d0 = pin(0)
+d1 = pin(1)
+d2 = pin(2)
+d3 = pin(3)
+d4 = pin(4)
+d5 = pin(5)
+
 
 # functions
 from ._api import comment as comment

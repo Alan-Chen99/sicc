@@ -1,0 +1,18 @@
+yield
+move r1 0
+move r0 1
+jal 7
+move r1 2
+move r0 3
+move ra 0
+l r2 dr1 Temperature
+slt r1 297 r2
+sub r2 297 r2
+abs r2 r2
+move r3 10
+ble r2 5 14
+move r3 100
+s dr0 On r1
+s dr0 Setting r3
+j ra
+# 17 lines total (not including this line)

@@ -119,9 +119,6 @@ class Index:
     def instrs_unpacked(self) -> list[BoundInstr]:
         return [i.i for i in self.instrs.values() if i.children is None]
 
-    def is_part_of_bundle(self, instr: BoundInstr) -> bool:
-        return self.instrs[instr].parent is not None
-
 
 @CachedFn
 def get_index(ctx: TransformCtx, unpack: UnpackPolicy = NeverUnpack()) -> Index:
@@ -247,7 +244,7 @@ def get_index(ctx: TransformCtx, unpack: UnpackPolicy = NeverUnpack()) -> Index:
 
 
 @Transform
-def split_blocks(ctx: TransformCtx) -> None:
+def split_blocks(ctx: TransformCtx) -> bool:
     """
     split blocks based on "continues"
 
@@ -283,12 +280,18 @@ def split_blocks(ctx: TransformCtx) -> None:
 
         assert len(cur) == 0
 
+    changed = Cell(False)
     blocks: list[Block] = []
 
     for b in f.blocks.values():
-        blocks += list(handle_block(b))
+        res_parts = list(handle_block(b))
+        if len(res_parts) != 1:
+            changed.value = True
+        blocks += res_parts
 
     f.blocks = {b.label: b for b in blocks}
+
+    return changed.value
 
 
 @LoopingTransform

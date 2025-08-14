@@ -169,6 +169,14 @@ class Undef(AsRaw):
         return "undef"
 
 
+@dataclass(frozen=True)
+class PinType(AsRaw):
+    name: str
+
+    def as_raw(self, ctx: AsRawCtx) -> RawText:
+        raise NotImplementedError()
+
+
 nan = math.nan
 
 type VarTS = tuple[type[VarT], ...]
@@ -283,6 +291,14 @@ def get_types(*xs: Value) -> VarTS:
 
 
 def can_cast_implicit(t1: type[VarT], t2: type[VarT]) -> bool:
+    """
+    this must be kept transitive; caller may depend on this
+    """
+    if t1 == PinType:
+        t1 = int
+    if t2 == PinType:
+        t2 = int
+
     if t1 == t2:
         return True
 
@@ -1179,7 +1195,17 @@ class LineNums:
     label_lines: dict[Label, int]
 
 
-def format_raw_val(x: Value, ctx: AsRawCtx) -> RawText:
+def format_raw_val(x: Value, ctx: AsRawCtx, typ: type[VarT]) -> RawText:
+    if typ == PinType:
+        if isinstance(x, int):
+            return RawText(Text(f"d{x}", "ic10.pin"))
+        elif isinstance(x, Var):
+            return RawText(Text(f"d{x.reg.allocated.value}", "ic10.pin"))
+        elif isinstance(x, PinType):
+            return RawText(Text(x.name, "ic10.pin"))
+        else:
+            raise TypeError(x)
+
     style = get_style(get_type(x))
 
     if isinstance(x, bool):

@@ -152,12 +152,12 @@ class RawInstr(InstrBase):
     def format_raw(self, instr: BoundInstr[Self], ctx: AsRawCtx) -> RawText:
         ans = Text()
         ans.append(self.opcode, "ic10.raw_opcode")
-        for x in instr.outputs_:
+        for t, x in zip(self.out_types, instr.outputs_):
             ans += " "
-            ans += Text("", "bold") + format_raw_val(x, ctx).text
-        for x in instr.inputs_:
+            ans += Text("", "bold") + format_raw_val(x, ctx, t).text
+        for t, x in zip(self.in_types, instr.inputs_):
             ans += " "
-            ans += format_raw_val(x, ctx).text
+            ans += format_raw_val(x, ctx, t).text
 
         # if len(ans) < 40:
         #     ans += " " * (40 - len(ans))
@@ -177,15 +177,27 @@ class AsmInstrBase(InstrBase):
     in_types: VarTS
     out_types: VarTS
 
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, AsmInstrBase):
+            return False
+        return (
+            self.opcode == other.opcode
+            and self.in_types == other.in_types
+            and self.out_types == other.out_types
+        )
+
     @override
     def lower(self, instr: BoundInstr[Any]) -> Iterable[BoundInstr]:
-        yield RawInstr.make(
-            self.opcode,
-            instr.outputs,
-            *instr.inputs,
+        yield RawInstr(
+            opcode=self.opcode,
+            in_types=TypeList(self.in_types),
+            out_types=TypeList(self.out_types),
             continues=instr.continues,
+            jumps=True,
+            _reads=list(instr.reads()),
+            _writes=list(instr.writes()),
             src_instr=type(self),
-        )
+        ).bind(instr.outputs, *instr.inputs)
 
 
 ################################################################################
@@ -411,6 +423,23 @@ class AndI(AsmInstrBase):
     opcode = "and"
     in_types = (int, int)
     out_types = (int,)
+
+
+################################################################################
+# Math (more)
+################################################################################
+
+
+class AbsI(AsmInstrBase):
+    opcode = "abs"
+    in_types = (int,)
+    out_types = (int,)
+
+
+class AbsF(AsmInstrBase):
+    opcode = "abs"
+    in_types = (float,)
+    out_types = (float,)
 
 
 ################################################################################

@@ -7,7 +7,6 @@ from typing import Any
 from typing import Generic
 from typing import Self
 from typing import TypeVar
-from typing import cast
 from typing import overload
 from typing import override
 
@@ -15,6 +14,7 @@ import rich.repr
 from rich.pretty import pretty_repr
 
 from ._api import Function
+from ._api import Int
 from ._api import Str
 from ._api import UserValue
 from ._api import Variable
@@ -25,15 +25,17 @@ from ._core import AsRaw
 from ._core import AsRawCtx
 from ._core import BoundInstr
 from ._core import EffectRes
+from ._core import PinType
 from ._core import RawText
-from ._core import Var
+from ._core import Value
 from ._core import VarT
 from ._diagnostic import register_exclusion
 from ._instructions import AsmInstrBase
 from ._instructions import EffectExternal
-from ._tree_utils import dataclasses
+from ._tree_utils import dataclass as optree_dataclass
 from ._tree_utils import pytree
 from ._utils import ReprAs
+from ._utils import cast_unchecked
 from ._utils import crc32
 
 register_exclusion(__file__)
@@ -88,6 +90,8 @@ class LogicType(AsRaw):
 
     def as_raw(self, ctx: AsRawCtx) -> RawText:
         if ctx.instr is not None and ctx.instr.instr.src_instr in [
+            Load,
+            Store,
             LoadBatch,
             StoreBatch,
             LoadBatchNamed,
@@ -95,11 +99,6 @@ class LogicType(AsRaw):
         ]:
             return RawText.str(self.name)
         return RawText.str(f"LogicType.{self.name}")
-
-
-class Pin(AsRaw):
-    # TODO
-    pass
 
 
 ValLogicTypeLike = UserValue[LogicType] | str
@@ -121,6 +120,28 @@ class Yield(AsmInstrBase):
 
 
 yield_ = Function(Yield())
+
+
+class Load[T: VarT](AsmInstrBase):
+    def __init__(self, out_type: type[T]) -> None:
+        self.opcode = "l"
+        self.in_types = (PinType, LogicType)
+        self.out_types = (out_type,)
+
+    @override
+    def reads(self, instr: BoundInstr[Self]) -> EffectRes:
+        return EffectExternal()
+
+
+class Store[T: VarT](AsmInstrBase):
+    def __init__(self, in_type: type[T]) -> None:
+        self.opcode = "s"
+        self.in_types = (PinType, LogicType, in_type)
+        self.out_types = ()
+
+    @override
+    def writes(self, instr: BoundInstr[Self]) -> EffectRes:
+        return EffectExternal()
 
 
 class LoadBatch[T: VarT](AsmInstrBase):
@@ -167,6 +188,46 @@ class StoreBatchNamed[T: VarT](AsmInstrBase):
         return EffectExternal()
 
 
+@optree_dataclass(eq=False, repr=False, kw_only=True)
+class Pin:
+    _idx: UserValue[int | PinType]
+
+    def __rich_repr__(self) -> rich.repr.Result:
+        yield self._idx
+
+    def __repr__(self) -> str:
+        return pretty_repr(self)
+
+    def _pin(self) -> UserValue[PinType]:
+        return cast_unchecked(self._idx)
+
+    def __getitem__(self, logic_type: ValLogicTypeLike) -> VarRead[Any]:
+        return Function(Load(AnyType)).call(self._pin(), LogicType.create(logic_type))
+
+    def __setitem__(self, logic_type: ValLogicTypeLike, val: UserValue) -> None:
+        Function(Store(_get_type(val))).call(self._pin(), LogicType.create(logic_type), val)
+
+    def __getattr__(self, name: str) -> VarRead[Any]:
+        if name and name[0].isupper():
+            return self[name]
+        else:
+            raise AttributeError()
+
+    def __setattr__(self, name: str, val: UserValue) -> None:
+        if name and name[0].isupper() and name and not hasattr(type(self), name):
+            self[name] = val
+        else:
+            super().__setattr__(name, val)
+
+
+def pin(x: Int | str, /) -> Pin:
+    if isinstance(x, str):
+        return Pin(_idx=PinType(x))
+    else:
+        assert _get_type(x) == int
+        return Pin(_idx=x)
+
+
 _did_register_optree: set[type[DeviceBase[Any, Any]]] = set()
 
 DT_co = TypeVar("DT_co", covariant=True, bound=Str, default=Str)
@@ -177,9 +238,7 @@ N_co = TypeVar("N_co", covariant=True, bound=Str | None, default=Str | None)
 class DeviceBase(Generic[DT_co, N_co]):
     device_type: DT_co
     name: N_co
-    default_batchmode: BatchMode = dataclasses.field(  # pyright: ignore[reportUnknownMemberType]
-        pytree_node=False
-    )
+    default_batchmode: BatchMode
 
     def __init__(
         self,
@@ -187,14 +246,10 @@ class DeviceBase(Generic[DT_co, N_co]):
         _device_type: DT_co,
         _name: N_co,
         _default_batchmode: BatchMode = BatchMode.AVG,
-        _pin: Pin | None = None,
     ) -> None:
         if not type(self) in _did_register_optree:
             pytree.register_node_class()(type(self))
             _did_register_optree.add(type(self))
-
-        if _pin is not None:
-            raise NotImplementedError()
 
         self.device_type = _device_type
         self.name = _name
@@ -241,13 +296,15 @@ class DeviceBase(Generic[DT_co, N_co]):
         __setattr__ = _setattr
 
     def tree_flatten(self):
-        return (self.device_type, self.name), None, None
+        return (self.device_type, self.name, self.default_batchmode), None, None
 
     @classmethod
     def tree_unflatten(cls, metadata: Any, children: Any) -> Self:
-        device_type, name = cast(tuple[Str, Str | None], children)
+        device_type, name, default_batchmode = children
         ans = cls.__new__(cls)
-        DeviceBase.__init__(ans, _device_type=device_type, _name=name)
+        DeviceBase.__init__(
+            ans, _device_type=device_type, _name=name, _default_batchmode=default_batchmode
+        )
         return ans
 
 
@@ -303,7 +360,7 @@ class DeviceLogicTypeRead(Generic[T, D_co], VarRead[T]):
         return self.get(BatchMode.MAX)
 
     @override
-    def _read(self) -> Var[T]:
+    def _read(self) -> Value[T]:
         return self.get()._read()
 
     @override

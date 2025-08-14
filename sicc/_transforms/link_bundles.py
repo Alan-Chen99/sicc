@@ -1,4 +1,7 @@
+from rich import print as print  # autoflake: skip
+
 from .._core import AlwaysUnpack
+from .._core import Block
 from .._core import BoundInstr
 from .._core import Fragment
 from .._core import InternalValLabel
@@ -6,10 +9,13 @@ from .._core import Label
 from .._core import MVar
 from .._core import RegInfo
 from .._core import Register
+from .._core import Var
 from .._core import WriteMVar
+from .._diagnostic import add_debug_info
 from .._instructions import CondJump
 from .._instructions import CondJumpAndLink
 from .._instructions import EmitLabel
+from .._instructions import EndPlaceholder
 from .._instructions import Jump
 from .._instructions import JumpAndLink
 from .._instructions import PredBranch
@@ -17,6 +23,8 @@ from .._tracing import mk_internal_label
 from .._tracing import mk_mvar
 from .basic import get_index
 from .basic import map_mvars
+from .basic import split_blocks
+from .fuse_blocks import fuse_blocks_trivial_jumps
 from .optimize_mvars import compute_mvar_lifetime
 from .optimize_mvars import support_mvar_analysis
 from .utils import LoopingTransform
@@ -49,23 +57,35 @@ def _mark_prefer_ra(f: Fragment, mv: MVar):
 
 def _try_pack_call_one(
     ctx: TransformCtx,
-    write_instr: BoundInstr[WriteMVar],
+    block: Block,
+    write_instr: BoundInstr[WriteMVar[Label]],
     jump_instr: BoundInstr[Jump],
 ) -> bool:
     f = ctx.frag
     index = get_index.call_cached(ctx)
 
+    assert block.end == jump_instr
+
     (ret_label,) = write_instr.inputs_
 
-    if not isinstance(ret_label, Label):
+    if isinstance(ret_label, Var):
         return False
 
     l = index.labels[ret_label]
 
+    # check if possible to fuse ret_label block after jump
+    # if not making link instr does not acomplish anything
     if not l.private:
         return False
-
     if list(l.uses) != [write_instr]:
+        return False
+    assert ret_label in f.blocks  # bc of split_blocks
+    if (
+        f.blocks[ret_label].end.isinst(EndPlaceholder)
+        and not index.labels[block.label].private
+        and len(f.blocks) >= 3
+    ):
+        # we wont be able to fuse the start block and exit block
         return False
 
     mv = write_instr.instr.s
@@ -83,12 +103,17 @@ def _try_pack_call_one(
     def _():
         tmp_label = mk_internal_label(ret_label.id)
 
+        with add_debug_info(write_instr.debug):
+            new_write = WriteMVar(mv).bind((), tmp_label)
+
         yield JumpAndLink.from_parts(
-            WriteMVar(mv).bind((), tmp_label),
+            new_write,
             jump_instr,
             EmitLabel().bind((), tmp_label),
         )
         yield Jump().bind((), ret_label)
+
+    f.replace_instr(write_instr)(lambda: [])
 
     _mark_prefer_ra(f, mv)
 
@@ -99,11 +124,17 @@ def _try_pack_call_one(
 def pack_call(ctx: TransformCtx) -> bool:
     f = ctx.frag
 
+    if split_blocks(f):
+        return True
+
     for b in f.blocks.values():
         if end_instr := b.end.isinst(Jump):
             for instr in reversed(b.body):
                 if (instr := instr.isinst(WriteMVar)) and instr.instr.s.type == Label:
-                    if _try_pack_call_one(ctx, instr, end_instr):
+                    if _try_pack_call_one(ctx, b, instr, end_instr):
+                        # print("end of pack:")
+                        # print(f)
+                        fuse_blocks_trivial_jumps(f)
                         return True
 
     return False

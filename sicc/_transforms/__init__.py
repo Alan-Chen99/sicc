@@ -1,3 +1,4 @@
+import logging
 from typing import Callable
 
 from rich import print as print  # autoflake: skip
@@ -14,6 +15,7 @@ from .branch import handle_const_or_not_branch
 from .branch import inline_pred_to_branch
 from .check_defined import check_mvars_defined
 from .check_defined import check_vars_defined
+from .common_sub_elim import common_sub_elim
 from .control_flow import compute_label_provenance
 from .control_flow import handle_deterministic_jump
 from .control_flow import remove_unreachable_code
@@ -47,6 +49,8 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
     #
     elim_mvars_read_writes,
     forward_remove_full_block,
+    #
+    common_sub_elim,
 ]
 
 GLOBAL_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
@@ -80,7 +84,9 @@ def global_opts(f: Fragment):
     with frag_is_global.bind(True):
         optimize_frag(f)
         writeback_mvar_use(f)
+        logging.info("opts after writeback_mvar_use")
         optimize_frag(f)
+        logging.info("running GLOBAL_OPTS")
         run_phases(f, *GLOBAL_OPTS)
         # fuse_blocks_all(f, efficient_only=True)
         fuse_blocks_all(f)

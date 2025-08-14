@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import functools
+import inspect
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any
@@ -17,7 +18,6 @@ from typing import Unpack
 from typing import overload
 from typing import override
 
-from ordered_set import OrderedSet
 from rich.text import Text
 
 from . import _functions as _f
@@ -45,6 +45,8 @@ from ._diagnostic import describe_fn
 from ._diagnostic import must_use
 from ._diagnostic import register_exclusion
 from ._diagnostic import track_caller
+from ._instructions import AbsF
+from ._instructions import AbsI
 from ._instructions import AddF
 from ._instructions import AddI
 from ._instructions import AndB
@@ -111,8 +113,11 @@ class VarRead[T: VarT](abc.ABC):
     covariant readonly base
     """
 
+    # TODO: its possible to move Function up before VarRead and
+    # then get rid of all the late_fn here?
+
     @abc.abstractmethod
-    def _read(self) -> Var[T]: ...
+    def _read(self) -> Value[T]: ...
 
     @abc.abstractmethod
     def _get_type(self) -> type[T]: ...
@@ -157,6 +162,9 @@ class VarRead[T: VarT](abc.ABC):
 
     __gt__ = late_fn(lambda: greater_than)
     __ge__ = late_fn(lambda: greater_than_or_eq)
+
+    def __abs__(self: VarRead[float]) -> VarRead[float]:
+        return abs_.call(self)
 
     def transmute[O: VarT](self, out_type: type[O] = AnyType) -> VarRead[O]:
         """
@@ -250,7 +258,7 @@ class Variable[T: VarT](VarRead[T]):
         return ans
 
     @override
-    def _read(self) -> Var[T]:
+    def _read(self) -> Value[T]:
         return self._inner.read()
 
     @override
@@ -459,12 +467,16 @@ class Subr[F]:
 
     def __init__(self, fn: F) -> None:
         self.fn = fn
-        self._subr: TracedSubr[F] | None = None
+        self._subr: TracedSubr | None = None
 
     def __call__[**P, R](self: Subr[Callable[P, R]], *args: P.args, **kwargs: P.kwargs) -> R:
+        bound = inspect.signature(self.fn).bind_partial(*args, **kwargs)
+        bound.apply_defaults()
         if self._subr is None:
-            self._subr = trace_to_subr(self.fn, *args, **kwargs)
-        return self._subr.call(*args, **kwargs)
+            self._subr = trace_to_subr(
+                self.fn, **bound.arguments
+            )  # pyright: ignore[reportCallIssue]
+        return self._subr.call(**bound.arguments)
 
 
 @dataclass
@@ -499,7 +511,9 @@ div = Function(DivF())
 or_ = Function(OrB(), OrI())
 and_ = Function(AndB(), AndI())
 
-unreachable_checked = Function(UnreachableChecked())
+abs_ = Function(AbsI(), AbsF())
+
+##
 
 bool_not = Function(Not())
 
@@ -521,6 +535,11 @@ def equal[T: VarT](x: UserValue[T], y: UserValue[T]) -> VarRead[bool]:
 
 def not_equal[T: VarT](x: UserValue[T], y: UserValue[T]) -> VarRead[bool]:
     return Function(PredNEq(promote_types(_get_type(x), _get_type(y)))).call(x, y)
+
+
+##
+
+unreachable_checked = Function(UnreachableChecked())
 
 
 def black_box[T: VarT](v: UserValue[T]) -> VarRead[T]:
@@ -705,18 +724,11 @@ def asm_block(*lines_: AsmBlockLine) -> None:
         opcode may read all operands and write to any operand Variable that is not read-only
     (2) str | Label (not implemented yet)
     """
-    mvars: OrderedSet[MVar] = OrderedSet(())
-
     for l in lines_:
         if isinstance(l, LabelLike):
             raise NotImplementedError()
 
     lines = [x for x in lines_ if isinstance(x, tuple)]
-
-    for _opcode, *args in lines:
-        for v in args:
-            if isinstance(v, Variable) and not v._read_only:
-                mvars.add(v._inner)
 
     inputs: list[Value] = []
 
