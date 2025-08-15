@@ -30,6 +30,7 @@ from rich.text import Text
 
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
+from ._diagnostic import catch_ex_and_exit
 from ._diagnostic import check_must_use
 from ._diagnostic import clear_debug_info
 from ._diagnostic import debug_info
@@ -177,7 +178,7 @@ class PinType(AsRaw):
         raise NotImplementedError()
 
 
-nan = math.nan
+nan: float = math.nan
 
 type VarTS = tuple[type[VarT], ...]
 
@@ -832,6 +833,11 @@ class BoundInstr(Generic[B_co], ByIdMixin):
 ################################################################################
 
 
+@dataclass(frozen=True)
+class EffectComment(EffectBase):
+    pass
+
+
 class Comment(InstrBase):
     def __init__(self, text: Text, *arg_types: type[VarT]) -> None:
         self.text = text
@@ -849,12 +855,14 @@ class Comment(InstrBase):
             ans += format_val(x)
         return ans
 
+    # dont reorder comments
+    @override
+    def reads(self, instr: BoundInstr[Self]) -> EffectRes:
+        return EffectComment()
+
     @override
     def writes(self, instr: BoundInstr[Self]) -> EffectRes:
-        # dont reorder with external operations
-        from ._instructions import EffectExternal
-
-        return EffectExternal()
+        return EffectComment()
 
 
 ################################################################################
@@ -1195,7 +1203,7 @@ class LineNums:
     label_lines: dict[Label, int]
 
 
-def format_raw_val(x: Value, ctx: AsRawCtx, typ: type[VarT]) -> RawText:
+def format_raw_val(x: Value, ctx: AsRawCtx, typ: type[VarT], debug: DebugInfo) -> RawText:
     if typ == PinType:
         if isinstance(x, int):
             return RawText(Text(f"d{x}", "ic10.pin"))
@@ -1211,6 +1219,8 @@ def format_raw_val(x: Value, ctx: AsRawCtx, typ: type[VarT]) -> RawText:
     if isinstance(x, bool):
         x = 1 if x else 0
     if isinstance(x, int | float):
+        if math.isnan(x):
+            debug.error("unsupported nan literal").throw()
         return RawText(Text(repr(x), style))
 
     if isinstance(x, str):
@@ -1302,6 +1312,10 @@ class TracedProgram:
         return LineNums(instr_lines, label_lines)
 
     def gen_asm(self) -> RawText:
+        with catch_ex_and_exit(self.frag):
+            return self._gen_asm()
+
+    def _gen_asm(self) -> RawText:
         from ._instructions import EmitLabel
         from ._instructions import EndPlaceholder
         from ._instructions import RawInstr

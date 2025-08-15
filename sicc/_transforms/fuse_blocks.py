@@ -13,6 +13,8 @@ from .._instructions import EndPlaceholder
 from .._instructions import Jump
 from .._instructions import PredBranch
 from .._instructions import PredCondJump
+from .._instructions import PredNAN
+from .._instructions import PredNotNAN
 from .basic import get_index
 from .control_flow import External
 from .control_flow import build_control_flow_graph
@@ -76,6 +78,20 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
         ):
             # dont fuse start and exit block, if there are other blocks
             return False
+
+        # since there is no "bnanz"
+        if pb := cur.end.isinst(PredBranch):
+            pred, br = pb.unpack()
+            _predvar, t_l, f_l = br.inputs_
+
+            # we negate here below
+            if t_l == target:
+                if pred.isinst(PredNAN):
+                    return False
+            else:
+                assert f_l == target
+                if pred.isinst(PredNotNAN):
+                    return False
 
         return True
 

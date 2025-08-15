@@ -1,0 +1,11 @@
+lb r0 336213101 On 0
+bnan r0 5
+j 6
+# is nan: %r0
+j 9
+# is nan: %r0
+bnan r0 8
+# not nan: %r0
+bnan r0 3
+# noop (jump here to exit)
+# 10 lines total (not including this line)

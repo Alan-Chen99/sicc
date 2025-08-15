@@ -19,6 +19,8 @@ from .._instructions import EndPlaceholder
 from .._instructions import Jump
 from .._instructions import JumpAndLink
 from .._instructions import PredBranch
+from .._instructions import PredNAN
+from .._instructions import PredNotNAN
 from .._tracing import mk_internal_label
 from .._tracing import mk_mvar
 from .basic import get_index
@@ -147,6 +149,10 @@ def _try_predbranch_one(
     index = get_index.call_cached(ctx)
 
     pred, branch = instr.unpack()
+
+    if pred.isinst((PredNAN, PredNotNAN)):
+        # these dont have b-al instructions
+        return False
 
     if not isinstance(ret_label, Label):
         return False

@@ -15,7 +15,7 @@ TargetTemp1 = 297
 TargetTemp2 = 297
 
 
-@program()
+@program
 def Main():
     with loop():
         yield_()
@@ -24,17 +24,17 @@ def Main():
         ControlTemp(PA2, Valve2, TargetTemp2)
 
 
-@subr()
-def ControlTemp(paIdx: Pin, valveIdx: Pin, targetTemp: Int):
-    needCooling = paIdx.Temperature > targetTemp
-    delta = abs(targetTemp - paIdx.Temperature)
+@subr
+def ControlTemp(pa: Pin, valve: Pin, targetTemp: Int):
+    needCooling = pa.Temperature > targetTemp
+    delta = abs(targetTemp - pa.Temperature)
     power = Variable(10)
 
     with if_(delta > 5):
         power.value = 100
 
-    valveIdx.On = needCooling
-    valveIdx.Setting = power
+    valve.On = needCooling
+    valve.Setting = power
 
 
 if __name__ == "__main__":

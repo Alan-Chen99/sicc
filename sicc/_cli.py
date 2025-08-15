@@ -8,6 +8,9 @@ from typing import Annotated
 from typing import Any
 from typing import Callable
 from typing import Never
+from typing import TypedDict
+from typing import Unpack
+from typing import overload
 
 import cappa
 from cappa import Arg
@@ -35,7 +38,7 @@ register_exclusion(__file__)
 @dataclass
 class Program:
     fn: Callable[[], None]
-    loop: bool
+    loop: bool = False
 
     def trace(self) -> TracedProgram:
         try:
@@ -57,11 +60,25 @@ class Program:
         return cli.call(self)
 
 
-def program(*, loop: bool = False) -> Callable[[Callable[[], None]], Program]:
-    def inner(fn: Callable[[], None]) -> Program:
-        return Program(fn, loop=loop)
+class ProgramOpts(TypedDict, total=False):
+    loop: bool
 
-    return inner
+
+@overload
+def program(**kwargs: Unpack[ProgramOpts]) -> Callable[[Callable[[], None]], Program]: ...
+@overload
+def program(func: Callable[[], None], /, **kwargs: Unpack[ProgramOpts]) -> Program: ...
+
+
+def program(
+    func: Callable[[], None] | None = None, /, **kwargs: Unpack[ProgramOpts]
+) -> Callable[[Callable[[], None]], Program] | Program:
+    def inner(fn: Callable[[], None]) -> Program:
+        return Program(fn, **kwargs)
+
+    if func is None:
+        return inner
+    return inner(func)
 
 
 @cappa.command(name=sys.argv[0])

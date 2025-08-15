@@ -195,6 +195,12 @@ class LiteralPin:
     name: str
 
 
+def _valid_logic_attr(name: str, parent: object) -> bool:
+    if name and name[0].isupper() and not hasattr(type(parent), name):
+        return True
+    return False
+
+
 @optree_dataclass(eq=False, repr=False)
 class Pin:
     _idx: Int | LiteralPin
@@ -224,13 +230,13 @@ class Pin:
         Function(Store(_get_type(val))).call(self._pin(), LogicType.create(logic_type), val)
 
     def __getattr__(self, name: str) -> VarRead[Any]:
-        if name and name[0].isupper():
+        if _valid_logic_attr(name, self):
             return self[name]
         else:
             raise AttributeError()
 
     def __setattr__(self, name: str, val: UserValue) -> None:
-        if name and name[0].isupper() and not hasattr(type(self), name):
+        if _valid_logic_attr(name, self):
             self[name] = val
         else:
             super().__setattr__(name, val)
@@ -288,13 +294,13 @@ class DeviceBase(Generic[DT_co, N_co]):
         self[logic_type].set(val)
 
     def _getattr(self, name: str) -> DeviceLogicType[Any, Self]:
-        if name and name[0].isupper():
+        if _valid_logic_attr(name, self):
             return self[name]
         else:
             raise AttributeError()
 
     def _setattr(self, name: str, val: UserValue) -> None:
-        if name and name[0].isupper() and not hasattr(type(self), name):
+        if _valid_logic_attr(name, self):
             self[name].set(val)
         else:
             super().__setattr__(name, val)

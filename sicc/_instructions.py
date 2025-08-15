@@ -154,10 +154,10 @@ class RawInstr(InstrBase):
         ans.append(self.opcode, "ic10.raw_opcode")
         for t, x in zip(self.out_types, instr.outputs_):
             ans += " "
-            ans += Text("", "bold") + format_raw_val(x, ctx, t).text
+            ans += Text("", "bold") + format_raw_val(x, ctx, t, instr.debug).text
         for t, x in zip(self.in_types, instr.inputs_):
             ans += " "
-            ans += format_raw_val(x, ctx, t).text
+            ans += format_raw_val(x, ctx, t, instr.debug).text
 
         # if len(ans) < 40:
         #     ans += " " * (40 - len(ans))
@@ -263,7 +263,7 @@ class UnreachableChecked(InstrBase):
 
     @override
     def lower(self, instr: BoundInstr[Self]) -> Never:
-        instr.debug.error("expected unreachable, but that can not be proved").fatal()
+        instr.debug.error("expected unreachable, but that can not be proved").throw()
 
 
 class BlackBox[T: VarT](AsmInstrBase):
@@ -480,7 +480,7 @@ class PredLE(PredicateBase):
         return PredLT().bind(instr.outputs_, b, a)
 
 
-class PredEq[T: VarT](PredicateBase):
+class PredEq[T: VarT = Any](PredicateBase):
     opcode = "seq"
 
     def __init__(self, typ: type[T]) -> None:
@@ -492,7 +492,7 @@ class PredEq[T: VarT](PredicateBase):
         return PredNEq(self.typ).bind(instr.outputs_, *instr.inputs_)
 
 
-class PredNEq[T: VarT](PredicateBase):
+class PredNEq[T: VarT = Any](PredicateBase):
     opcode = "sne"
 
     def __init__(self, typ: type[T]) -> None:
@@ -502,6 +502,36 @@ class PredNEq[T: VarT](PredicateBase):
     @override
     def negate_impl(self, instr: BoundInstr[Self]):
         return PredEq(self.typ).bind(instr.outputs_, *instr.inputs_)
+
+
+class PredNAN(PredicateBase):
+    opcode = "snan"
+
+    def __init__(self) -> None:
+        self.in_types = (float,)
+
+    @override
+    def negate_impl(self, instr: BoundInstr[Self]):
+        return PredNotNAN().bind(instr.outputs_, *instr.inputs_)
+
+
+class PredNotNAN(PredicateBase):
+    opcode = "snanz"
+
+    def __init__(self) -> None:
+        self.in_types = (float,)
+
+    @override
+    def negate_impl(self, instr: BoundInstr[Self]):
+        return PredNAN().bind(instr.outputs_, *instr.inputs_)
+
+    @override
+    def pred_for_cjump(self, instr: BoundInstr[Self]) -> BoundInstr[PredicateBase]:
+        err = instr.debug.error("there is no bnanz")
+        err.note(
+            f"this an internal error; fuse_blocks.py is not supposed to create {PredCondJump} with {self}"
+        )
+        err.throw()
 
 
 ################################################################################
@@ -641,6 +671,10 @@ class PredBranch(
     def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
         pred, br = instr.unpack()
         predvar, t_l, f_l = br.inputs_
+
+        if pred.isinst(PredNotNAN):
+            pred = pred.instr.negate(pred)
+            t_l, f_l = f_l, t_l
 
         yield PredCondJump.from_parts(
             pred,

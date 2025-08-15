@@ -13,6 +13,7 @@ from dataclasses import field
 from pathlib import Path
 from types import ModuleType
 from types import TracebackType
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Iterator
 from typing import Never
@@ -35,6 +36,9 @@ from . import _utils
 from ._utils import Cell
 from .config import show_src_info
 from .config import verbose
+
+if TYPE_CHECKING:
+    from ._core import Fragment
 
 TRACEBACK_SUPPRESS: Cell[set[str]] = Cell(set())
 
@@ -370,6 +374,21 @@ class Report:
 class CompilerError(Exception):
     def __init__(self, report: Report):
         self.report = report
+
+
+@contextmanager
+def catch_ex_and_exit(f: Fragment | None = None) -> Iterator[None]:
+    try:
+        yield
+    except Exception as e:
+        if isinstance(e, CompilerError):
+            report = e.report
+        else:
+            report = Report.from_ex(e)
+        if verbose.value >= 1:
+            if f is not None:
+                report.add(f.__rich__(title=f"While handling fragment:"))
+        report.fatal()
 
 
 def debug_info(depth: int = 1) -> DebugInfo:

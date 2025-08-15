@@ -5,6 +5,7 @@ from .._core import BoundInstr
 from .._core import Comment
 from .._core import Fragment
 from .._diagnostic import add_debug_info
+from .._diagnostic import catch_ex_and_exit
 from .._instructions import EmitLabel
 from .._instructions import EndPlaceholder
 from .._instructions import RawInstr
@@ -34,7 +35,7 @@ def lower_instrs(f: Fragment) -> None:
     calss the .lower method on each instruction; see InstrBase.lower
     """
 
-    with internal_transform(f):
+    with internal_transform(f), catch_ex_and_exit(f):
 
         def lower_block(b: Block) -> Iterator[BoundInstr]:
             for instr in b.contents:

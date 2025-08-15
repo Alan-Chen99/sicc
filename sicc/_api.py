@@ -7,6 +7,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any
 from typing import Callable
+from typing import Concatenate
 from typing import Final
 from typing import Never
 from typing import Protocol
@@ -38,6 +39,7 @@ from ._core import can_cast_implicit_many
 from ._core import can_cast_implicit_many_or_err
 from ._core import get_type
 from ._core import get_types
+from ._core import nan
 from ._core import promote_types
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
@@ -165,6 +167,9 @@ class VarRead[T: VarT](abc.ABC):
 
     def __abs__(self: VarRead[float]) -> VarRead[float]:
         return abs_.call(self)
+
+    def is_nan(self) -> VarRead[bool]:
+        return equal(self, nan)
 
     def transmute[O: VarT](self, out_type: type[O] = AnyType) -> VarRead[O]:
         """
@@ -480,6 +485,14 @@ class Subr[F]:
         self.fn = fn
         self._subr: TracedSubr | None = None
 
+    def __get__[T, **P, R](
+        self: Subr[Callable[Concatenate[T, P], R]], obj: T, objtype: Any, /
+    ) -> Callable[P, R]:
+        def inner(*args: P.args, **kwargs: P.kwargs):
+            return self(obj, *args, **kwargs)
+
+        return inner
+
     def __call__[**P, R](self: Subr[Callable[P, R]], *args: P.args, **kwargs: P.kwargs) -> R:
         bound = inspect.signature(self.fn).bind_partial(*args, **kwargs)
         bound.apply_defaults()
@@ -492,7 +505,7 @@ class Subr[F]:
 
 @dataclass
 class SubrFactory:
-    inline_always: bool
+    inline_always: bool = False
 
     def __call__[F](self, fn: F) -> Subr[F]:
         if self.inline_always:
@@ -500,8 +513,21 @@ class SubrFactory:
         return Subr(fn)
 
 
-def subr(*, inline_always: bool = False) -> SubrFactory:
-    return SubrFactory(inline_always=inline_always)
+class SubrOpts(TypedDict, total=False):
+    inline_always: bool
+
+
+@overload
+def subr(**kwargs: Unpack[SubrOpts]) -> SubrFactory: ...
+@overload
+def subr[F](func: F, /, **kwargs: Unpack[SubrOpts]) -> Subr[F]: ...
+
+
+def subr[F](func: F | None = None, /, **kwargs: Unpack[SubrOpts]) -> SubrFactory | Subr[F]:
+    config = SubrFactory(**kwargs)
+    if func is None:
+        return config
+    return config(func)
 
 
 ################################################################################

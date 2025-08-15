@@ -58,6 +58,9 @@ def common_sub_elim(ctx: TransformCtx) -> bool:
         if not instr.is_side_effect_free():
             continue
 
+        if instr not in imm_doms:
+            # not reachable
+            continue
         p = imm_doms[instr]
         while not isinstance(p, External):
             if _can_sub_elim(ctx, instr, p):

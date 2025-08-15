@@ -28,6 +28,7 @@ from .link_bundles import pack_cond_call
 from .lower import lower_instrs
 from .optimize_mvars import elim_mvars_read_writes
 from .optimize_mvars import writeback_mvar_use
+from .predicates import handle_nan_eq
 from .regalloc import regalloc
 from .remove_trivial_vars import remove_trivial_vars_
 from .utils import frag_is_global
@@ -54,6 +55,7 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
 ]
 
 GLOBAL_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
+    handle_nan_eq,
     #
     inline_pred_to_branch,
     pack_cond_call,
