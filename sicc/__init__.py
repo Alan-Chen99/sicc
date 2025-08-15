@@ -52,6 +52,7 @@ from ._api import return_ as return_
 from ._api import subr as subr
 
 # dataclasses
+from ._api import State as State
 from ._tree_utils import dataclass as dataclass
 from ._tree_utils import dataclasses as dataclasses
 from ._tree_utils import pytree as pytree
@@ -63,15 +64,14 @@ from ._stationeers import Device as Device
 from ._stationeers import DeviceBase as DeviceBase
 from ._stationeers import DeviceTyped as DeviceTyped
 from ._stationeers import Pin as Pin
-from ._stationeers import pin as pin
 
-db = pin("db")
-d0 = pin(0)
-d1 = pin(1)
-d2 = pin(2)
-d3 = pin(3)
-d4 = pin(4)
-d5 = pin(5)
+db = Pin.db()
+d0 = Pin(0)
+d1 = Pin(1)
+d2 = Pin(2)
+d3 = Pin(3)
+d4 = Pin(4)
+d5 = Pin(5)
 
 
 # functions

@@ -245,7 +245,10 @@ class Variable[T: VarT](VarRead[T]):
             return
 
         x_val = _get(init_or_typ)
-        self._inner = mk_mvar(get_type(x_val))
+        typ = get_type(x_val)
+        if not read_only and typ == AnyType:
+            raise TypeError("cannot infer type; specify one explicitly")
+        self._inner = mk_mvar(typ)
         self._inner.write(x_val)
 
     def __repr__(self) -> str:
@@ -387,6 +390,14 @@ class State[T = Any]:
         with track_caller():
             for mv, arg in zip(self._vars, vars):
                 mv.write(arg)
+
+    @property
+    def value(self) -> T:
+        return self.read()
+
+    @value.setter
+    def value(self, val: T) -> None:
+        self.write(val)
 
 
 ################################################################################

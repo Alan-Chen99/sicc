@@ -17,3 +17,19 @@ def test_devices():
 
         d.On = True
         d["Lock"] = True
+
+
+@wrap_test
+@program()
+def test_pins():
+    comment("db:", db.Temperature)
+    db.Setting = 0
+    comment("d3:", d3.Temperature)
+    d3.Setting = 0
+
+    d_var = State(d0)
+
+    with if_(db.Temperature > 0):
+        d_var.value = d1
+
+    d_var.value.Setting = d_var.value.On

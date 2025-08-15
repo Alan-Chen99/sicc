@@ -188,17 +188,33 @@ class StoreBatchNamed[T: VarT](AsmInstrBase):
         return EffectExternal()
 
 
-@optree_dataclass(eq=False, repr=False, kw_only=True)
+@dataclass
+class LiteralPin:
+    """only for db, atm"""
+
+    name: str
+
+
+@optree_dataclass(eq=False, repr=False)
 class Pin:
-    _idx: UserValue[int | PinType]
+    _idx: Int | LiteralPin
+
+    @staticmethod
+    def db() -> Pin:
+        return Pin(LiteralPin("db"))
 
     def __rich_repr__(self) -> rich.repr.Result:
-        yield self._idx
+        if isinstance(self._idx, LiteralPin):
+            yield self._idx.name
+        else:
+            yield self._idx
 
     def __repr__(self) -> str:
         return pretty_repr(self)
 
     def _pin(self) -> UserValue[PinType]:
+        if isinstance(self._idx, LiteralPin):
+            return PinType(self._idx.name)
         return cast_unchecked(self._idx)
 
     def __getitem__(self, logic_type: ValLogicTypeLike) -> VarRead[Any]:
@@ -214,18 +230,10 @@ class Pin:
             raise AttributeError()
 
     def __setattr__(self, name: str, val: UserValue) -> None:
-        if name and name[0].isupper() and name and not hasattr(type(self), name):
+        if name and name[0].isupper() and not hasattr(type(self), name):
             self[name] = val
         else:
             super().__setattr__(name, val)
-
-
-def pin(x: Int | str, /) -> Pin:
-    if isinstance(x, str):
-        return Pin(_idx=PinType(x))
-    else:
-        assert _get_type(x) == int
-        return Pin(_idx=x)
 
 
 _did_register_optree: set[type[DeviceBase[Any, Any]]] = set()
@@ -286,7 +294,7 @@ class DeviceBase(Generic[DT_co, N_co]):
             raise AttributeError()
 
     def _setattr(self, name: str, val: UserValue) -> None:
-        if name and name[0].isupper() and name and not hasattr(type(self), name):
+        if name and name[0].isupper() and not hasattr(type(self), name):
             self[name].set(val)
         else:
             super().__setattr__(name, val)
