@@ -1,9 +1,11 @@
 import networkx as nx
+from rich.text import Text
 
 from .._core import AlwaysUnpack
 from .._diagnostic import mk_warn
 from .._instructions import AsmBlock
 from .._utils import cast_unchecked_val
+from ..config import verbose
 from .basic import get_index
 from .control_flow import build_control_flow_graph
 from .control_flow import external
@@ -56,11 +58,13 @@ def check_mvars_defined(ctx: TransformCtx) -> None:
         undef_uses = [
             use for use in v.uses if res.reachable[use].external_path and not use.isinst(AsmBlock)
         ]
-        if len(undef_uses) > 0:
+        if len(undef_uses) > 0 and verbose.value >= 1:
             err = mk_warn(f"mvar {v.v} ({v.v.type.__name__}) can not be proved to be initialized")
+            err.note("lifetime analysis is currently limited, so this may not be an error")
+
             for i, u in enumerate(undef_uses):
                 err.add(
-                    f"Possible uninitialized use [{i+1}]:",
+                    Text(f"Possible uninitialized use [{i+1}]:", "bold"),
                     u.debug,
                     "",
                     "corresponding instruction:",

@@ -90,7 +90,10 @@ def global_opts(f: Fragment):
         optimize_frag(f)
         logging.info("running GLOBAL_OPTS")
         run_phases(f, *GLOBAL_OPTS)
-        # fuse_blocks_all(f, efficient_only=True)
+
+        fuse_blocks_all(f, efficient_only=True)
+        if verbose.value >= 1:
+            print(f.__rich__("after fuse blocks with efficient_only"))
         fuse_blocks_all(f)
 
 

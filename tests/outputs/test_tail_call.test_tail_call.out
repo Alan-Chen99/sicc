@@ -1,0 +1,9 @@
+jal 2
+move ra 7
+move r0 ra
+jal 6
+jal 6
+j r0
+j ra
+# noop (jump here to exit)
+# 8 lines total (not including this line)

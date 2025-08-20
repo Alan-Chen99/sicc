@@ -12,11 +12,15 @@ from ._diagnostic import show_pending_diagnostics as show_pending_diagnostics
 # types
 from ._api import UserValue as UserValue
 from ._api import Variable as Variable
+from ._api import VarRead as VarRead
 from ._core import Label as Label
 from ._core import nan as nan
 from ._stationeers import BatchMode as BatchMode
 from ._stationeers import Color as Color
 from ._stationeers import LogicType as LogicType
+
+# units
+MPa = 1000
 
 # UserValue aliases
 from ._api import Bool as Bool
@@ -41,6 +45,7 @@ from ._tracing import label as label
 # control flow high level
 from ._api import cjump as cjump
 from ._api import if_ as if_
+from ._api import inline_subr as inline_subr
 from ._api import loop as loop
 from ._api import while_ as while_
 from ._tracing import break_ as break_

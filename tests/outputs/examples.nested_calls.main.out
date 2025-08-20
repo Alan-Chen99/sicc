@@ -1,0 +1,17 @@
+move r1 0
+jal 12
+jal 7
+jal 7
+jal 7
+jal 7
+move ra 15
+move r2 ra
+jal 12
+jal 12
+jal 12
+j r2
+lb r0 336213101 ImportCount 0
+add r1 r1 r0
+j ra
+# result: %r1
+# 16 lines total (not including this line)

@@ -200,6 +200,14 @@ class AsmInstrBase(InstrBase):
         ).bind(instr.outputs, *instr.inputs)
 
 
+class AsmInstrBinopSameType[T: VarT](AsmInstrBase):
+    opcode: str
+
+    def __init__(self, typ: type[T]) -> None:
+        self.in_types = (typ, typ)
+        self.out_types = (typ,)
+
+
 ################################################################################
 
 
@@ -425,8 +433,16 @@ class AndI(AsmInstrBase):
     out_types = (int,)
 
 
+class Min[T: VarT](AsmInstrBinopSameType[T]):
+    opcode = "min"
+
+
+class Max[T: VarT](AsmInstrBinopSameType[T]):
+    opcode = "max"
+
+
 ################################################################################
-# Math (more)
+# Math (non primitive)
 ################################################################################
 
 
@@ -639,8 +655,8 @@ class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
 
         @group()
         def mk_group() -> Iterator[RenderableType]:
-            if len(comment) > 0:
-                yield comment[2:]
+            if comment:
+                yield comment
             yield from format_instr_list(list(parts))
 
         if verbose.value >= 2:

@@ -409,6 +409,9 @@ def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[V
     # should not matter but safer
     with _CUR_TRACE.bind_clear(), _CUR_SCOPE.bind_clear():
         ra_mvar = mk_mvar(Label, force_public=True)
+        # allow spilling ra into another reg at function start
+        # regalloc code for this is not implemented yet
+        ra_mvar_inner = mk_mvar(Label, force_public=True)
         arg_mvars = tuple(mk_mvar(x, force_public=True) for x in arg_types)
 
         start = mk_internal_label(f"[{describe_fn(fn)}]", private=False)
@@ -416,6 +419,7 @@ def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[V
         with with_status(describe_fn(fn)), trace_to_fragment() as res:
             with add_debug_info(DebugInfo(describe=repr(fn))):
                 label(start)
+            ra_mvar_inner.write(ra_mvar.read())
             with add_debug_info(DebugInfo(describe=f"args of {describe_fn(fn)}")):
                 argvals = tuple(x.read() for x in arg_mvars)
             out_vars = fn(*argvals)
@@ -423,10 +427,8 @@ def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[V
             for mv, v in zip(ret_mvars, out_vars):
                 with add_debug_info(DebugInfo(describe=f"return value from {describe_fn(fn)}")):
                     mv.write(v)
-            with add_debug_info(
-                DebugInfo(describe=f"jump to return address from {describe_fn(fn)}")
-            ):
-                jump(ra_mvar.read())
+            with add_debug_info(DebugInfo(describe=f"return from {describe_fn(fn)}")):
+                jump(ra_mvar_inner.read())
 
         return RawSubr(
             get_id(),

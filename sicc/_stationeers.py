@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from enum import Enum
 from typing import TYPE_CHECKING
 from typing import Any
@@ -29,6 +30,10 @@ from ._core import PinType
 from ._core import RawText
 from ._core import Value
 from ._core import VarT
+from ._diagnostic import DebugInfo
+from ._diagnostic import add_debug_info
+from ._diagnostic import clear_debug_info
+from ._diagnostic import debug_info
 from ._diagnostic import register_exclusion
 from ._instructions import AsmInstrBase
 from ._instructions import EffectExternal
@@ -287,7 +292,7 @@ class DeviceBase(Generic[DT_co, N_co]):
             logic_type, bm = logic_type
             return DeviceLogicType(
                 self, LogicType.create(logic_type), AnyType, self.default_batchmode
-            ).get(bm)
+            ).get(mode=bm)
         return DeviceLogicType(self, LogicType.create(logic_type), AnyType, self.default_batchmode)
 
     def __setitem__(self, logic_type: ValLogicTypeLike, val: UserValue):
@@ -321,6 +326,10 @@ class DeviceBase(Generic[DT_co, N_co]):
         )
         return ans
 
+    @property
+    def StaticPrefabHash(self) -> DT_co:
+        return self.device_type
+
 
 class Device[D: Str = Str, N: Str | None = Str | None](DeviceBase[D, N]):
     def __init__(self, device_type: D, name: N = None) -> None:
@@ -337,6 +346,7 @@ class DeviceLogicTypeRead(Generic[T, D_co], VarRead[T]):
     logic_type: UserValue[LogicType]
     typ: type[T]
     default_batchmode: BatchMode
+    _debug: DebugInfo = field(default_factory=debug_info)
 
     def __rich_repr__(self) -> rich.repr.Result:
         yield self.device
@@ -345,37 +355,45 @@ class DeviceLogicTypeRead(Generic[T, D_co], VarRead[T]):
     def __repr__(self) -> str:
         return pretty_repr(self)
 
-    def get(self, mode: ValBatchMode | None = None) -> VarRead[T]:
+    @overload
+    def get(self, *, mode: ValBatchMode | None = None) -> VarRead[T]: ...
+    @overload
+    def get[T1: VarT](self, *, mode: ValBatchMode | None = None, typ: type[T1]) -> VarRead[T1]: ...
+
+    def get(
+        self, *, mode: ValBatchMode | None = None, typ: type[VarT] | None = None
+    ) -> VarRead[VarT]:
         if mode is None:
             mode = self.default_batchmode
 
         if self.device.name is None:
-            return Function(LoadBatch(self.typ)).call(
+            return Function(LoadBatch(typ or self.typ)).call(
                 self.device.device_type, self.logic_type, mode
             )
-        return Function(LoadBatchNamed(self.typ)).call(
+        return Function(LoadBatchNamed(typ or self.typ)).call(
             self.device.device_type, self.device.name, self.logic_type, mode
         )
 
     @property
     def avg(self) -> VarRead[T]:
-        return self.get(BatchMode.AVG)
+        return self.get(mode=BatchMode.AVG)
 
     @property
     def sum(self) -> VarRead[T]:
-        return self.get(BatchMode.SUM)
+        return self.get(mode=BatchMode.SUM)
 
     @property
     def min(self) -> VarRead[T]:
-        return self.get(BatchMode.MIN)
+        return self.get(mode=BatchMode.MIN)
 
     @property
     def max(self) -> VarRead[T]:
-        return self.get(BatchMode.MAX)
+        return self.get(mode=BatchMode.MAX)
 
     @override
     def _read(self) -> Value[T]:
-        return self.get()._read()
+        with clear_debug_info(), add_debug_info(self._debug):
+            return self.get()._read()
 
     @override
     def _get_type(self) -> type[T]:
@@ -454,6 +472,6 @@ class DeviceTyped(DeviceBase[str]):
         if self.name is not None:
             yield self.name
 
-    PrefabHash: FieldDesc[int] = mk_field_ro(int)
+    PrefabHash: FieldDesc[str] = mk_field_ro(str)
+    NameHash: FieldDesc[str] = mk_field_ro(str)
     ReferenceId: FieldDesc[int] = mk_field_ro(int)
-    NameHash: FieldDesc[int] = mk_field_ro(int)

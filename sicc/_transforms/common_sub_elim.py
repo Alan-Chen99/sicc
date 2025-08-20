@@ -71,7 +71,7 @@ def common_sub_elim(ctx: TransformCtx) -> bool:
                     for instr_out, p_out in zip(instr.outputs, p.outputs):
                         yield Move(instr_out.type).bind((instr_out,), p_out)
 
-                p.debug.must_use_ctx += instr.debug.must_use_ctx
+                p.debug.fuse_must_use(instr.debug)
                 return True
 
             p = imm_doms[p]

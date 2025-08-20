@@ -8,6 +8,7 @@ from .._core import Fragment
 from .._core import Label
 from .._core import Var
 from .._diagnostic import add_debug_info
+from .._instructions import Branch
 from .._instructions import CondJump
 from .._instructions import EndPlaceholder
 from .._instructions import Jump
@@ -22,29 +23,71 @@ from .utils import LoopingTransform
 from .utils import TransformCtx
 
 
+def _try_remove_trivial_blocks_one(ctx: TransformCtx, b: Block) -> bool:
+    f = ctx.frag
+    index = get_index.call_cached(ctx)
+
+    if not (
+        #
+        len(b.contents) == 2
+        and index.labels[b.label].private
+        and (instr := b.end.isinst(Jump))
+        and (instr.inputs_[0] != b.label)
+    ):
+        return False
+
+    (jump_to,) = instr.inputs_
+
+    if isinstance(jump_to, Var):
+        # this is probably "tail call"
+
+        # we may attempt to do tail call opt: in
+        #
+        # ra_var := [b.label]
+        # ...call...
+        #
+        # [block b]
+        # b.label:
+        # jump %jump_to
+
+        # replace
+        # ra_var := [b.label]
+        # with
+        # ra_var := %jump_to
+
+        # to be able to do this we need to prove
+        # %jump_to has the same value in
+        # (a) ra_var := [b.label]
+        # and
+        # (b) jump %jump_to
+
+        # currently lifetime analysis is typically not powerful enough
+        # to be able to prove this
+
+        # its fine if b.label is not assigned to vars though
+        for label_use in index.labels[b.label].uses:
+            if not label_use.isinst((Branch, Jump)):
+                return False
+
+    # do the change
+    del f.blocks[b.label]
+
+    @f.map_instrs
+    def _(instr: BoundInstr):
+        return instr.sub_val(b.label, jump_to, inputs=True, strict=False)
+
+    return True
+
+
 @LoopingTransform
 def remove_trivial_blocks(ctx: TransformCtx) -> bool:
     """
     remove block that is just a jump
     """
     f = ctx.frag
-    index = get_index.call_cached(ctx)
+
     for b in f.blocks.values():
-        if (
-            #
-            len(b.contents) == 2
-            and index.labels[b.label].private
-            and (instr := b.end.isinst(Jump))
-            and (instr.inputs_[0] != b.label)
-        ):
-            del f.blocks[b.label]
-            # note: rep might be a var
-            (rep,) = instr.inputs_
-
-            @f.map_instrs
-            def _(instr: BoundInstr):
-                return instr.sub_val(b.label, rep, inputs=True, strict=False)
-
+        if _try_remove_trivial_blocks_one(ctx, b):
             return True
 
     return False

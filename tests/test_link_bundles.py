@@ -15,11 +15,11 @@ def func(x: Int) -> None:
 def test_cond_call():
     """currently function that returns dont work. will hopefully be fixed latter"""
     with if_(d.On):
-        func(d.PrefabHash)
+        func(d.ImportCount)
 
     with if_(d.Power == 2):
         with else_():
-            func(d.PrefabHash)
+            func(d.ImportCount)
 
 
 @dataclass

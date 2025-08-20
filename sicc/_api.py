@@ -58,6 +58,8 @@ from ._instructions import BlackBox
 from ._instructions import DivF
 from ._instructions import EffectExternal
 from ._instructions import Jump
+from ._instructions import Max
+from ._instructions import Min
 from ._instructions import MulF
 from ._instructions import MulI
 from ._instructions import Not
@@ -132,8 +134,16 @@ class VarRead[T: VarT](abc.ABC):
         err.add_note("use tilde operator '~' to invert a boolean")
         raise err
 
-    __add__ = late_fn(lambda: add)
-    __radd__ = late_fn(lambda: add)
+    # explicit @overload works with protocol requiring __add__ (so sum(), etc)
+    # maybe write explicit @overload for all?
+    @overload
+    def __add__(self: Int, other: Int, /) -> VarRead[int]: ...
+    @overload
+    def __add__(self: Float, other: Float, /) -> VarRead[float]: ...
+    def __add__(self: Float, other: Float, /) -> VarRead[float]:
+        return add(self, other)
+
+    __radd__ = __add__
 
     __sub__ = late_fn(lambda: sub)
     __rsub__ = late_fn(lambda: sub._rev_same_sig())
@@ -144,10 +154,12 @@ class VarRead[T: VarT](abc.ABC):
     __truediv__ = late_fn(lambda: div)
     __rtruediv__ = late_fn(lambda: div._rev_same_sig())
 
-    __invert__ = late_fn(lambda: bool_not)
+    __invert__ = late_fn(lambda: not_)
 
     __and__ = late_fn(lambda: and_)
+    __rand__ = late_fn(lambda: and_)
     __or__ = late_fn(lambda: or_)
+    __ror__ = late_fn(lambda: or_)
 
     def __eq__(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, other: Any
@@ -207,6 +219,7 @@ def _get_type[T: VarT](v: UserValue[T]) -> type[T]:
 
 class VariableOpts(TypedDict, total=False):
     _read_only: bool
+    _mvar: MVar | None
 
 
 class Variable[T: VarT](VarRead[T]):
@@ -236,8 +249,14 @@ class Variable[T: VarT](VarRead[T]):
         **kwargs: Unpack[VariableOpts],
     ) -> None:
         read_only = kwargs.get("_read_only", False)
+        mvar = kwargs.get("_mvar", None)
 
         self._read_only = read_only
+
+        if mvar:
+            assert mvar.type == init_or_typ
+            self._inner = mvar
+            return
 
         if init is not None:
             assert isinstance(init_or_typ, type)
@@ -295,7 +314,12 @@ class Function[Ts: tuple[Any, ...]]:
     def __repr__(self) -> str:
         return "Function(" + ", ".join(type(x).__name__ for x in self._instrs) + ")"
 
-    def __get__[V](self, obj: V, objtype: Any) -> _BoundFunction[V, Ts]:
+    @overload
+    def __get__(self, obj: None, objtype: type) -> Self: ...
+    @overload
+    def __get__[V](self, obj: V, objtype: Any) -> _BoundFunction[V, Ts]: ...
+
+    def __get__(self, obj: Any, objtype: Any) -> Any:
         """
         typing helper to get type checker accept Function as a method
         for methods to actually work one must use for ex late_fn
@@ -361,12 +385,12 @@ class _BoundFunction[V, Ts: tuple[Any, ...]](Protocol):
 
 @dataclass
 class State[T = Any]:
-    _scope: Scope
+    _scope: Scope | None
     _tree: pytree.PyTreeSpec | None = None
     _vars: list[MVar] | None = None
 
     def __init__(self, init: T | empty_t = empty):
-        self._scope = _CUR_SCOPE.value
+        self._scope = _CUR_SCOPE.get()
         if not isinstance(init, empty_t):
             self.write(init)
 
@@ -385,9 +409,13 @@ class State[T = Any]:
 
         if self._tree is None:
             assert self._vars is None
-            with _CUR_SCOPE.bind(self._scope):
-                self._tree = tree
-                self._vars = [mk_mvar(get_type(x)) for x in vars]
+            self._tree = tree
+            if self._scope:
+                with _CUR_SCOPE.bind(self._scope):
+                    self._vars = [mk_mvar(get_type(x)) for x in vars]
+            else:
+                with _CUR_SCOPE.bind_clear():
+                    self._vars = [mk_mvar(get_type(x)) for x in vars]
         else:
             assert self._vars is not None
             assert tree == self._tree
@@ -403,6 +431,13 @@ class State[T = Any]:
     @value.setter
     def value(self, val: T) -> None:
         self.write(val)
+
+    def ref_mut(self) -> T:
+        assert self._tree is not None
+        assert self._vars is not None
+
+        vars = [Variable(x.type, _mvar=x) for x in self._vars]
+        return cast_unchecked(pytree.unflatten(self._tree, vars))
 
 
 ################################################################################
@@ -456,15 +491,10 @@ def trace_to_subr[**P, R](
 
         with _RETURN_HOOK.bind(ret_hook):
             ans = cast_unchecked(fn)(*cast_unchecked(ar), **cast_unchecked(kw))
-            if ans is not None:
-                with add_debug_info(
-                    DebugInfo(describe=f"return val from end of {describe_fn(fn)}")
-                ):
-                    return_(ans)
-            elif ret_state._tree is None:
-                return_(None)
 
-            _f.unreachable_checked()
+            with add_debug_info(DebugInfo(describe=f"return val from end of {describe_fn(fn)}")):
+                return_(ans)
+                _f.unreachable_checked()
 
         label(exit)
 
@@ -485,11 +515,24 @@ class Subr[F]:
         self.fn = fn
         self._subr: TracedSubr | None = None
 
+    def __repr__(self):
+        return repr(self.fn)
+
+    @overload
+    def __get__(self, obj: None, objtype: type, /) -> Self: ...
+    @overload
     def __get__[T, **P, R](
         self: Subr[Callable[Concatenate[T, P], R]], obj: T, objtype: Any, /
-    ) -> Callable[P, R]:
-        def inner(*args: P.args, **kwargs: P.kwargs):
-            return self(obj, *args, **kwargs)
+    ) -> Callable[P, R]: ...
+
+    def __get__(self, obj: Any, objtype: Any, /):
+        if obj is None:
+            return self
+
+        def inner(*args: Any, **kwargs: Any) -> Any:
+            return self(
+                obj, *args, **kwargs
+            )  # pyright: ignore[reportCallIssue, reportUnknownVariableType]
 
         return inner
 
@@ -530,6 +573,23 @@ def subr[F](func: F | None = None, /, **kwargs: Unpack[SubrOpts]) -> SubrFactory
     return config(func)
 
 
+def inline_subr[T](fn: Callable[[], T]) -> T:
+    exit = mk_internal_label("inline_subr_end")
+    ret_state: State[T] = State()
+
+    def ret_hook(val: Any) -> None:
+        ret_state.write(val)
+        jump(exit)
+
+    with _RETURN_HOOK.bind(ret_hook):
+        ans = fn()
+        return_(ans)
+        _f.unreachable_checked()
+
+    label(exit)
+    return ret_state.value
+
+
 ################################################################################
 
 
@@ -548,11 +608,25 @@ div = Function(DivF())
 or_ = Function(OrB(), OrI())
 and_ = Function(AndB(), AndI())
 
+min_ = Function(Min(int), Min(float))
+max_ = Function(Max(int), Max(float))
+
+
+def clamp[T: float](
+    val: UserValue[T],
+    /,
+    min: UserValue[T],
+    max: UserValue[T],
+) -> VarRead[T]:
+    ans: VarRead[float] = min_(max_(val, min), max)
+    return cast_unchecked(ans)
+
+
 abs_ = Function(AbsI(), AbsF())
 
 ##
 
-bool_not = Function(Not())
+not_ = Function(Not())
 
 less_than = Function(PredLT())
 less_than_or_eq = Function(PredLE())
@@ -781,8 +855,9 @@ def asm_block(*lines_: AsmBlockLine) -> None:
     for opcode, *args in lines:
         linespecs.append((opcode, tuple(handle_arg(x) for x in args)))
 
-    AsmBlock(
-        lines=linespecs,
-        in_types=TypeList([get_type(x) for x in inputs]),
-        out_types=(),
-    ).call(*inputs)
+    with track_caller():
+        AsmBlock(
+            lines=linespecs,
+            in_types=TypeList([get_type(x) for x in inputs]),
+            out_types=(),
+        ).call(*inputs)

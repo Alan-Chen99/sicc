@@ -68,6 +68,10 @@ class Transform[**P, R]:
                 assert before is not None
                 if frag.blocks != before.blocks:
                     logging.info(f"modified by {self.fn.__qualname__}")
+                    if verbose.value >= 2:
+                        print(
+                            frag.__rich__(title=f"Fragment after {self.fn}"),
+                        )
 
                 # TODO: potentially reuse result of this call
                 # validate result

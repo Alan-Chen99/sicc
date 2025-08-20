@@ -67,7 +67,7 @@ def console_setup() -> None:
     from ._diagnostic import TRACEBACK_SUPPRESS
 
     format = "%(message)s"
-    if verbose.value >= 2:
+    if verbose.value >= 3:
         level = logging.DEBUG
     elif verbose.value >= 1:
         level = logging.INFO

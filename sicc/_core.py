@@ -23,8 +23,12 @@ from typing import runtime_checkable
 
 from ordered_set import OrderedSet
 from rich import print as print  # autoflake: skip
+from rich.console import Console
+from rich.console import ConsoleOptions
 from rich.console import Group
 from rich.console import RenderableType
+from rich.console import RenderResult
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.text import Text
 
@@ -84,6 +88,7 @@ class Register(Enum):
 @dataclass(frozen=True)
 class RegInfo:
     allocated_reg: Register | None = None
+    # unused for now
     force_reg: Register | None = None
     preferred_reg: Register | None = None
     preferred_weight: int = 0
@@ -433,6 +438,27 @@ class NeverUnpack(UnpackPolicy):
         return False
 
 
+@dataclass
+class AnnotatedLine:
+    instr: Text
+    comment: Text
+    indent: int
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        ans = Text()
+        ans += self.instr
+        if self.comment:
+            ans += "  "
+            ans += self.comment
+
+        if len(ans) <= options.max_width:
+            yield ans
+        else:
+            yield Padding(self.comment, (0, 0, 0, self.indent))
+            # yield Text(" " * self.prefix_len) + self.comment
+            yield self.instr
+
+
 class InstrBase(abc.ABC):
     # required overrides
     in_types: VarTS
@@ -519,10 +545,13 @@ class InstrBase(abc.ABC):
     def format_comment(self, instr: BoundInstr[Any], /) -> Text:
         comment = Text()
         if loc_info := instr.debug.location_info_brief():
-            comment.append("  # " + loc_info, "ic10.comment")
+            comment += Text("# " + loc_info, "ic10.comment")
+
         if annotation := FORMAT_ANNOTATE.value(instr):
-            comment.append("  # ", "ic10.comment")
-            comment.append(annotation)
+            if comment:
+                comment += "  "
+            comment += Text("# ", "ic10.comment")
+            comment += annotation
         return comment
 
     def format_with_anno(self, instr: BoundInstr[Any], /) -> RenderableType:
@@ -540,10 +569,12 @@ class InstrBase(abc.ABC):
 
             ans += Text(prefix, "ic10.linenum")
 
-        ans += self.format(instr)
-        ans += self.format_comment(instr)
+        prefix_len = len(ans)
 
-        return ans
+        ans += self.format(instr)
+
+        comment = self.format_comment(instr)
+        return AnnotatedLine(ans, comment, prefix_len)
 
     ################################################################################
     # stub methods for static typing
@@ -1218,10 +1249,12 @@ def format_raw_val(x: Value, ctx: AsRawCtx, typ: type[VarT], debug: DebugInfo) -
 
     if isinstance(x, bool):
         x = 1 if x else 0
-    if isinstance(x, int | float):
+    if isinstance(x, int):
+        return RawText(Text(repr(x), style))
+    if isinstance(x, float):
         if math.isnan(x):
             debug.error("unsupported nan literal").throw()
-        return RawText(Text(repr(x), style))
+        return RawText(Text(format(x, ".12f").rstrip("0").rstrip("."), style))
 
     if isinstance(x, str):
         hash_text = Text.assemble("HASH(", ('"' + x + '"', style), ")")

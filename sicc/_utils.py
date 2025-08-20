@@ -213,6 +213,9 @@ def load_module_from_file(file_path: Path, module_name: str) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
 
+    # otherwise @dataclass dont work
+    sys.modules[module_name] = module
+
     prev_path = sys.path.copy()
     try:
         sys.path.insert(0, str(file_path.parent))

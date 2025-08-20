@@ -228,15 +228,19 @@ class DebugInfo:
         yield "must_use_ctx", self.must_use_ctx
         yield "describe", self.describe
 
+    def fuse_must_use(self, other: DebugInfo) -> Self:
+        self.must_use_ctx += other.must_use_ctx
+        for x in other.must_use_ctx:
+            x.add_parent(self)
+        return self
+
     def fuse(self, other: DebugInfo) -> Self:
         """
         other takes priority
         modifies self, leaves other untouched
         """
         self.traceback = other.traceback or self.traceback
-        self.must_use_ctx += other.must_use_ctx
-        for x in other.must_use_ctx:
-            x.add_parent(self)
+        self.fuse_must_use(other)
         self.describe = other.describe or self.describe
         self.location = other.location or self.location
         self.track_caller = other.track_caller or self.track_caller
@@ -250,7 +254,7 @@ class DebugInfo:
             return desc
         # if loc := self.location:
         #     return frame_short_desc(loc)
-        if (verbose.value >= 2 or self.track_caller) and (loc := self.location):
+        if (verbose.value >= 3 or self.track_caller) and (loc := self.location):
             return frame_short_desc(loc)
         return ""
 
@@ -437,4 +441,7 @@ def track_caller(depth: int = 0) -> Iterator[None]:
 
 
 def describe_fn(fn: Any) -> str:
-    return fn.__module__ + "." + fn.__qualname__
+    try:
+        return fn.__module__ + "." + fn.__qualname__
+    except AttributeError:
+        return repr(fn)

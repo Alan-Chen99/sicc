@@ -196,16 +196,6 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
     return ans
 
 
-def _can_fuse(x: RegInfo, y: RegInfo) -> bool:
-    if x.force_reg or y.force_reg:
-        raise NotImplementedError()
-
-    if x.preferred_reg and y.preferred_reg and x.preferred_reg != y.preferred_reg:
-        return False
-
-    return True
-
-
 def _do_fuse(x: RegInfo, y: RegInfo) -> RegInfo:
     return RegInfo(
         preferred_reg=x.preferred_reg or y.preferred_reg,
@@ -313,7 +303,32 @@ def regalloc_try_fuse(ctx: TransformCtx) -> RegallocFuseRes:
     def can_fuse(x: VarGroup, y: VarGroup) -> bool:
         if graph.has_edge(x, y):
             return False
-        return _can_fuse(x.reg, y.reg)
+
+        if x.reg.force_reg or y.reg.force_reg:
+            raise NotImplementedError()
+
+        x_pref = x.reg.preferred_reg
+        y_pref = y.reg.preferred_reg
+
+        if x_pref:
+            if y_pref:
+                return x_pref == y_pref
+            else:
+                pass
+        else:
+            if y_pref:
+                x, y = y, x
+                x_pref, y_pref = y_pref, x_pref
+            else:
+                return True
+
+        # x has pref, y no pref
+        # check if anything conflicting with y with same pref as x
+        for z in graph.neighbors(y):
+            if z.reg.preferred_reg == x_pref:
+                return False
+
+        return True
 
     def perform_fuse(x: VarGroup, y: VarGroup) -> VarGroup:
         comb = _do_fuse_group(x, y)

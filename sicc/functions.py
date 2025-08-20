@@ -8,6 +8,7 @@ from ._api import sub as sub
 
 # bool
 from ._api import and_ as and_
+from ._api import not_ as not_
 from ._api import or_ as or_
 
 # comparison
@@ -18,6 +19,9 @@ from ._api import less_than_or_eq as less_than_or_eq
 
 # math
 from ._api import abs_ as abs_
+from ._api import clamp as clamp
+from ._api import max_ as max_
+from ._api import min_ as min_
 
 # other
 from ._api import black_box as black_box

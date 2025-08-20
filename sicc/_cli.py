@@ -19,6 +19,7 @@ from rich import print as print  # autoflake: skip
 from rich.rule import Rule
 from rich.text import Text
 
+from ._api import comment
 from ._api import loop
 from ._diagnostic import SuppressExit
 from ._diagnostic import describe_fn
@@ -39,10 +40,14 @@ register_exclusion(__file__)
 class Program:
     fn: Callable[[], None]
     loop: bool = False
+    header: str | None = None
 
     def trace(self) -> TracedProgram:
         try:
             with trace_program() as res:
+                if self.header is not None:
+                    comment(self.header)
+
                 if self.loop:
                     with loop():
                         self.fn()
@@ -62,6 +67,7 @@ class Program:
 
 class ProgramOpts(TypedDict, total=False):
     loop: bool
+    header: str | None
 
 
 @overload
@@ -121,7 +127,7 @@ class Cli:
         self.config.set_vars()
         console_setup()
 
-        mod = load_module_from_file(self.file, self.file.name)
+        mod = load_module_from_file(self.file, self.file.stem)
 
         def _get_program(x: Any) -> Program | None:
             if isinstance(x, Program):

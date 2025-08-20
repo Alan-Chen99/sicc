@@ -28,6 +28,7 @@ dev = [
   "autoflake>=2.3.1",
   "basedpyright>=1.31.0",
   "black>=25.1.0",
+  "grip>=4.6.2",
   "ipython>=9.4.0",
   "isort>=6.0.1",
   "pyright>=1.1.403",

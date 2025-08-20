@@ -6,26 +6,26 @@ https://github.com/Raibo/ic11/wiki
 from sicc import *
 from sicc.devices import *
 
-PA1 = d0
-Valve1 = d1
-PA2 = d2
-Valve2 = d3
+pa1 = d0
+valve1 = d1
+pa2 = d2
+valve2 = d3
 
 TargetTemp1 = 297
 TargetTemp2 = 297
 
 
 @program
-def Main():
+def main():
     with loop():
         yield_()
 
-        ControlTemp(PA1, Valve1, TargetTemp1)
-        ControlTemp(PA2, Valve2, TargetTemp2)
+        control_temp(pa1, valve1, TargetTemp1)
+        control_temp(pa2, valve2, TargetTemp2)
 
 
 @subr
-def ControlTemp(pa: Pin, valve: Pin, targetTemp: Int):
+def control_temp(pa: Pin, valve: Pin, targetTemp: Int):
     needCooling = pa.Temperature > targetTemp
     delta = abs(targetTemp - pa.Temperature)
     power = Variable(10)
@@ -38,4 +38,4 @@ def ControlTemp(pa: Pin, valve: Pin, targetTemp: Int):
 
 
 if __name__ == "__main__":
-    Main.cli()
+    main.cli()
