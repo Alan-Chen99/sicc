@@ -303,13 +303,24 @@ class Variable[T: VarT](VarRead[T]):
         self._inner.write(_get(v))
 
 
-class Function[Ts: tuple[Any, ...]]:
-    _instrs: Final[Ts]
+class _FunctionProto[T_co]:
+    def _instrs_type_helper(self) -> T_co: ...
 
-    def __init__(self, *overloads: Unpack[Ts]) -> None:
+
+class Function[*Ts](_FunctionProto[tuple[*Ts]]):
+    """
+    a possibly overloaded function that maps to a instruction
+    """
+
+    _instrs: tuple[InstrBase, ...]
+
+    def __init__(self, *overloads: *Ts) -> None:
         for x in overloads:
             assert isinstance(x, InstrBase)
         self._instrs = cast_unchecked(overloads)
+
+    def _instrs_type_helper(self) -> tuple[*Ts]:
+        return cast_unchecked(self._instrs)
 
     def __repr__(self) -> str:
         return "Function(" + ", ".join(type(x).__name__ for x in self._instrs) + ")"
@@ -317,7 +328,7 @@ class Function[Ts: tuple[Any, ...]]:
     @overload
     def __get__(self, obj: None, objtype: type) -> Self: ...
     @overload
-    def __get__[V](self, obj: V, objtype: Any) -> _BoundFunction[V, Ts]: ...
+    def __get__[V](self, obj: V, objtype: Any) -> _BoundFunction[V, tuple[*Ts]]: ...
 
     def __get__(self, obj: Any, objtype: Any) -> Any:
         """
@@ -328,11 +339,12 @@ class Function[Ts: tuple[Any, ...]]:
 
     @overload
     def __call__[*I, O](
-        self: Function[tuple[InstrTypedWithArgs_api[tuple[*I], O], *tuple[Any, ...]]], *args: *I
+        self: _FunctionProto[tuple[InstrTypedWithArgs_api[tuple[*I], O], *tuple[Any, ...]]],
+        *args: *I,
     ) -> O: ...
     @overload
     def __call__[*I, O](
-        self: Function[tuple[Any, InstrTypedWithArgs_api[tuple[*I], O], *tuple[Any, ...]]],
+        self: _FunctionProto[tuple[Any, InstrTypedWithArgs_api[tuple[*I], O], *tuple[Any, ...]]],
         *args: *I,
     ) -> O: ...
 
@@ -360,7 +372,7 @@ class Function[Ts: tuple[Any, ...]]:
 
     def _rev_same_sig(self) -> Self:
         def inner(a1: Any, a2: Any) -> Any:
-            return self.call(a2, a1)
+            return self.call(a2, a1)  # pyright: ignore
 
         return cast_unchecked(inner)
 
