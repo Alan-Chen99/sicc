@@ -1,6 +1,7 @@
 import networkx as nx
 from rich.text import Text
 
+from .._core import FORMAT_ANNOTATE
 from .._core import AlwaysUnpack
 from .._diagnostic import mk_warn
 from .._instructions import AsmBlock
@@ -8,6 +9,7 @@ from .._utils import cast_unchecked_val
 from ..config import verbose
 from .basic import get_index
 from .control_flow import build_control_flow_graph
+from .control_flow import compute_label_provenance
 from .control_flow import external
 from .optimize_mvars import compute_mvar_lifetime
 from .optimize_mvars import support_mvar_analysis
@@ -27,7 +29,9 @@ def check_vars_defined(ctx: TransformCtx) -> None:
 
     returns cached result from "build_instr_flow_graph"
     """
+    f = ctx.frag
     index = get_index.call_cached(ctx, unpack=AlwaysUnpack())
+    label_prov = compute_label_provenance.call_cached(ctx, out_unpack=AlwaysUnpack())
     graph = build_control_flow_graph.call_cached(ctx, out_unpack=AlwaysUnpack())
 
     for v in index.vars.values():
@@ -38,11 +42,14 @@ def check_vars_defined(ctx: TransformCtx) -> None:
         for u in v.uses:
             if u in reach:
                 err = u.debug.error(
-                    f"variable {v.v} ({v.v.debug.describe}) may not be initialized",
+                    f"variable {v.v} ({v.v.debug.describe}) does not dominiate its use",
                 )
+                err.note("this is an internal error, not a user error")
                 err.note("in instruction", u)
                 err.note("defined here:", v.v.debug)
-                err.note("initialized here, but may occur after use:", v.def_instr.debug)
+                err.note("initialized here:", v.def_instr.debug)
+                with FORMAT_ANNOTATE.bind(label_prov.annotate):
+                    err.note("fragment:", f.__rich__())
                 err.throw()
 
 

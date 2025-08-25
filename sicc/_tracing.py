@@ -97,11 +97,13 @@ def mk_mvar[T: VarT](
     return ans
 
 
-def ensure_label(l: LabelLike | None = None) -> Label:
+def ensure_label(l: LabelLike | None = None, unique: bool = False) -> Label:
     if isinstance(l, Label):
         return l
     if l is None:
         l = f"anon_{get_id()}"
+    elif unique:
+        l = f"{l}_{get_id()}"
     ans = Label(l, debug_info(), implicit=False)
     return ans
 
@@ -126,9 +128,9 @@ def mk_internal_label(prefix: str, id: int | None = None, private: bool = True) 
     return ans
 
 
-def label(l: LabelLike | None = None, *, implicit: bool = False) -> Label:
+def label(l: LabelLike | None = None, *, unique: bool = False, implicit: bool = False) -> Label:
     """actually emit the label"""
-    l_ = ensure_label(l)
+    l_ = ensure_label(l, unique=unique)
     assert l_ not in _EXISTING_EMITTED_LABELS.value
     _EXISTING_EMITTED_LABELS.value.add(l_)
     # with add_debug_info(DebugInfo(show_src=True)):

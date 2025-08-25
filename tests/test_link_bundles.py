@@ -58,7 +58,7 @@ ret_to = Variable(Label)
 @subr()
 def map_devices(func_ptr: ValLabelLike):
     for d in range(5):
-        ret_l = mk_label(f"process Autolathe{d} ret")
+        ret_l = label_ref(f"process Autolathe{d} ret")
 
         dev_name.value = f"Autolathe{d}"
         ret_to.value = ret_l

@@ -1,0 +1,12 @@
+put db 0 1
+put db 1 2
+put db 2 3
+# ptr: Pointer(0, Data(x=int, y=(int, float)))
+get r0 db 0
+get r1 db 1
+get r2 db 2
+# val: Data(x=r0, y=(r1, r2))
+get r0 db 1
+get r1 db 2
+# x: Pointer(1, (int, float)) (r0, r1)
+# 11 lines total (not including this line)

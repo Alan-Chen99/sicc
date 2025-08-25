@@ -36,8 +36,12 @@ status_hook: Cell[Callable[[str], None] | None] = Cell(None)
 _status_stack: Cell[list[str]] = Cell([])
 
 
+def _status_text() -> str:
+    return " > ".join(_status_stack.value)
+
+
 def _update_status() -> None:
-    text = " > ".join(_status_stack.value)
+    text = _status_text()
     logging.debug(f"status: {text}")
     if hook := status_hook.get():
         hook(text)
@@ -50,9 +54,16 @@ def with_status(text: str) -> Iterator[None]:
         yield
 
 
+RICH_SPINNER: Cell[rich.status.Status] = Cell()
+
+
 @contextmanager
 def with_rich_spinner() -> Iterator[None]:
-    with rich.status.Status("") as status, status_hook.bind(status.update):
+    with (
+        rich.status.Status("") as status,
+        RICH_SPINNER.bind(status),
+        status_hook.bind(status.update),
+    ):
         yield
 
 

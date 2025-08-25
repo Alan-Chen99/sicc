@@ -1,0 +1,19 @@
+lb r0 -321403609 Power 0
+sb -321403609 Setting r0
+lb r0 -321403609 Power 0
+sb -321403609 Setting r0
+lb r0 -321403609 Power 0
+sb -321403609 Setting r0
+lb r0 -321403609 Power 0
+sub r0 0 r0
+sb -321403609 Setting r0
+lb r0 -321403609 Power 0
+sb -321403609 Setting r0
+lb r0 -321403609 Power 0
+sb -321403609 Setting r0
+lb r0 -321403609 Power 0
+sb -321403609 Setting r0
+lb r0 -321403609 Power 0
+div r0 1 r0
+sb -321403609 Setting r0
+# 18 lines total (not including this line)

@@ -1,9 +1,9 @@
 move r1 1
 jal 12
-# child %r2
+# child r2
 move r1 1
 jal 8
-# res1 %r2
+# res1 r2
 move r1 2
 move ra 17
 move r0 ra
@@ -15,5 +15,5 @@ blt 0 r1 15
 move r2 r1
 j ra
 j r0
-# res2 %r2
+# res2 r2
 # 18 lines total (not including this line)

@@ -1,0 +1,13 @@
+# Pin('db'): ptr: Pointer(0, float)
+get r0 db 0
+# Pin('db'): val: r0
+put db 0 5
+get r0 db 0
+# Pin('db'): val: r0
+# Pin(1): ptr: Pointer(Pin(1), 1, float)
+get r0 d1 1
+# Pin(1): val: r0
+put d1 1 5
+get r0 d1 1
+# Pin(1): val: r0
+# 12 lines total (not including this line)

@@ -1,9 +1,9 @@
 j 3
 add r1 r0 123
-# res: %r1
+# res: r1
 move r2 1
 jal 11
-# call1 %r0
+# call1 r0
 move r1 1
 _BLACKBOX r0 1
 move r2 2

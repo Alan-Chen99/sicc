@@ -10,6 +10,7 @@ theme = Theme(
         "ic10.undef": "bold reverse red",
         "ic10.pin": "cyan",
         "ic10.other": "magenta red",
+        "ic10.pointer": "bold",
         #
         "ic10.opcode": "",
         "ic10.raw_opcode": "green bold",

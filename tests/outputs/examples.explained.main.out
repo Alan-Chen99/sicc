@@ -1,63 +1,44 @@
-# part 1
+# part 1: tracing
 sbn -324331872 1884244228 Open 1
 sbn -324331872 122190226 Open 1
-# part 2
-# part 2, iteration 0
+#
+# part 2: Variable
+lbn r0 -324331872 1884244228 RequiredPower 1
+add r1 r0 1
+sbn -324331872 122190226 Setting r1
+# val: r0 res: r1
+#
+# part 3: Variable (continued)
+lbn r0 -324331872 1884244228 RequiredPower 3
+# x: r0
+# x_alias: r0
+lbn r0 -324331872 122190226 RequiredPower 0
+add r0 r0 1
+# x: r0
+# x_alias: r0
+add r1 r0 5.1
+# new x: r1
+# x_alias: r0
+lbn r1 -324331872 1884244228 RequiredPower 0
+add r1 r1 2
+# var 0: r1
+add r0 r0 1
+# var 1: r0
+add r0 r1 r0
+# sum: r0
+#
+# part 4: control flow
+# part 4, iteration 0
 # trace-time if
 sbn -324331872 1884244228 Open 0
-lbn ra -324331872 1884244228 Open 0
-bne ra 1 11
+lbn r0 -324331872 1884244228 Open 0
+bne r0 1 37
 # runtime if
 sbn -324331872 1884244228 Lock 1
-# part 2, iteration 1
-lbn ra -324331872 122190226 Open 0
-bne ra 1 16
+# part 4, iteration 1
+lbn r0 -324331872 122190226 Open 0
+bne r0 1 42
 # runtime if
 sbn -324331872 122190226 Lock 1
-# part 3
-add ra 1 2
-# x: %ra
-# x_alias: %ra
-add r0 1 0
-add r1 1 1
-# var 0: %r0
-# var 1: %r1
-# var 2: %ra
-add ra 3 4
-# x: %ra
-# x_alias: %ra
-add r0 ra 5.1
-# new x: %r0
-# x_alias: %ra
-# part 4
-add ra 2 1
-# y: %ra
-# part 5
-lbn ra -324331872 -44753248 On 3
-# On: %ra
-lbn ra -324331872 -44753248 Lock 1
-# Lock: %ra
-move r1 1442257217
-jal 57
-move r1 -855750405
-jal 57
-# return vals: %r0 %r0
-# part 6
-yield
-lbn ra -324331872 1442257217 On 3
-beq ra 0 45
-lbn ra -324331872 -855750405 On 3
-beq ra 0 45
-# jump in and out of loops
-lbn ra -324331872 1442257217 Lock 3
-bne ra 0 51
-lbn ra -324331872 -855750405 Lock 3
-beq ra 0 51
-yield
-j 55
-lbn r0 -324331872 r1 On 3
-# On: %r0
-lbn r0 -324331872 r1 Lock 1
-# Lock: %r0
-j ra
-# 62 lines total (not including this line)
+# noop (jump here to exit)
+# 43 lines total (not including this line)

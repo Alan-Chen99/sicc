@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import operator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import Any
@@ -12,7 +13,6 @@ from typing import cast
 from typing import final
 from typing import override
 
-from ordered_set import OrderedSet
 from rich import print as print  # autoflake: skip
 from rich.console import RenderableType
 from rich.console import group
@@ -22,6 +22,7 @@ from rich.text import Text
 from ._core import AsRawCtx
 from ._core import Block
 from ._core import BoundInstr
+from ._core import ConstEval
 from ._core import EffectBase
 from ._core import EffectMvar
 from ._core import EffectRes
@@ -29,6 +30,7 @@ from ._core import InstrBase
 from ._core import InternalValLabel
 from ._core import Label
 from ._core import MVar
+from ._core import PinType
 from ._core import RawText
 from ._core import RegallocPref
 from ._core import RegallocSkip
@@ -40,17 +42,19 @@ from ._core import Value
 from ._core import Var
 from ._core import VarT
 from ._core import VarTS
+from ._core import VirtualConst
 from ._core import WriteMVar
+from ._core import db_internal
 from ._core import format_instr_list
 from ._core import format_raw_val
 from ._core import format_val
+from ._core import format_vals
 from ._core import get_type
 from ._core import get_types
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
 from ._diagnostic import clear_debug_info
 from ._utils import cast_unchecked
-from ._utils import mk_ordered_set
 from ._utils import narrow_unchecked
 from .config import verbose
 
@@ -74,7 +78,7 @@ class EmitLabel(InstrBase):
 
     @override
     def format(self, instr: BoundInstr[Self], /) -> Text:
-        return format_val(instr.inputs_[0]) + ":"
+        return format_val(instr.inputs_[0], Label) + ":"
 
     @override
     def writes(self, instr: BoundInstr[Self]) -> Iterable[EffectBase]:
@@ -83,7 +87,7 @@ class EmitLabel(InstrBase):
     @override
     def defines_labels(self, instr: BoundInstr[Self], /) -> Iterable[Label]:
         (l,) = instr.inputs_
-        assert not isinstance(l, Var)
+        assert not isinstance(l, Var | VirtualConst)
         yield l
 
 
@@ -137,16 +141,9 @@ class RawInstr(InstrBase):
         ans.append(self.opcode, "ic10.raw_opcode")
         if len(instr.outputs_) > 0:
             ans += " ["
-            ans += format_val(instr.outputs_[0])
-            for x in instr.outputs_[1:]:
-                ans += ", "
-                ans += format_val(x)
+            ans += format_vals(instr.outputs_, self.out_types, sep=", ")
             ans += "]"
-
-        for x in instr.inputs_:
-            ans += " "
-            ans += format_val(x)
-
+        ans += format_vals(instr.inputs_, self.in_types, sep=" ", prefix=" ")
         return ans
 
     def format_raw(self, instr: BoundInstr[Self], ctx: AsRawCtx) -> RawText:
@@ -181,7 +178,7 @@ class AsmInstrBase(InstrBase):
         if not isinstance(other, AsmInstrBase):
             return False
         return (
-            self.opcode == other.opcode
+            type(self) == type(other)
             and self.in_types == other.in_types
             and self.out_types == other.out_types
         )
@@ -211,7 +208,7 @@ class AsmInstrBinopSameType[T: VarT](AsmInstrBase):
 ################################################################################
 
 
-class MoveBase[O: VarT, I: VarT](AsmInstrBase):
+class MoveBase[O: VarT = Any, I: VarT = Any](AsmInstrBase):
     jumps = False
 
     def __init__(self, in_typ: type[I], out_typ: type[O]) -> None:
@@ -224,7 +221,7 @@ class MoveBase[O: VarT, I: VarT](AsmInstrBase):
         (ipt,) = instr.inputs_
         (opt,) = instr.outputs_
 
-        if ipt == Undef.undef():
+        if isinstance(ipt, Undef):
             return
         elif isinstance(ipt, Var) and ipt.reg.allocated == opt.reg.allocated:
             return
@@ -245,6 +242,24 @@ class Move[T: VarT = Any](MoveBase[T, T]):
 
 class Transmute[O: VarT, I: VarT](MoveBase[O, I]):
     pass
+
+
+class SplitLifetime[T: VarT = Any](MoveBase[T, T]):
+    """
+    isolate short-lived var,
+    typically bc they have a reg preference,
+    so it is not a good idea to extend its lifetime
+
+    currently used in stack_chain_to_push_pop
+
+    %ra fuses does not seem to need it atm
+    (we currently use a mvar read/write to serve the same
+    purpose; should work fine until lifetime analysis learns
+    multi-level function calls)
+    """
+
+    def __init__(self, typ: type[T]) -> None:
+        super().__init__(typ, typ)
 
 
 class EndPlaceholder(InstrBase):
@@ -372,11 +387,15 @@ class AddF(AsmInstrBase):
     in_types = (float, float)
     out_types = (float,)
 
+    consteval_fn = operator.add
+
 
 class AddI(AsmInstrBase):
     opcode = "add"
     in_types = (int, int)
     out_types = (int,)
+
+    consteval_fn = operator.add
 
 
 class SubF(AsmInstrBase):
@@ -384,11 +403,15 @@ class SubF(AsmInstrBase):
     in_types = (float, float)
     out_types = (float,)
 
+    consteval_fn = operator.sub
+
 
 class SubI(AsmInstrBase):
     opcode = "sub"
     in_types = (int, int)
     out_types = (int,)
+
+    consteval_fn = operator.sub
 
 
 class MulF(AsmInstrBase):
@@ -429,6 +452,36 @@ class AndB(AsmInstrBase):
 
 class AndI(AsmInstrBase):
     opcode = "and"
+    in_types = (int, int)
+    out_types = (int,)
+
+
+class XORB(AsmInstrBase):
+    opcode = "xor"
+    in_types = (bool, bool)
+    out_types = (bool,)
+
+
+class XORI(AsmInstrBase):
+    opcode = "xor"
+    in_types = (int, int)
+    out_types = (int,)
+
+
+class RShiftUnsigned(AsmInstrBase):
+    opcode = "srl"
+    in_types = (int, int)
+    out_types = (int,)
+
+
+class RShiftSigned(AsmInstrBase):
+    opcode = "sra"
+    in_types = (int, int)
+    out_types = (int,)
+
+
+class LShift(AsmInstrBase):
+    opcode = "sll"
     in_types = (int, int)
     out_types = (int,)
 
@@ -555,7 +608,7 @@ class PredNotNAN(PredicateBase):
 ################################################################################
 
 
-@dataclass
+@dataclass(eq=False)
 class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
     # False, i -> var is inputs[i]
     # True, i -> var is outputs[i]
@@ -581,14 +634,21 @@ class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
         if TYPE_CHECKING:
             assert narrow_unchecked(instrs, tuple[BoundInstr, ...])
 
-        vars: OrderedSet[Value] = mk_ordered_set()
+        vals: list[Value] = []
         out_vars: set[Var] = set()
 
         children: list[tuple[InstrBase, tuple[int, ...], tuple[int, ...], DebugInfo]] = []
 
+        def handle_val(x: Value) -> int:
+            if isinstance(x, Var) and x in vals:
+                return vals.index(x)
+            ans = len(vals)
+            vals.append(x)
+            return ans
+
         for instr in instrs:
-            arg_idxs = tuple(vars.add(x) for x in instr.inputs)
-            out_idxs = tuple(vars.add(x) for x in instr.outputs)
+            arg_idxs = tuple(handle_val(x) for x in instr.inputs)
+            out_idxs = tuple(handle_val(x) for x in instr.outputs)
             out_vars |= set(instr.outputs)
             children.append((instr.instr, arg_idxs, out_idxs, instr.debug))
 
@@ -596,7 +656,7 @@ class Bundle[*Ts = * tuple[BoundInstr[Any], ...]](InstrBase):
         inputs: list[Value] = []
         outputs: list[Var] = []
 
-        for x in vars:
+        for x in vals:
             if isinstance(x, Var) and x in out_vars:
                 var_info.append((True, len(outputs)))
                 outputs.append(x)
@@ -776,6 +836,268 @@ class CondJumpAndLink(
 
 
 ################################################################################
+# STACK
+################################################################################
+
+
+class EffectStack(EffectBase):
+    pass
+
+
+class RawGet[T: VarT](AsmInstrBase):
+    def __init__(self, typ: type[T]) -> None:
+        self.opcode = "get"
+        self.in_types = (PinType, int)
+        self.out_types = (typ,)
+
+    reads_ = EffectStack()
+
+
+class RawPut[T: VarT](AsmInstrBase):
+    def __init__(self, typ: type[T]) -> None:
+        self.opcode = "put"
+        self.in_types = (PinType, int, typ)
+        self.out_types = ()
+
+    writes_ = EffectStack()
+
+
+def _format_stack_ptr(device: Value[PinType], addr: Value[int], offset: int) -> Text:
+    ans = Text()
+
+    if device != db_internal:
+        ans += format_val(device, PinType)
+        ans += ": "
+
+    addr_part = format_val(addr, int)
+    if offset != 0:
+        addr_part = Text.assemble("(", addr_part, "+", str(offset), ")")
+
+    ptr_text = Text("*", "ic10.pointer")
+    ptr_text += addr_part
+    ans += ptr_text
+
+    return ans
+
+
+class ReadStack[T: VarT = Any](InstrBase):
+    jumps = False
+
+    def __init__(self, typ: type[T], offset: int):
+        self.in_types = (PinType, int)
+        self.out_types = (typ,)
+        self.offset = offset
+
+    @override
+    def reads(self, instr: BoundInstr[Self]) -> EffectRes:
+        return EffectStack()
+
+    @override
+    def format_expr_part(self, instr: BoundInstr[Self], /) -> Text:
+        device, ptr = instr.inputs_
+        return _format_stack_ptr(device, ptr, self.offset)
+
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        device, addr = instr.inputs_
+        (out_var,) = instr.outputs_
+        (typ,) = instr.out_types
+
+        if isinstance(addr, Var):
+            if self.offset == 0:
+                addr_shifted = addr
+            else:
+                sp = Register.SP._mk_var(int)
+                yield AddI().bind((sp,), addr, self.offset)
+                addr_shifted = sp
+        else:
+            addr_shifted = ConstEval.addi(addr, self.offset)
+
+        yield RawGet(typ).bind((out_var,), device, addr_shifted)
+
+
+class WriteStack[T: VarT = Any](InstrBase):
+    jumps = False
+
+    def __init__(self, typ: type[T], offset: int):
+        self.in_types = (PinType, int, typ)
+        self.out_types = ()
+        self.offset = offset
+
+    @override
+    def writes(self, instr: BoundInstr[Self]) -> EffectRes:
+        return EffectStack()
+
+    @override
+    def format(self, instr: BoundInstr[Self], /) -> Text:
+        device, ptr, arg = instr.inputs_
+        ptr_fmt = _format_stack_ptr(device, ptr, self.offset)
+
+        ans = Text()
+        ans += ptr_fmt
+        ans += " = "
+        ans += format_val(arg, self.in_types[2])
+        return ans
+
+    @override
+    def lower(self, instr: BoundInstr[Self]):
+        device, addr, arg = instr.inputs_
+        _, _, typ = instr.in_types
+
+        if isinstance(arg, Undef):
+            return
+
+        if isinstance(addr, Var):
+            if self.offset == 0:
+                addr_shifted = addr
+            else:
+                sp = Register.SP._mk_var(int)
+                yield AddI().bind((sp,), addr, self.offset)
+                addr_shifted = sp
+        else:
+            addr_shifted = ConstEval.addi(addr, self.offset)
+
+        yield RawPut(typ).bind((), device, addr_shifted, arg)
+
+
+class Push(
+    Bundle[
+        BoundInstr[WriteStack],
+        BoundInstr[AddI],
+    ]
+):
+    """
+    write val to stack[db, addr],
+    and then increment addr
+
+    write must always be db and offset 0
+    """
+
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        write, add = instr.unpack()
+
+        device, addr, val = write.inputs_
+        addr_, one_ = add.inputs_
+        (addr_out,) = add.outputs_
+
+        assert device == db_internal
+        assert addr == addr_
+        assert one_ == 1
+        assert write.instr.offset == 0
+
+        if (
+            isinstance(addr, Var)
+            and addr.reg.allocated == Register.SP
+            and addr_out.reg.allocated == Register.SP
+        ):
+            return (RawInstr.make("push", (), val),)
+        else:
+            instr.debug.warn("failed to lower push to %sp")
+            return super().lower(instr)
+
+
+class Pop(
+    Bundle[
+        BoundInstr[SubI],
+        BoundInstr[ReadStack],
+    ]
+):
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        sub, read = instr.unpack()
+
+        addr, one_ = sub.inputs_
+        (addr_out,) = sub.outputs_
+        device, addr_out_ = read.inputs_
+        (var_out,) = read.outputs_
+
+        assert device == db_internal
+        assert addr_out_ == addr_out
+        assert one_ == 1
+        assert read.instr.offset == 0
+
+        if (
+            isinstance(addr, Var)
+            and addr.reg.allocated == Register.SP
+            and addr_out.reg.allocated == Register.SP
+        ):
+            return (RawInstr.make("pop", (var_out,)),)
+        else:
+            instr.debug.warn("failed to lower pop to %sp")
+            return super().lower(instr)
+
+
+class StackOpChain(
+    Bundle[
+        *tuple[
+            BoundInstr[ReadStack] | BoundInstr[WriteStack],
+            ...,
+        ]
+    ]
+):
+    """
+    sequence of stack read and write on the same device at the same base addr
+
+    currently is always a continuous read seg or write seg
+    will prob change later
+    """
+
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        parts = instr.unpack()
+
+        if len(parts) <= 1:
+            yield from parts
+            return
+
+        device, addr, *_val = parts[0].inputs_
+        for p in parts[1:]:
+            assert p.inputs_[0] == device
+            assert p.inputs_[1] == addr
+
+        if device != db_internal or not isinstance(addr, Var):
+            yield from parts
+            return
+
+        if all(p.isinst(ReadStack) for p in parts):
+            parts = [p.check_type(ReadStack) for p in parts]
+
+            # we currently dont touch this after tracing
+            # will prob change later
+            for i, p in enumerate(parts):
+                assert p.instr.offset == i
+
+            sp = Register.SP._mk_var(int)
+            yield AddI().bind((sp,), addr, len(parts))
+
+            for p in reversed(parts):
+                yield RawInstr.make("pop", (p.outputs_[0],))
+
+            return
+
+        if all(p.isinst(WriteStack) for p in parts):
+            parts = [p.check_type(WriteStack) for p in parts]
+
+            # we currently dont touch this after tracing
+            # will prob change later
+            for i, p in enumerate(parts):
+                assert p.instr.offset == i
+
+            sp = Register.SP._mk_var(int)
+            yield Move(int).bind((sp,), addr)
+
+            for p in parts:
+                yield RawInstr.make("push", (), p.inputs_[2])
+
+            return
+
+        raise NotImplementedError()
+
+
+################################################################################
+# Raw Asm
+################################################################################
 
 
 @dataclass
@@ -823,7 +1145,7 @@ class AsmBlock(InstrBase):
                 for arg in vars:
                     ans += " "
                     if isinstance(arg, int):
-                        ans += format_val(instr.inputs_[arg])
+                        ans += format_val(instr.inputs_[arg], self.in_types[arg])
                     else:
                         ans += arg._format()
 

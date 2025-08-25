@@ -63,7 +63,7 @@ class RegallocLifetimeRes:
 
     def annotate(self, instr: BoundInstr) -> Text:
         if vars := [x for x, y in self.lifetimes.items() if in_typed(instr, y)]:
-            return Text(pretty_repr(vars), "ic10.comment")
+            return Text(pretty_repr(vars, max_width=1000), "ic10.comment")
         return Text()
 
     @contextmanager
@@ -413,7 +413,8 @@ def regalloc(ctx: TransformCtx) -> None:
     f = ctx.frag
     fuse_res = regalloc_try_fuse.call_cached(ctx)
 
-    free_regs = OrderedSet(OrderedSet(Register) - OrderedSet([Register.SP]))
+    # free_regs = OrderedSet(OrderedSet(Register) - OrderedSet([Register.SP]))
+    free_regs = OrderedSet(Register)
 
     ########################################
     # assign colors;

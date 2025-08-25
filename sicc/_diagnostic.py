@@ -10,6 +10,7 @@ import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field
+from enum import Enum
 from pathlib import Path
 from types import ModuleType
 from types import TracebackType
@@ -34,6 +35,8 @@ from rich.traceback import Traceback
 
 from . import _utils
 from ._utils import Cell
+from .config import RICH_SPINNER
+from .config import _status_text
 from .config import show_src_info
 from .config import verbose
 
@@ -58,6 +61,12 @@ register_exclusion(__file__)
 register_exclusion(_utils.__file__)
 
 register_exclusion(contextlib)
+
+
+class Warnings(Enum):
+    InternalError = "InternalError"
+    Unspecified = "Unspecified"
+    Unused = "Unused"
 
 
 class SuppressExit(Exception):
@@ -121,7 +130,7 @@ def get_trace(depth: int = 0) -> Trace:
 
 def format_backtrace(trace: Trace, max_frames: int = 100):
     stack = Stack("", "", frames=trace.stacks[0].frames[-max_frames:])
-    return Traceback(trace, suppress=TRACEBACK_SUPPRESS.value)._render_stack(stack)
+    return Traceback(trace)._render_stack(stack)
 
 
 def frame_short_desc(frame: Frame) -> str:
@@ -154,7 +163,7 @@ class MustuseCtx:
     def new() -> MustuseCtx:
         with track_caller():
             ans = MustuseCtx([], debug_info())
-            assert len(ans.debug.must_use_ctx) == 0
+            assert len(ans.debug._must_use_ctx) == 0
             mustuse_ctxs.value.append(ans)
             return ans
 
@@ -175,9 +184,9 @@ class MustuseCtx:
         yield self.debug.location_info_brief()
 
     def check(self):
-        assert len(self.debug.must_use_ctx) == 0
+        assert len(self.debug._must_use_ctx) == 0
         if len(self._get_parents()) == 0:
-            self.debug.warn("expression has no effect:")
+            self.debug.warn("expression has no effect:", typ=Warnings.Unused)
 
 
 def check_must_use():
@@ -190,7 +199,7 @@ def check_must_use():
 @contextmanager
 def must_use() -> Iterator[None]:
     mc = MustuseCtx.new()
-    tmp_di = DebugInfo(must_use_ctx=[mc])
+    tmp_di = DebugInfo(_must_use_ctx=[mc])
     mc.add_parent(tmp_di)
 
     with add_debug_info(tmp_di):
@@ -202,10 +211,12 @@ def must_use() -> Iterator[None]:
 class DebugInfo:
     created_at: str | None = None
     traceback: Trace | None = None
-    must_use_ctx: list[MustuseCtx] = field(default_factory=lambda: [])
+    # other files should use `fuse_must_use`
+    _must_use_ctx: list[MustuseCtx] = field(default_factory=lambda: [])
     describe: str = ""
     location: Frame | None = None
     track_caller: bool = False
+    suppress_warnings: set[Warnings] = field(default_factory=lambda: set())
 
     def __eq__(self, other: Any) -> bool:
         # if we get here the caller probably didnt define a __eq__
@@ -225,12 +236,12 @@ class DebugInfo:
         if self.created_at is not None:
             yield "created_at", self.created_at
         yield "have_tb", (self.traceback is not None)
-        yield "must_use_ctx", self.must_use_ctx
+        yield "must_use_ctx", self._must_use_ctx
         yield "describe", self.describe
 
     def fuse_must_use(self, other: DebugInfo) -> Self:
-        self.must_use_ctx += other.must_use_ctx
-        for x in other.must_use_ctx:
+        self._must_use_ctx += other._must_use_ctx
+        for x in other._must_use_ctx:
             x.add_parent(self)
         return self
 
@@ -244,6 +255,7 @@ class DebugInfo:
         self.describe = other.describe or self.describe
         self.location = other.location or self.location
         self.track_caller = other.track_caller or self.track_caller
+        self.suppress_warnings |= other.suppress_warnings
         return self
 
     def location_info_brief(self) -> str:
@@ -262,17 +274,20 @@ class DebugInfo:
     def location_info_full(self) -> Iterator[RenderableType]:
         if desc := self.describe:
             yield f"({desc})"
+        # if tb := self.traceback:
+        #     yield format_backtrace(tb)
+        #     return
         if loc := self.location:
             yield format_location(loc)
 
     def __rich__(self) -> RenderableType:
         return self.location_info_full()
 
-    def warn(self, msg: str) -> Report:
-        return mk_warn(msg, self)
+    def warn(self, msg: str, typ: Warnings = Warnings.Unspecified) -> Report:
+        return mk_warn(msg, self, typ=typ, suppress=typ in self.suppress_warnings)
 
-    def error(self, msg: str) -> Report:
-        return mk_error(msg, self)
+    def error(self, msg: str, typ: Warnings = Warnings.Unspecified) -> Report:
+        return mk_error(msg, self, typ=typ, suppress=typ in self.suppress_warnings)
 
 
 _PENDING_ERRORS: Cell[list[Report]] = Cell([])
@@ -285,7 +300,13 @@ def show_pending_diagnostics():
         x.show()
 
 
-def mk_warn(msg: str | Text, first: RenderableType | None = None, *parts: RenderableType) -> Report:
+def mk_warn(
+    msg: str | Text,
+    first: RenderableType | None = None,
+    *parts: RenderableType,
+    typ: Warnings = Warnings.Unspecified,
+    suppress: bool = False,
+) -> Report:
     txt = Text("", style="logging.level.warning")
     txt += Text("[WARN] ", style="bold")
     txt += msg
@@ -293,11 +314,17 @@ def mk_warn(msg: str | Text, first: RenderableType | None = None, *parts: Render
         Group(txt, first) if first is not None else txt,
         *parts,
         border_style="logging.level.warning",
+        typ=typ,
+        suppress=suppress,
     )
 
 
 def mk_error(
-    msg: str | Text, first: RenderableType | None = None, *parts: RenderableType
+    msg: str | Text,
+    first: RenderableType | None = None,
+    *parts: RenderableType,
+    suppress: bool = False,
+    typ: Warnings = Warnings.Unspecified,
 ) -> Report:
     txt = Text("", style="logging.level.error")
     txt += Text("[ERROR] ", style="bold")
@@ -306,12 +333,16 @@ def mk_error(
         Group(txt, first) if first is not None else txt,
         *parts,
         border_style="logging.level.error",
+        typ=typ,
+        suppress=suppress,
     )
 
 
 @dataclass
 class Report:
     # internal part of bt (bt of line that created the report)
+    typ: Warnings
+    suppress: bool
     trace: Trace | None
     parts: list[RenderableType]
 
@@ -320,10 +351,16 @@ class Report:
 
     @staticmethod
     def new(
-        *parts: RenderableType, border_style: str = "traceback.border", depth: int = 0
+        *parts: RenderableType,
+        border_style: str = "traceback.border",
+        depth: int = 0,
+        typ: Warnings = Warnings.Unspecified,
+        suppress: bool = False,
     ) -> Report:
-        logging.info("created diagnostic report")
+        logging.info(f"created diagnostic report: {_status_text()}")
         ans = Report(
+            typ=typ,
+            suppress=suppress,
             trace=get_trace(depth + 1) if verbose.value >= 1 else None,
             border_style=border_style,
             parts=list(parts),
@@ -335,7 +372,7 @@ class Report:
     def from_ex(e: BaseException) -> Report:
         txt = Text("internal compiler error:", style="logging.level.error")
         tb = Traceback.from_exception(type(e), e, e.__traceback__)
-        return Report(get_trace(), [Group(txt, tb)])
+        return Report(Warnings.InternalError, False, get_trace(), [Group(txt, tb)])
 
     def add(self, *parts: RenderableType) -> Self:
         self.parts.append(Group(*parts))
@@ -353,7 +390,7 @@ class Report:
     def fatal(self) -> Never:
         show_pending_diagnostics()
         self.show()
-        raise SuppressExit(1)
+        raise SuppressExit(1) from None
 
     def __rich__(self) -> RenderableType:
         def gen():
@@ -371,7 +408,16 @@ class Report:
     def show(self) -> None:
         if self.did_show:
             return
-        print(self)
+        if self.suppress:
+            return
+        if status := RICH_SPINNER.get():
+            status.stop()
+            try:
+                print(self)
+            finally:
+                status.start()
+        else:
+            print(self)
         self.did_show = True
 
 
@@ -437,6 +483,12 @@ def track_caller(depth: int = 0) -> Iterator[None]:
     loc = get_location(depth + 3)
     tb = get_trace()
     with add_debug_info(DebugInfo(location=loc, traceback=tb, track_caller=True)):
+        yield
+
+
+@contextmanager
+def suppress_warnings(*warnings: Warnings) -> Iterator[None]:
+    with add_debug_info(DebugInfo(suppress_warnings=set(warnings))):
         yield
 
 

@@ -1,3 +1,5 @@
+from rich import print as print  # autoflake: skip
+
 from .._core import BoundInstr
 from .._instructions import Move
 from .basic import get_index
@@ -19,10 +21,9 @@ def remove_trivial_vars_(ctx: TransformCtx) -> bool:
                 if instr == def_instr:
                     return ()
                 if instr in v.uses:
+                    instr.debug.fuse_must_use(def_instr.debug)
+                    instr.debug.fuse_must_use(v.v.debug)
                     return instr.sub_val(v.v, source, inputs=True)
-
-            # if isinstance(source, Var):
-            #     source.debug.fuse(v.v.debug)
 
             return True
 

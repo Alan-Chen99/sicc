@@ -5,5 +5,5 @@ add r2 r2 1
 move r0 10
 add r2 r1 r0
 jlt r2 0 3
-# result %r2 %r1
+# result r2 r1
 # 8 lines total (not including this line)

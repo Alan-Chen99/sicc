@@ -6,6 +6,7 @@ from rich import print as print  # autoflake: skip
 from .._core import FORMAT_ANNOTATE
 from .._core import Fragment
 from ..config import verbose
+from .arith import opt_identity_arith
 from .basic import remove_unused_side_effect_free
 from .basic import rename_private_labels
 from .basic import rename_private_mvars
@@ -16,6 +17,7 @@ from .branch import inline_pred_to_branch
 from .check_defined import check_mvars_defined
 from .check_defined import check_vars_defined
 from .common_sub_elim import common_sub_elim
+from .consteval import opt_consteval
 from .control_flow import compute_label_provenance
 from .control_flow import handle_deterministic_jump
 from .control_flow import remove_unreachable_code
@@ -26,11 +28,13 @@ from .fuse_blocks import remove_trivial_blocks
 from .link_bundles import pack_call
 from .link_bundles import pack_cond_call
 from .lower import lower_instrs
+from .offset_arith import opt_offset_arith
 from .optimize_mvars import elim_mvars_read_writes
 from .optimize_mvars import writeback_mvar_use
 from .predicates import handle_nan_eq
 from .regalloc import regalloc
 from .remove_trivial_vars import remove_trivial_vars_
+from .stack import stack_chain_to_push_pop
 from .utils import frag_is_global
 from .utils import run_phases
 
@@ -43,6 +47,9 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
     remove_trivial_vars_,
     remove_trivial_blocks,
     #
+    opt_consteval,
+    opt_identity_arith,
+    #
     remove_unused_side_effect_free,
     handle_deterministic_jump,
     fuse_blocks_trivial_jumps,
@@ -51,6 +58,7 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
     elim_mvars_read_writes,
     forward_remove_full_block,
     #
+    opt_offset_arith,
     common_sub_elim,
 ]
 
@@ -60,6 +68,7 @@ GLOBAL_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
     inline_pred_to_branch,
     pack_cond_call,
     pack_call,
+    stack_chain_to_push_pop,
 ]
 
 
@@ -71,8 +80,8 @@ def optimize_frag(f: Fragment) -> None:
 
 
 def global_checks(f: Fragment):
-    check_vars_defined(f)
     with frag_is_global.bind(True):
+        check_vars_defined(f)
         if verbose.value >= 1:
             with FORMAT_ANNOTATE.bind(compute_label_provenance(f).annotate):
                 print(

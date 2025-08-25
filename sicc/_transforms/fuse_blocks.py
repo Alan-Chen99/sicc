@@ -7,6 +7,7 @@ from .._core import BoundInstr
 from .._core import Fragment
 from .._core import Label
 from .._core import Var
+from .._core import VirtualConst
 from .._diagnostic import add_debug_info
 from .._instructions import Branch
 from .._instructions import CondJump
@@ -197,7 +198,7 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
     for b in f.blocks.values():
         if instr := b.end.isinst(Jump):
             (target,) = instr.inputs_
-            if isinstance(target, Var):
+            if isinstance(target, Var | VirtualConst):
                 continue
 
             if attempt_fuse(b, target):

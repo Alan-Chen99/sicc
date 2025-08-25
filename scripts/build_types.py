@@ -31,6 +31,7 @@ field_types: dict[str, str] = {
     "On": "bool",
     "Open": "bool",
     "Power": "bool",
+    "RequiredPower": "int",
     #
     "Color": "_Color",
     #

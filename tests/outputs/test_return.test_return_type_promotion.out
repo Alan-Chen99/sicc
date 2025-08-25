@@ -1,0 +1,10 @@
+lb r0 336213101 On 0
+move r1 5
+move r2 1
+move r3 1
+ble 1 r0 8
+move r1 1
+move r2 5
+move r3 r0
+# result: r1 r2 r3
+# 9 lines total (not including this line)

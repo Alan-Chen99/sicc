@@ -1,0 +1,14 @@
+lb r0 336213101 On 0
+move r1 0
+ble 1 r0 4
+move r1 1.1
+# ans1: r1
+move r1 1.1
+ble 1 r0 8
+move r1 0
+# ans2: r1
+yield
+lb r0 336213101 On 0
+blt r0 1 9
+# on!
+# 13 lines total (not including this line)

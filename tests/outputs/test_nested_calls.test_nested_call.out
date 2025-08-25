@@ -17,5 +17,5 @@ j r0
 lb r2 336213101 ImportCount 0
 add r1 r1 r2
 j ra
-# result: %r3
+# result: r3
 # 20 lines total (not including this line)

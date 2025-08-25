@@ -207,7 +207,8 @@ class Singleton(ByIdMixin):
 
 
 def load_module_from_file(file_path: Path, module_name: str) -> ModuleType:
-    assert file_path.exists()
+    if not file_path.exists():
+        raise ValueError(f"file does not exist: {file_path}")
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)

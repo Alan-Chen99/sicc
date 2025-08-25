@@ -21,10 +21,7 @@ def handle_const_or_not_branch(ctx: TransformCtx) -> bool:
         if instr := b.end.isinst(Branch):
             v, l_t, l_f = instr.inputs_
 
-            if not isinstance(v, Var):
-
-                if not isinstance(v, bool):  # pyright: ignore[reportUnnecessaryIsInstance]
-                    instr.debug.warn(f"branch on non-bool constant {v}")
+            if isinstance(v, bool):
 
                 @f.replace_instr(instr)
                 def _():
@@ -32,7 +29,7 @@ def handle_const_or_not_branch(ctx: TransformCtx) -> bool:
 
                 return True
 
-            elif not_instr := index.vars[v].def_instr.isinst(Not):
+            elif isinstance(v, Var) and (not_instr := index.vars[v].def_instr.isinst(Not)):
                 (arg,) = not_instr.inputs_
 
                 @f.replace_instr(instr)

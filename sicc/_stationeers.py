@@ -38,6 +38,7 @@ from ._diagnostic import register_exclusion
 from ._instructions import AsmInstrBase
 from ._instructions import EffectExternal
 from ._tree_utils import dataclass as optree_dataclass
+from ._tree_utils import field as optree_field  # pyright: ignore[reportUnknownVariableType]
 from ._tree_utils import pytree
 from ._utils import ReprAs
 from ._utils import cast_unchecked
@@ -193,11 +194,14 @@ class StoreBatchNamed[T: VarT](AsmInstrBase):
         return EffectExternal()
 
 
-@dataclass
+@optree_dataclass
 class LiteralPin:
-    """only for db, atm"""
+    """
+    internal class
+    only for db, atm
+    """
 
-    name: str
+    name: str = optree_field(pytree_node=False)
 
 
 def _valid_logic_attr(name: str, parent: object) -> bool:
@@ -253,7 +257,7 @@ DT_co = TypeVar("DT_co", covariant=True, bound=Str, default=Str)
 N_co = TypeVar("N_co", covariant=True, bound=Str | None, default=Str | None)
 
 
-@dataclass(eq=False, repr=False)
+@dataclass(repr=False)
 class DeviceBase(Generic[DT_co, N_co]):
     device_type: DT_co
     name: N_co
@@ -314,17 +318,28 @@ class DeviceBase(Generic[DT_co, N_co]):
         __getattr__ = _getattr
         __setattr__ = _setattr
 
-    def tree_flatten(self):
-        return (self.device_type, self.name, self.default_batchmode), None, None
+    def tree_flatten(self) -> Any:
+        return (self.device_type, self.name), (self.default_batchmode,), None
 
     @classmethod
     def tree_unflatten(cls, metadata: Any, children: Any) -> Self:
-        device_type, name, default_batchmode = children
+        device_type, name = children
+        (default_batchmode,) = metadata
         ans = cls.__new__(cls)
         DeviceBase.__init__(
             ans, _device_type=device_type, _name=name, _default_batchmode=default_batchmode
         )
         return ans
+
+    def as_base(self) -> DeviceBase:
+        return DeviceBase(
+            _device_type=self.device_type,
+            _name=self.name,
+            _default_batchmode=self.default_batchmode,
+        )
+
+    def as_base_keep_type(self) -> Self:
+        return cast_unchecked(self.as_base())
 
     @property
     def StaticPrefabHash(self) -> DT_co:
@@ -463,14 +478,34 @@ def mk_field_ro[T: VarT](
 class DeviceTyped(DeviceBase[str]):
     _hash: int
 
+    @classmethod
+    def _device_type_from_cls_name(cls) -> str:
+        return f"Structure{cls.__name__}"
+
     def __init__(self, name: Str | None = None, *, default_batchmode: BatchMode = BatchMode.AVG):
-        device_type = f"Structure{type(self).__name__}"
+        device_type = self._device_type_from_cls_name()
         assert crc32(device_type) == self._hash
         super().__init__(_device_type=device_type, _name=name, _default_batchmode=default_batchmode)
 
     def __rich_repr__(self) -> rich.repr.Result:
         if self.name is not None:
             yield self.name
+
+    def tree_flatten(self) -> Any:
+        return (self.name,), (self.default_batchmode,), None
+
+    @classmethod
+    def tree_unflatten(cls, metadata: Any, children: Any) -> Self:
+        (name,) = children
+        (default_batchmode,) = metadata
+        ans = cls.__new__(cls)
+        DeviceBase.__init__(
+            ans,
+            _device_type=cls._device_type_from_cls_name(),
+            _name=name,
+            _default_batchmode=default_batchmode,
+        )
+        return ans
 
     PrefabHash: FieldDesc[str] = mk_field_ro(str)
     NameHash: FieldDesc[str] = mk_field_ro(str)

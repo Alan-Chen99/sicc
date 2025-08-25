@@ -73,12 +73,12 @@ class Transform[**P, R]:
                             frag.__rich__(title=f"Fragment after {self.fn}"),
                         )
 
-                # TODO: potentially reuse result of this call
-                # validate result
-                try:
-                    get_index(frag)
-                except Exception as e:
-                    raise RuntimeError(f"Transform {self.fn} returned invalid fragment") from e
+                    # TODO: potentially reuse result of this call
+                    # validate result
+                    try:
+                        get_index(frag)
+                    except Exception as e:
+                        raise RuntimeError(f"Transform {self.fn} returned invalid fragment") from e
 
                 return ans
             except Exception as e:
@@ -125,15 +125,14 @@ class LoopingTransform[**P](Transform[P, bool]):
 
 
 def _run_phases_once(frag: Fragment, *fs: Callable[[Fragment], bool | None]) -> bool:
-    changed = False
-
     for f in fs:
         ans = f(frag)
         if ans is not None:
             assert isinstance(ans, bool)
-            changed = changed or ans
+            if ans:
+                return True
 
-    return changed
+    return False
 
 
 def run_phases(frag: Fragment, *fs: Callable[[Fragment], bool | None], loop: bool = True) -> bool:

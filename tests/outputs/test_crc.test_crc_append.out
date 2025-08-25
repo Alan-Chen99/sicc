@@ -1,0 +1,30 @@
+move r0 97
+move r1 HASH("a")
+jal 13
+yield
+# res: r0 should be: 126491095
+move r0 98
+move r1 HASH("b")
+jal 13
+yield
+# res: r0 should be: -1246880850
+move r0 99
+move r1 HASH("c")
+move ra 27
+and r1 r1 4294967295
+xor r1 r1 4294967295
+xor r2 r1 r0
+move r1 0
+and r0 r2 1
+sra r2 r2 1
+beq r0 0 21
+xor r2 r2 3988292384
+add r1 r1 1
+bne r1 8 17
+xor r0 r2 4294967295
+blt r0 2147483648 26
+sub r0 r0 4294967296
+j ra
+yield
+# res: r0 should be: -609084807
+# 29 lines total (not including this line)

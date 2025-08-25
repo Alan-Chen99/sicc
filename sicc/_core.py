@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import abc
 import math
+import operator
+from collections import defaultdict
 from dataclasses import dataclass
 from dataclasses import field
 from enum import Enum
@@ -14,9 +16,9 @@ from typing import Iterable
 from typing import Iterator
 from typing import Protocol
 from typing import Self
+from typing import Sequence
 from typing import TypeGuard
 from typing import TypeVar
-from typing import cast
 from typing import overload
 from typing import override
 from typing import runtime_checkable
@@ -30,6 +32,7 @@ from rich.console import RenderableType
 from rich.console import RenderResult
 from rich.padding import Padding
 from rich.panel import Panel
+from rich.pretty import pretty_repr
 from rich.text import Text
 
 from ._diagnostic import DebugInfo
@@ -83,6 +86,11 @@ class Register(Enum):
 
     RA = "ra"
     SP = "sp"
+
+    def _mk_var[T: VarT](self, typ: type[T]) -> Var[T]:
+        from ._tracing import mk_var
+
+        return mk_var(typ, reg=RegInfo(allocated_reg=Register.SP))
 
 
 @dataclass(frozen=True)
@@ -146,12 +154,28 @@ class RawText:
 @dataclass
 class AsRawCtx:
     instr: BoundInstr[RawInstr] | None
-    linenums: LineNums
+    state: GenAsmState
+
+    def resolve_const[T: VarT](self, x: Const[T]) -> T | Undef[T]:
+        if isinstance(x, VirtualConst):
+            return x.resolve(self)
+        return x
 
 
 @runtime_checkable
 class AsRaw(Protocol):
     def as_raw(self, ctx: AsRawCtx) -> RawText: ...
+
+
+class VirtualConst[T: VarT = VarT](abc.ABC):
+    @abc.abstractmethod
+    def get_type(self) -> type[T]: ...
+
+    @abc.abstractmethod
+    def resolve(self, ctx: AsRawCtx) -> T | Undef[T]: ...
+
+
+type Const[T: VarT = VarT] = VirtualConst[T] | T
 
 
 class AnyType_(AsRaw):
@@ -163,25 +187,169 @@ AnyType: type[Any] = AnyType_
 
 
 @dataclass(frozen=True)
-class Undef(AsRaw):
-    @staticmethod
-    def undef() -> Any:
-        return Undef()
+class Undef[T: VarT](VirtualConst[T]):
+    typ: type[T]
 
-    def as_raw(self, ctx: AsRawCtx) -> RawText:
-        return RawText.str("0", "ic10.undef")
+    @override
+    def get_type(self) -> type[T]:
+        return self.typ
+
+    @override
+    def resolve(self, ctx: AsRawCtx):
+        return self
 
     def __repr__(self) -> str:
         return "undef"
 
 
 @dataclass(frozen=True)
+class ConstEval[T: VarT](VirtualConst[T]):
+    typ: type[T]
+    fn: Callable[..., T]
+    args: tuple[Const[VarT], ...]
+
+    @override
+    def get_type(self) -> type[T]:
+        return self.typ
+
+    @override
+    def resolve(self, ctx: AsRawCtx) -> T | Undef[T]:
+        args = [ctx.resolve_const(x) for x in self.args]
+        if any(isinstance(x, Undef) for x in args):
+            return Undef(self.typ)
+        return self.fn(*args)
+
+    def __repr__(self):
+        args = ",".join(repr(x) for x in self.args)
+        return f"{self.fn.__qualname__}({args})"
+
+    @staticmethod
+    def create[T1: VarT](typ: type[T1], fn: Callable[..., T1], *args: Const[VarT]) -> Const[T1]:
+        if any(isinstance(x, VirtualConst) for x in args):
+            return ConstEval(typ, fn, args)
+        return fn(*args)
+
+    @staticmethod
+    def addi(x: Const[int], y: Const[int]) -> Const[int]:
+        if isinstance(x, PtrArithLike) and isinstance(y, PtrArithLike):
+            return PtrArith.add(x, y)
+        return ConstEval.create(int, operator.add, x, y)
+
+    @staticmethod
+    def subi(x: Const[int], y: Const[int]) -> Const[int]:
+        if isinstance(x, PtrArithLike) and isinstance(y, PtrArithLike):
+            return PtrArith.add(x, PtrArith.mul(y, -1))
+        return ConstEval.create(int, operator.sub, x, y)
+
+
+@dataclass(frozen=True)
 class PinType(AsRaw):
     name: str
+
+    def __repr__(self) -> str:
+        return self.name
 
     def as_raw(self, ctx: AsRawCtx) -> RawText:
         raise NotImplementedError()
 
+
+db_internal = PinType("db")
+
+
+@dataclass(frozen=True, eq=False)
+class StaticBuffer(VirtualConst[int], ByIdMixin):
+    id: int
+    types: tuple[type[VarT], ...]
+
+    def __repr__(self) -> str:
+        return f"b{self.id}"
+        # ans += "[" + ", ".join(x.__name__ for x in self.types) + "]"
+        # return ans
+
+    def __len__(self) -> int:
+        return len(self.types)
+
+    @override
+    def get_type(self):
+        return int
+
+    @override
+    def resolve(self, ctx: AsRawCtx) -> int:
+        buffers = ctx.state.buffers
+        if self in buffers:
+            return buffers[self]
+        ans = ctx.state.buffers_alloc_end
+        ctx.state.buffers_alloc_end += len(self)
+        buffers[self] = ans
+        return ans
+
+
+@dataclass(frozen=True)
+class PtrArith(VirtualConst[int]):
+    parts: tuple[tuple[StaticBuffer, int], ...]
+    const: int
+
+    @override
+    def get_type(self):
+        return int
+
+    @override
+    def resolve(self, ctx: AsRawCtx) -> int:
+        return sum(x.resolve(ctx) * y for x, y in self.parts) + self.const
+
+    @staticmethod
+    def create(x: PtrArithLike) -> PtrArith:
+        if isinstance(x, PtrArith):
+            return x
+        elif isinstance(x, StaticBuffer):
+            return PtrArith(((x, 1),), 0)
+        else:
+            assert isinstance(x, int)
+            return PtrArith((), x)
+
+    def simplify(self) -> PtrArithLike:
+        parts = tuple((ptr, w) for ptr, w in self.parts if w != 0)
+        if len(parts) == 0:
+            return self.const
+        if len(parts) == 1 and parts[0][1] == 1 and self.const == 0:
+            return parts[0][0]
+        return PtrArith(parts, self.const)
+
+    @staticmethod
+    def add(*args: PtrArithLike) -> PtrArithLike:
+        args_ = [PtrArith.create(a) for a in args]
+
+        ans_parts: defaultdict[StaticBuffer, int] = defaultdict(lambda: 0)
+        for arg in args_:
+            for x, y in arg.parts:
+                ans_parts[x] += y
+
+        return PtrArith(
+            tuple(sorted(ans_parts.items())),
+            sum(arg.const for arg in args_),
+        ).simplify()
+
+    @staticmethod
+    def mul(x: PtrArithLike, y: int) -> PtrArithLike:
+        x = PtrArith.create(x)
+        return PtrArith(tuple((ptr, w * y) for ptr, w in x.parts), x.const * y).simplify()
+
+    def __repr__(self) -> str:
+        def fmt_part(ptr: StaticBuffer, w: int):
+            if w == 1:
+                return f"{ptr}"
+            else:
+                return f"{w}*{ptr}"
+
+        ans = [fmt_part(ptr, w) for ptr, w in self.parts]
+        if self.const != 0:
+            ans.append(f"{self.const}")
+
+        ans = "+".join(ans)
+        return f"const({ans})"
+
+
+PtrArithLike = PtrArith | StaticBuffer | int
 
 nan: float = math.nan
 
@@ -277,7 +445,7 @@ VarT = bool | int | float | str | Label | AsRaw
 
 LabelLike = Label | str
 
-type Value[T: VarT = VarT] = Var[T] | T
+type Value[T: VarT = VarT] = Var[T] | VirtualConst[T] | T
 
 InteralBool = Value[bool]
 InternalInt = Value[int]
@@ -288,6 +456,8 @@ InternalValLabel = Value[Label]
 def get_type[T: VarT](x: Value[T]) -> type[T]:
     if isinstance(x, Var):
         return x.type
+    elif isinstance(x, VirtualConst):
+        return x.get_type()
     else:
         return type(x)
 
@@ -310,8 +480,6 @@ def can_cast_implicit(t1: type[VarT], t2: type[VarT]) -> bool:
 
     if t1 == AnyType:
         return True
-    if t1 == Undef:
-        return True
 
     if (t1, t2) == (int, float):
         return True
@@ -330,6 +498,11 @@ def can_cast_implicit_or_err(t1: type[VarT], t2: type[VarT]) -> None:
 
 def promote_types(t1: type[VarT], t2: type[VarT]) -> type[VarT]:
     if t1 == t2:
+        return t1
+
+    if t1 == AnyType:
+        return t2
+    if t2 == AnyType:
         return t1
 
     for target in [bool, int, float]:
@@ -394,10 +567,21 @@ def _default_annotate(x: BoundInstr) -> str:
     return ""
 
 
+def format_val_default(v: Value | MVar) -> str:
+    if isinstance(v, MVar | Var):
+        ans = pretty_repr(v)
+        if v.reg.preferred_reg:
+            ans += f"[{v.reg.preferred_reg.value}?]"
+
+        return ans
+
+    return pretty_repr(v)
+
+
 FORMAT_SCOPE_CONTEXT: Cell[Scope] = Cell()
 FORMAT_ANNOTATE: Cell[Callable[[BoundInstr], str | Text]] = Cell(_default_annotate)
-FORMAT_VAL_FN: Cell[Callable[[Value | MVar], str]] = Cell(repr)
-FORMAT_LINENUMS: Cell[LineNums] = Cell()
+FORMAT_VAL_FN: Cell[Callable[[Value | MVar], str]] = Cell(format_val_default)
+FORMAT_LINENUMS: Cell[GenAsmState] = Cell()
 
 
 def get_style(typ: type[VarT]) -> str:
@@ -405,18 +589,41 @@ def get_style(typ: type[VarT]) -> str:
         return "ic10." + typ.__name__
     if issubclass(typ, Label):
         return "ic10.label"
-    if issubclass(typ, Undef):
-        return "ic10.undef"
     return "ic10.other"
 
 
-def format_val(v: Value) -> Text:
-    typ = get_type(v)
-    if issubclass(typ, Label):
+def format_val[T: VarT](v: Value[T], typ: type[T]) -> Text:
+    if typ == Label:
         priv = (f := FORMAT_SCOPE_CONTEXT.get()) and (v in f.private_labels)
         return Text(FORMAT_VAL_FN(v), "ic10.label_private" if priv else "ic10.label")
 
+    if typ == PinType:
+        if isinstance(v, PinType):
+            return Text(v.name, "ic10.pin")
+        ans = Text(f"d", "ic10.pin")
+        ans += FORMAT_VAL_FN(v)
+        return ans
+
+    if isinstance(v, Undef):
+        return Text(FORMAT_VAL_FN(v), "ic10.undef")
+
     return Text(FORMAT_VAL_FN(v), get_style(typ))
+
+
+def format_vals(
+    vs: Sequence[Value],
+    typs: Sequence[type[VarT]],
+    *,
+    sep: Text | str,
+    prefix: Text | str = "",
+) -> Text:
+    assert len(vs) == len(typs)
+    if isinstance(sep, str):
+        sep = Text(sep)
+    ans = sep.join(format_val(v, typ) for v, typ in zip(vs, typs))
+    if len(ans) > 0:
+        ans = Text.assemble(prefix, ans)
+    return ans
 
 
 LowerRes = tuple[Var, ...] | Var | None
@@ -501,10 +708,16 @@ class InstrBase(abc.ABC):
 
     # impure operations MUST override reads and/or writes
     # writes does NOT imply reads
+
+    reads_: EffectRes = None
+    writes_: EffectRes = None
+
     def reads(self, instr: BoundInstr[Any], /) -> EffectRes:
-        return None
+        return self.reads_
 
     def writes(self, instr: BoundInstr[Any], /) -> EffectRes:
+        if self.writes_ is not None:
+            return self.writes_
         if len(self.out_types) == 0 and len(instr.jumps_to()) == 0 and instr.continues:
             raise NotImplementedError(f"{type(self)} returns nothing, so it must override 'writes'")
 
@@ -519,25 +732,23 @@ class InstrBase(abc.ABC):
         """
         return []
 
+    consteval_fn: Callable[..., Any] | None = None
+
     def format_expr_part(self, instr: BoundInstr[Any], /) -> Text:
         ans = Text()
         mark = self.jumps and any(get_type(x) == Label for x in instr.inputs)
         mark |= not instr.continues
-        ans.append(type(self).__name__, "ic10.jump" if mark else "ic10.opcode")
-        for x in instr.inputs:
-            ans += " "
-            ans += format_val(x)
+        ans += Text(type(self).__name__, "ic10.jump" if mark else "ic10.opcode")
+
+        ans += format_vals(instr.inputs, self.in_types, sep=" ", prefix=" ")
         return ans
 
     def format(self, instr: BoundInstr[Any], /) -> Text:
         expr_part = self.format_expr_part(instr)
 
         ans = Text()
-        if len(instr.outputs) > 0:
-            ans += format_val(instr.outputs[0])
-            for x in instr.outputs[1:]:
-                ans += ", "
-                ans += format_val(x)
+        ans += format_vals(instr.outputs, self.out_types, sep=", ")
+        if ans:
             ans += " = "
         ans += expr_part
         return ans
@@ -734,6 +945,14 @@ class BoundInstr(Generic[B_co], ByIdMixin):
     # TODO: organize these methods
 
     @property
+    def in_types[T](self: BoundInstr[_InstrTypedIn[T]]) -> T:
+        return self.instr.in_types
+
+    @property
+    def out_types[T](self: BoundInstr[_InstrTypedOut[T]]) -> T:
+        return self.instr.out_types
+
+    @property
     def inputs_[I1](self: BoundInstr[InstrTypedWithArgsIn[I1]]) -> I1:
         return cast_unchecked(self.inputs)
 
@@ -864,41 +1083,6 @@ class BoundInstr(Generic[B_co], ByIdMixin):
 ################################################################################
 
 
-@dataclass(frozen=True)
-class EffectComment(EffectBase):
-    pass
-
-
-class Comment(InstrBase):
-    def __init__(self, text: Text, *arg_types: type[VarT]) -> None:
-        self.text = text
-        self.in_types = cast(TypeList[tuple[Value, ...]], TypeList(arg_types))
-        self.out_types = ()
-
-    @override
-    def format(self, instr: BoundInstr[Self]) -> Text:
-        ans = Text()
-        ans += Text("*", "ic10.jump")
-        ans += " "
-        ans += self.text
-        for x in instr.inputs:
-            ans += " "
-            ans += format_val(x)
-        return ans
-
-    # dont reorder comments
-    @override
-    def reads(self, instr: BoundInstr[Self]) -> EffectRes:
-        return EffectComment()
-
-    @override
-    def writes(self, instr: BoundInstr[Self]) -> EffectRes:
-        return EffectComment()
-
-
-################################################################################
-
-
 @dataclass(frozen=True, eq=False)
 class MVar[T: VarT = Any](ByIdMixin):
     """
@@ -990,7 +1174,7 @@ class WriteMVar[T: VarT = Any](InstrBase):
 
     @override
     def format(self, instr: BoundInstr[Self], /) -> Text:
-        return self.s._format() + " = " + format_val(instr.inputs_[0])
+        return self.s._format() + " = " + format_val(instr.inputs_[0], self.in_types[0])
 
     @override
     def writes(self, instr: BoundInstr[Any], /) -> EffectBase:
@@ -1229,9 +1413,12 @@ class Fragment:
 
 
 @dataclass
-class LineNums:
+class GenAsmState:
     instr_lines: dict[BoundInstr, int]
     label_lines: dict[Label, int]
+
+    buffers: dict[StaticBuffer, int]
+    buffers_alloc_end: int
 
 
 def format_raw_val(x: Value, ctx: AsRawCtx, typ: type[VarT], debug: DebugInfo) -> RawText:
@@ -1264,10 +1451,17 @@ def format_raw_val(x: Value, ctx: AsRawCtx, typ: type[VarT], debug: DebugInfo) -
         return RawText(hash_num)
 
     if isinstance(x, Label):
-        return RawText(Text(repr(ctx.linenums.label_lines[x]), style))
+        return RawText(Text(repr(ctx.state.label_lines[x]), style))
 
     if isinstance(x, Var):
         return RawText(Text(x.reg.allocated.value, style))
+
+    if isinstance(x, Undef):
+        return RawText.str("-9999", "ic10.undef")
+
+    if isinstance(x, VirtualConst):
+        ans = ctx.resolve_const(x)
+        return format_raw_val(ans, ctx, typ, debug)
 
     return x.as_raw(ctx)
 
@@ -1318,7 +1512,8 @@ class TracedProgram:
         (block,) = self.frag.blocks.values()
         return block.contents
 
-    def _get_linenums(self) -> LineNums:
+    def _get_asm_state(self) -> GenAsmState:
+        from ._api import Comment
         from ._instructions import EmitLabel
         from ._instructions import EndPlaceholder
         from ._instructions import RawInstr
@@ -1335,25 +1530,26 @@ class TracedProgram:
                 c += 1
             elif i := instr.isinst(EmitLabel):
                 v = i.inputs_[0]
-                assert not isinstance(v, Var)
+                assert not isinstance(v, Var | VirtualConst)
                 label_lines[v] = c
             elif i := instr.isinst(EndPlaceholder):
                 instr_lines[i] = c
             else:
                 raise TypeError(instr)
 
-        return LineNums(instr_lines, label_lines)
+        return GenAsmState(instr_lines, label_lines, {}, 0)
 
     def gen_asm(self) -> RawText:
         with catch_ex_and_exit(self.frag):
             return self._gen_asm()
 
     def _gen_asm(self) -> RawText:
+        from ._api import Comment
         from ._instructions import EmitLabel
         from ._instructions import EndPlaceholder
         from ._instructions import RawInstr
 
-        linenums = self._get_linenums()
+        linenums = self._get_asm_state()
         instrs = self._as_instrs()
 
         ans = Text()
@@ -1361,12 +1557,7 @@ class TracedProgram:
             if i := instr.isinst(RawInstr):
                 ans += i.instr.format_raw(i, AsRawCtx(i, linenums)).text
             elif i := instr.isinst(Comment):
-                ans += Text("# ", "ic10.comment")
-                ans += i.instr.text
-                for x in i.inputs_:
-                    ans += " "
-                    ans += format_val(x)
-                ans += "\n"
+                ans += i.instr.format_raw(i, AsRawCtx(None, linenums)).text
             elif i := instr.isinst(EmitLabel):
                 pass
             elif i := instr.isinst(EndPlaceholder):
@@ -1384,7 +1575,7 @@ class TracedProgram:
         if not self.did_regalloc:
             return self.frag.__rich__("Program")
 
-        linenums = self._get_linenums()
+        linenums = self._get_asm_state()
 
         def gen():
             instrs = self._as_instrs()

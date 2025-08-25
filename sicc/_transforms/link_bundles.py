@@ -10,6 +10,7 @@ from .._core import MVar
 from .._core import RegInfo
 from .._core import Register
 from .._core import Var
+from .._core import VirtualConst
 from .._core import WriteMVar
 from .._diagnostic import add_debug_info
 from .._instructions import CondJump
@@ -70,7 +71,7 @@ def _try_pack_call_one(
 
     (ret_label,) = write_instr.inputs_
 
-    if isinstance(ret_label, Var):
+    if isinstance(ret_label, Var | VirtualConst):
         return False
 
     l = index.labels[ret_label]

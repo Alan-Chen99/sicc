@@ -25,4 +25,5 @@ from ._api import min_ as min_
 
 # other
 from ._api import black_box as black_box
+from ._api import transmute as transmute
 from ._api import unreachable_checked as unreachable_checked

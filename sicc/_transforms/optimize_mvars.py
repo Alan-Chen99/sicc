@@ -181,7 +181,7 @@ def elim_mvars_read_writes(ctx: TransformCtx, unpack: UnpackPolicy = AlwaysUnpac
                 @f.replace_instr(use)
                 def _():
                     (out_v,) = use.outputs_
-                    return Move(out_v.type).bind((out_v,), Undef.undef())
+                    return Move(out_v.type).bind((out_v,), Undef(out_v.type))
 
                 return True
 
@@ -253,7 +253,10 @@ def elim_mvars_read_writes(ctx: TransformCtx, unpack: UnpackPolicy = AlwaysUnpac
             @f.replace_instr(use)
             def _():
                 (out_v,) = use.outputs_
-                return Move(v.v.type).bind((out_v,), def_val)
+                ans = Move(v.v.type).bind((out_v,), def_val)
+                for pd in def_instrs:
+                    ans.debug.fuse_must_use(pd.debug)
+                return ans
 
             return True
 

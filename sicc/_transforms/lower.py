@@ -1,8 +1,8 @@
 from typing import Iterator
 
+from .._api import Comment
 from .._core import Block
 from .._core import BoundInstr
-from .._core import Comment
 from .._core import Fragment
 from .._diagnostic import add_debug_info
 from .._diagnostic import catch_ex_and_exit

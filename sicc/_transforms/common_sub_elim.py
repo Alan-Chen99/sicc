@@ -5,6 +5,7 @@ from rich import print as print  # autoflake: skip
 
 from .._core import BoundInstr
 from .._instructions import Move
+from .._instructions import SplitLifetime
 from .basic import get_index
 from .control_flow import CfgNode
 from .control_flow import External
@@ -51,7 +52,7 @@ def common_sub_elim(ctx: TransformCtx) -> bool:
     )
 
     for instr in index.instrs:
-        if instr.isinst(Move):
+        if instr.isinst((Move, SplitLifetime)):
             continue
         if instr.jumps_to() or not instr.continues:
             continue
@@ -62,6 +63,7 @@ def common_sub_elim(ctx: TransformCtx) -> bool:
             # not reachable
             continue
         p = imm_doms[instr]
+
         while not isinstance(p, External):
             if _can_sub_elim(ctx, instr, p):
 
