@@ -107,7 +107,31 @@ class LogicType(AsRaw):
         return RawText.str(f"LogicType.{self.name}")
 
 
+@dataclass(frozen=True)
+class SlotType(AsRaw):
+    name: str
+
+    def __repr__(self) -> str:
+        return self.name
+
+    @staticmethod
+    def create(val: ValSlotTypeLike) -> UserValue[SlotType]:
+        if isinstance(val, str):
+            return SlotType(val)
+        return val
+
+    def as_raw(self, ctx: AsRawCtx) -> RawText:
+        if ctx.instr is not None and ctx.instr.instr.src_instr in [
+            LoadBatchSlot,
+            LoadBatchNamedSlot,
+        ]:
+            return RawText.str(self.name)
+        # FIXME: this works or no?
+        return RawText.str(f"LogicSlotType.{self.name}")
+
+
 ValLogicTypeLike = UserValue[LogicType] | str
+ValSlotTypeLike = UserValue[SlotType] | str
 ValBatchMode = UserValue[BatchMode]
 
 
@@ -289,15 +313,13 @@ class DeviceBase(Generic[DT_co, N_co]):
     @overload
     def __getitem__(self, logic_type: ValLogicTypeLike) -> DeviceLogicType[Any, Self]: ...
     @overload
-    def __getitem__(self, logic_type: tuple[ValLogicTypeLike, ValBatchMode]) -> Variable[Any]: ...
+    def __getitem__(self, logic_type: tuple[ValLogicTypeLike, ValBatchMode]) -> VarRead[Any]: ...
 
     def __getitem__(self, logic_type: ValLogicTypeLike | tuple[ValLogicTypeLike, ValBatchMode]):
         if isinstance(logic_type, tuple):
             logic_type, bm = logic_type
-            return DeviceLogicType(
-                self, LogicType.create(logic_type), AnyType, self.default_batchmode
-            ).get(mode=bm)
-        return DeviceLogicType(self, LogicType.create(logic_type), AnyType, self.default_batchmode)
+            return DeviceLogicType(self, LogicType.create(logic_type), AnyType).get(mode=bm)
+        return DeviceLogicType(self, LogicType.create(logic_type), AnyType)
 
     def __setitem__(self, logic_type: ValLogicTypeLike, val: UserValue):
         self[logic_type].set(val)
@@ -345,10 +367,14 @@ class DeviceBase(Generic[DT_co, N_co]):
     def StaticPrefabHash(self) -> DT_co:
         return self.device_type
 
+    @property
+    def slots(self) -> _SlotProxy:
+        return _SlotProxy(self)
 
-class Device[D: Str = Str, N: Str | None = Str | None](DeviceBase[D, N]):
-    def __init__(self, device_type: D, name: N = None) -> None:
-        super().__init__(_device_type=device_type, _name=name)
+
+################################################################################
+# PARAMS / OUTPUTS
+################################################################################
 
 
 T = TypeVar("T", bound=VarT, default=Any)
@@ -360,7 +386,6 @@ class DeviceLogicTypeRead(Generic[T, D_co], VarRead[T]):
     device: D_co
     logic_type: UserValue[LogicType]
     typ: type[T]
-    default_batchmode: BatchMode
     _debug: DebugInfo = field(default_factory=debug_info)
 
     def __rich_repr__(self) -> rich.repr.Result:
@@ -379,7 +404,7 @@ class DeviceLogicTypeRead(Generic[T, D_co], VarRead[T]):
         self, *, mode: ValBatchMode | None = None, typ: type[VarT] | None = None
     ) -> VarRead[VarT]:
         if mode is None:
-            mode = self.default_batchmode
+            mode = self.device.default_batchmode
 
         if self.device.name is None:
             return Function(LoadBatch(typ or self.typ)).call(
@@ -442,7 +467,7 @@ class FieldDesc[T: VarT = Any]:
         if obj is None:
             return self
         assert self.logic_type != None
-        return DeviceLogicTypeRead(obj, self.logic_type, self.typ, obj.default_batchmode)
+        return DeviceLogicTypeRead(obj, self.logic_type, self.typ)
 
     def __rich_repr__(self) -> rich.repr.Result:
         yield self.logic_type
@@ -458,11 +483,11 @@ class FieldDescW[T: VarT = Any](FieldDesc[T]):
         if obj is None:
             return self
         assert self.logic_type != None
-        return DeviceLogicType(obj, self.logic_type, self.typ, obj.default_batchmode)
+        return DeviceLogicType(obj, self.logic_type, self.typ)
 
     def __set__(self, obj: DeviceBase, val: UserValue[T]) -> None:
         assert self.logic_type != None
-        DeviceLogicType(obj, self.logic_type, self.typ, obj.default_batchmode).set(val)
+        DeviceLogicType(obj, self.logic_type, self.typ).set(val)
 
 
 def mk_field[T: VarT](typ: type[T] = AnyType, logic_type: LogicType | None = None) -> FieldDescW[T]:
@@ -473,6 +498,120 @@ def mk_field_ro[T: VarT](
     typ: type[T] = AnyType, logic_type: LogicType | None = None
 ) -> FieldDesc[T]:
     return FieldDesc(typ, logic_type)
+
+
+################################################################################
+# SLOTS
+################################################################################
+
+
+@optree_dataclass(eq=False)
+class _SlotProxy:
+    device: DeviceBase
+
+    def __getitem__(self, idx: Int) -> Slot:
+        return Slot(self.device, idx)
+
+
+@optree_dataclass(eq=False)
+class Slot:
+    device: DeviceBase
+    idx: Int
+
+    @overload
+    def __getitem__(self, logic_type: ValSlotTypeLike) -> SlotField: ...
+    @overload
+    def __getitem__(self, logic_type: tuple[ValSlotTypeLike, ValBatchMode]) -> VarRead[Any]: ...
+
+    def __getitem__(self, logic_type: ValSlotTypeLike | tuple[ValSlotTypeLike, ValBatchMode]):
+        if isinstance(logic_type, tuple):
+            logic_type, bm = logic_type
+            return SlotField(self.device, self.idx, SlotType.create(logic_type), AnyType).get(
+                mode=bm
+            )
+        return SlotField(self.device, self.idx, SlotType.create(logic_type), AnyType)
+
+
+class LoadBatchSlot[T: VarT](AsmInstrBase):
+    # lbs r? deviceHash slotIndex logicSlotType batchMode
+    def __init__(self, out_type: type[T]) -> None:
+        self.opcode = "lbs"
+        self.in_types = (str, int, SlotType, BatchMode)
+        self.out_types = (out_type,)
+
+    reads_ = EffectExternal()
+
+
+class LoadBatchNamedSlot[T: VarT](AsmInstrBase):
+    # lbns r? deviceHash nameHash slotIndex logicSlotType batchMode
+    def __init__(self, out_type: type[T]) -> None:
+        self.opcode = "lbns"
+        self.in_types = (str, str, int, SlotType, BatchMode)
+        self.out_types = (out_type,)
+
+    reads_ = EffectExternal()
+
+
+@dataclass(eq=False)
+class SlotField[T: VarT = Any](VarRead[T]):
+    device: DeviceBase
+    idx: Int
+    logic_type: UserValue[SlotType]
+    typ: type[T]
+
+    _debug: DebugInfo = field(default_factory=debug_info)
+
+    @overload
+    def get(self, *, mode: ValBatchMode | None = None) -> VarRead[T]: ...
+    @overload
+    def get[T1: VarT](self, *, mode: ValBatchMode | None = None, typ: type[T1]) -> VarRead[T1]: ...
+
+    def get(
+        self, *, mode: ValBatchMode | None = None, typ: type[VarT] | None = None
+    ) -> VarRead[VarT]:
+        if mode is None:
+            mode = self.device.default_batchmode
+
+        if self.device.name is None:
+            return Function(LoadBatchSlot(typ or self.typ)).call(
+                self.device.device_type, self.idx, self.logic_type, mode
+            )
+        return Function(LoadBatchNamedSlot(typ or self.typ)).call(
+            self.device.device_type, self.device.name, self.idx, self.logic_type, mode
+        )
+
+    @property
+    def avg(self) -> VarRead[T]:
+        return self.get(mode=BatchMode.AVG)
+
+    @property
+    def sum(self) -> VarRead[T]:
+        return self.get(mode=BatchMode.SUM)
+
+    @property
+    def min(self) -> VarRead[T]:
+        return self.get(mode=BatchMode.MIN)
+
+    @property
+    def max(self) -> VarRead[T]:
+        return self.get(mode=BatchMode.MAX)
+
+    @override
+    def _read(self) -> Value[T]:
+        with clear_debug_info(), add_debug_info(self._debug):
+            return self.get()._read()
+
+    @override
+    def _get_type(self) -> type[T]:
+        return self.typ
+
+
+################################################################################
+
+
+class Device[D: Str = Str, N: Str | None = Str | None](DeviceBase[D, N]):
+    def __init__(self, device_type: D, name: N = None) -> None:
+        super().__init__(_device_type=device_type, _name=name)
 
 
 class DeviceTyped(DeviceBase[str]):

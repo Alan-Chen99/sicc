@@ -1282,15 +1282,35 @@ def loop() -> AbstractContextManager[None]:
     return trace_while(lambda: True)
 
 
-def range_(stop: int) -> Iterator[VarRead[int]]:
-    # will be implemented to support all args to python range in future
+@overload
+def range_(stop: Int, /) -> Iterator[VarRead[int]]: ...
+@overload
+def range_(start: Int, stop: Int, /) -> Iterator[VarRead[int]]: ...
 
-    idx = Variable(0)
-    with loop():
-        yield idx.value
-        idx.value += 1
-        with if_(idx.value == stop):
-            break_()
+
+def range_(x: Int, y: Int | None = None, /) -> Iterator[VarRead[int]]:
+    # will be implemented to support all args to python range in future
+    if y is None:
+        start, stop = 0, x
+    else:
+        start, stop = x, y
+
+    if isinstance(start, int) and isinstance(stop, int) and start < stop:
+        # do while is 1 less instruction
+        idx = Variable(int, start)
+        # some VarRead is defferred; make sure its only read once
+        stop_ = Variable(int, stop)
+        with loop():
+            yield idx.value
+            idx.value += 1
+            with if_(idx.value == stop_):
+                break_()
+    else:
+        idx = Variable(int, start)
+        stop_ = Variable(int, stop)
+        with while_(lambda: idx < stop):
+            yield idx.value
+            idx.value += 1
 
 
 ################################################################################

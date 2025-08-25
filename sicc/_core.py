@@ -858,6 +858,12 @@ class InstrBase(abc.ABC):
         x: tuple[UserValue[A], UserValue[B], UserValue[C], UserValue[D]],
         /,
     ) -> None: ...
+    @overload
+    def _static_in_typing_helper_api[A: VarT, B: VarT, C: VarT, D: VarT, E: VarT](
+        self: _InstrTypedIn[tuple[type[A], type[B], type[C], type[D], type[E]]],
+        x: tuple[UserValue[A], UserValue[B], UserValue[C], UserValue[D], UserValue[E]],
+        /,
+    ) -> None: ...
     def _static_in_typing_helper_api(self: Any, x: Any, /) -> None: ...
 
     ################################################################################

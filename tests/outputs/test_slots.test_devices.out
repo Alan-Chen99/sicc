@@ -1,0 +1,11 @@
+lbs r0 -443130773 5 Occupied 3
+# VendingMachine(): r0
+lbs r0 -443130773 5 Quantity 0
+add r0 r0 1
+# VendingMachine(): r0
+lbns r0 -443130773 -1596182347 5 Occupied 3
+# VendingMachine('somename'): r0
+lbns r0 -443130773 -1596182347 5 Quantity 0
+add r0 r0 1
+# VendingMachine('somename'): r0
+# 10 lines total (not including this line)
