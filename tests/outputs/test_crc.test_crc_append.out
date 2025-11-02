@@ -1,5 +1,5 @@
-move r0 97
 move r1 HASH("a")
+move r0 97
 move ra 17
 and r1 r1 4294967295
 xor r1 r1 4294967295
@@ -17,13 +17,13 @@ sub r0 r0 4294967296
 j ra
 yield
 # res: r0 should be: 126491095
-move r0 98
 move r1 HASH("b")
+move r0 98
 jal 3
 yield
 # res: r0 should be: -1246880850
-move r0 99
 move r1 HASH("c")
+move r0 99
 jal 3
 yield
 # res: r0 should be: -609084807

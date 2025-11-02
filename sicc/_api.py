@@ -45,12 +45,14 @@ from ._instructions import AbsF
 from ._instructions import AbsI
 from ._instructions import AddF
 from ._instructions import AddI
+from ._instructions import AddLabelProvenance
 from ._instructions import AndB
 from ._instructions import AndI
 from ._instructions import AsmBlock
 from ._instructions import BlackBox
 from ._instructions import DivF
 from ._instructions import EffectExternal
+from ._instructions import EffectPhantomLoc
 from ._instructions import Jump
 from ._instructions import LShift
 from ._instructions import Max
@@ -66,8 +68,10 @@ from ._instructions import PredLE
 from ._instructions import PredLT
 from ._instructions import PredNEq
 from ._instructions import RawInstr
+from ._instructions import RemoveLabelProvenance
 from ._instructions import RShiftSigned
 from ._instructions import RShiftUnsigned
+from ._instructions import SplitLifetime
 from ._instructions import SubF
 from ._instructions import SubI
 from ._instructions import Transmute
@@ -78,6 +82,7 @@ from ._tracing import label
 from ._tracing import mk_internal_label
 from ._tracing import mk_mvar
 from ._utils import cast_unchecked
+from ._utils import get_id
 from ._utils import isinst
 from ._utils import late_fn
 
@@ -485,6 +490,24 @@ def transmute[O: VarT](v: UserValue, out_type: type[O] = AnyType) -> VarRead[O]:
     if can_cast_implicit(_get_type(v), out_type):
         return Variable._from_val_ro(read_uservalue(cast_unchecked(v)), typ=out_type)
     return Function(Transmute(_get_type(v), out_type)).call(v)
+
+
+################################################################################
+# internal functions
+
+
+def split_lifetime[T: VarT](v: UserValue[T]) -> VarRead[T]:
+    return Function(SplitLifetime(_get_type(v))).call(v)
+
+
+def remove_label_provenance[T: VarT](v: UserValue[T]) -> tuple[VarRead[T], EffectPhantomLoc]:
+    loc = EffectPhantomLoc(get_id())
+    ans = Function(RemoveLabelProvenance(_get_type(v), loc)).call(v)
+    return ans, loc
+
+
+def add_label_provenance[T: VarT](v: UserValue[T], loc: EffectPhantomLoc) -> VarRead[T]:
+    return Function(AddLabelProvenance(_get_type(v), loc)).call(v)
 
 
 ################################################################################

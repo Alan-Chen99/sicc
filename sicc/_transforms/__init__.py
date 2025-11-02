@@ -9,6 +9,7 @@ from ..config import verbose
 from .arith import opt_identity_arith
 from .basic import remove_unused_side_effect_free
 from .basic import rename_private_labels
+from .move_like import opt_move_like
 
 # from .basic import rename_private_mvars
 from .basic import rename_private_vars
@@ -35,6 +36,7 @@ from .optimize_mvars import writeback_mvar_use
 from .predicates import handle_nan_eq
 from .regalloc import regalloc
 from .remove_trivial_vars import remove_trivial_vars_
+from .stack import remove_trivial_push_pop
 from .stack import stack_chain_to_push_pop
 from .utils import frag_is_global
 from .utils import run_phases
@@ -50,6 +52,8 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
     #
     opt_consteval,
     opt_identity_arith,
+    opt_move_like,
+    remove_trivial_push_pop,
     #
     remove_unused_side_effect_free,
     handle_deterministic_jump,

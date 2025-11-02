@@ -487,6 +487,12 @@ class FieldDesc[T: VarT = Any]:
         assert self.logic_type != None
         return DeviceLogicTypeRead(obj, self.logic_type, self.typ)
 
+    def _set_fail(self, obj: DeviceBase, val: UserValue[T]) -> None:
+        raise AttributeError("write to read-only field")
+
+    if not TYPE_CHECKING:
+        __set__ = _set_fail
+
     def __rich_repr__(self) -> rich.repr.Result:
         yield self.logic_type
         yield ReprAs(self.typ.__name__)

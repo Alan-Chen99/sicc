@@ -56,6 +56,7 @@ from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
 from ._diagnostic import clear_debug_info
 from ._diagnostic import track_caller
+from ._utils import ByIdMixin
 from ._utils import cast_unchecked
 from ._utils import narrow_unchecked
 from .config import verbose
@@ -267,6 +268,37 @@ class SplitLifetime[T: VarT = Any](MoveBase[T, T]):
 
     def __init__(self, typ: type[T]) -> None:
         super().__init__(typ, typ)
+
+
+################################################################################
+
+
+@dataclass(frozen=True, eq=False)
+class EffectPhantomLoc(EffectBase, ByIdMixin):
+    id: int
+
+
+class RemoveLabelProvenance[T: VarT = Any](MoveBase[T, T]):
+    def __init__(self, typ: type[T], loc: EffectPhantomLoc) -> None:
+        super().__init__(typ, typ)
+        self.loc = loc
+
+    @override
+    def writes(self, instr: BoundInstr[Self]) -> EffectRes:
+        return self.loc
+
+
+class AddLabelProvenance[T: VarT = Any](MoveBase[T, T]):
+    def __init__(self, typ: type[T], loc: EffectPhantomLoc) -> None:
+        super().__init__(typ, typ)
+        self.loc = loc
+
+    @override
+    def reads(self, instr: BoundInstr[Self]) -> EffectRes:
+        return self.loc
+
+
+################################################################################
 
 
 class EndPlaceholder(InstrBase):

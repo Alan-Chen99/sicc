@@ -23,7 +23,7 @@ from ._control_flow import clear_control_flow_hooks
 from ._core import Value
 from ._core import Var
 from ._diagnostic import register_exclusion
-from ._instructions import unreachable_checked as _unreachable_checked
+from ._instructions import unreachable_checked
 from ._tracing import RawSubr
 from ._tracing import trace_to_raw_subr
 from ._tree_utils import TreeSpec
@@ -240,7 +240,7 @@ def inline_subr[**P, R](fn: Callable[P, FunctionRet[R]]) -> Callable[P, R]:
                 except StopIteration as e:
                     if e.value is not None:
                         raise TypeError("Generator-based subr should not also return") from None
-                _unreachable_checked(
+                unreachable_checked(
                     f"Generator-based subr {ans.__qualname__} is required to return at the end"
                 )
             else:

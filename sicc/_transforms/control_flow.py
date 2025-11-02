@@ -17,6 +17,7 @@ from .._core import UnpackPolicy
 from .._core import Var
 from .._instructions import EmitLabel
 from .._instructions import Jump
+from .._instructions import RemoveLabelProvenance
 from .._instructions import UnreachableChecked
 from .._utils import Cell
 from .._utils import Singleton
@@ -113,8 +114,9 @@ def compute_label_provenance(
                 G.add_edge(preprocess(x), instr)
             if isinstance(x, Var):
                 G.add_edge(x, instr)
-        for x in instr.outputs:
-            G.add_edge(instr, x)
+        if not instr.isinst(RemoveLabelProvenance):
+            for x in instr.outputs:
+                G.add_edge(instr, x)
 
     for ef in index.effects.values():
         for instr in ef.reads_instrs:

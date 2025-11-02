@@ -35,10 +35,11 @@ def _stack_chain_to_push_pop_one(ctx: TransformCtx, instr: BoundInstr[StackOpCha
         return False
 
     if len(parts) == 1:
-        (part,) = parts
-        _pin, addr, *_val = part.inputs_
-        if not isinstance(addr, Var):
-            return False
+        # (part,) = parts
+        # _pin, addr, *_val = part.inputs_
+        # if not isinstance(addr, Var):
+        #     return False
+        return False
 
     device, addr, *_val = parts[0].inputs_
     for p in parts[1:]:
@@ -111,6 +112,27 @@ def stack_chain_to_push_pop(ctx: TransformCtx) -> bool:
     for instr in index.instrs:
         if i := instr.isinst(StackOpChain):
             if _stack_chain_to_push_pop_one(ctx, i):
+                return True
+
+    return False
+
+
+@LoopingTransform
+def remove_trivial_push_pop(ctx: TransformCtx) -> bool:
+    f = ctx.frag
+    index = get_index.call_cached(ctx)
+
+    for instr in index.instrs:
+        if i := instr.isinst(Push):
+            write, add = i.unpack()
+            _device, addr, _val = write.inputs_
+            if not isinstance(addr, Var):
+
+                @f.replace_instr(instr)
+                def _():
+                    yield write
+                    yield add
+
                 return True
 
     return False

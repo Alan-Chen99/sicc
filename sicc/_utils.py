@@ -65,7 +65,8 @@ class Cell[T]:
 
     @property
     def value(self) -> T:
-        assert not isinstance(self._value, empty_t)
+        if isinstance(self._value, empty_t):
+            raise RuntimeError(f"reading from empty cell")
         return self._value
 
     @property
@@ -244,22 +245,22 @@ def normalize_function_args[Ar: tuple[Any, ...], Kw: dict[str, Any]](
     ba = bound.arguments
 
     for name, p in sig.parameters.items():
-        has = name in ba
         if p.kind is inspect.Parameter.POSITIONAL_ONLY:
-            if has:
+            if name in ba:
                 args_out.append(ba[name])
         elif p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD:
-            if has:
-                kwargs_out[name] = ba[name]
+            if name in ba:
+                args_out.append(ba[name])
         elif p.kind is inspect.Parameter.VAR_POSITIONAL:
-            if has:
-                args_out.extend(ba[name])  # tuple
+            if name in ba:
+                args_out.extend(ba[name])
         elif p.kind is inspect.Parameter.KEYWORD_ONLY:
-            if has:
+            if name in ba:
                 kwargs_out[name] = ba[name]
         elif p.kind is inspect.Parameter.VAR_KEYWORD:
-            if has:
-                for k in sorted(ba[name]):  # dict
-                    kwargs_out[k] = ba[name][k]
+            if name in ba:
+                kwargs_out.update(ba[name])
+
+    # print("res:", tuple(args_out), kwargs_out)
 
     return tuple(args_out), kwargs_out  # pyright: ignore[reportReturnType]

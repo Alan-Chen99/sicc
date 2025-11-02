@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import copy
 import math
 import operator
 from collections import defaultdict
@@ -1379,7 +1380,7 @@ class Fragment:
         assert not self.finished_init
         child.basic_check()
 
-        blocks = self.blocks | child.blocks
+        blocks = self.blocks | copy.deepcopy(child.blocks)
         assert len(blocks) == len(self.blocks) + len(child.blocks)
         self.blocks = blocks
 

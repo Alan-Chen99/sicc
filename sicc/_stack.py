@@ -22,14 +22,23 @@ from ._control_flow import if_
 from ._control_flow import loop
 from ._control_flow import wrap_iterator_fn
 from ._core import BoundInstr
+from ._core import RegInfo
+from ._core import Register
 from ._core import StaticBuffer
 from ._core import Var
 from ._core import VarT
+from ._core import db_internal
 from ._diagnostic import must_use
+from ._instructions import AddI
+from ._instructions import Pop
+from ._instructions import Push
 from ._instructions import ReadStack
+from ._instructions import SplitLifetime
 from ._instructions import StackOpChain
+from ._instructions import SubI
 from ._instructions import WriteStack
 from ._stationeers import Pin
+from ._tracing import mk_var
 from ._tree_utils import TreeSpec
 from ._tree_utils import field as optree_field  # pyright: ignore[reportUnknownVariableType]
 from ._tree_utils import optree_dataclass
@@ -39,6 +48,13 @@ from ._utils import get_id
 
 class PointerProto[T_co](Protocol):
     def _typing_helper(self) -> T_co: ...
+
+
+def _mk_sp_var() -> Var[int]:
+    return mk_var(
+        int,
+        reg=RegInfo(preferred_reg=Register.SP, preferred_weight=1),
+    )
 
 
 @optree_dataclass(kw_only=True)
@@ -65,6 +81,9 @@ class Pointer[T = Any]:
     @staticmethod
     def _from_raw[T1](addr: Int, schema: T1, device: Pin = Pin.db()) -> Pointer[T1]:
         return Pointer(_device=device, _addr=addr, _tree=TreeSpec.from_schema(schema))
+
+    def _with_addr(self, addr: Int) -> Pointer[T]:
+        return Pointer(_device=self._device, _addr=addr, _tree=self._tree)
 
     def read(self) -> T:
         pin = read_uservalue(self._device._pin())
@@ -100,6 +119,50 @@ class Pointer[T = Any]:
                 instrs.append(instr)
 
             StackOpChain.from_parts(*instrs).emit()
+
+    def _push(self, v: T, /) -> None:
+        pin = read_uservalue(self._device._pin())
+        assert pin == db_internal
+        assert isinstance(self._addr, Variable) and not self._addr._read_only
+
+        addr = read_uservalue(self._addr)
+        v_flat = [read_uservalue(x) for x in self._tree.flatten_up_to(v)]
+
+        sp_cur = _mk_sp_var()
+        SplitLifetime(int).bind((sp_cur,), addr).emit()
+
+        for arg, typ in zip(v_flat, self._tree.types):
+            sp_next = _mk_sp_var()
+            Push.from_parts(
+                WriteStack(typ, 0).bind((), pin, sp_cur, arg),
+                AddI().bind((sp_next,), sp_cur, 1),
+            ).emit()
+            sp_cur = sp_next
+
+        self._addr._inner.write(SplitLifetime(int).call(sp_cur))
+
+    def _pop(self) -> T:
+        pin = read_uservalue(self._device._pin())
+        assert pin == db_internal
+        assert isinstance(self._addr, Variable) and not self._addr._read_only
+
+        addr = read_uservalue(self._addr)
+
+        sp_cur = _mk_sp_var()
+        SplitLifetime(int).bind((sp_cur,), addr).emit()
+
+        ans_vars = [mk_var(typ) for typ in self._tree.types]
+
+        for ans_var in ans_vars:
+            sp_next = _mk_sp_var()
+            Pop.from_parts(
+                SubI().bind((sp_next,), sp_cur, 1),
+                ReadStack(ans_var.type, 0).bind((ans_var,), db_internal, sp_next),
+            ).emit()
+            sp_cur = sp_next
+
+        self._addr._inner.write(SplitLifetime(int).call(sp_cur))
+        return self._tree.unflatten([Variable._from_val_ro(x) for x in ans_vars])
 
     def _check_list[E](self: Pointer[list[E]]) -> tuple[TreeSpec[E], int]:
         schema = self._tree.as_schema()
