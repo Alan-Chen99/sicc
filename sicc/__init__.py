@@ -36,31 +36,31 @@ from ._stationeers import ValLogicTypeLike as ValLogicTypeLike
 from ._api import asm as asm
 from ._api import asm_block as asm_block
 from ._api import asm_fn as asm_fn
-from ._api import branch as branch
-from ._api import cond as cond
 from ._api import jump as jump
 from ._api import label_ref as label_ref
+from ._control_flow import branch as branch
+from ._control_flow import cond as cond
 from ._tracing import exit_program as exit_program
 from ._tracing import label as label
 
 # control flow high level
-from ._api import block as block
-from ._api import cjump as cjump
-from ._api import if_ as if_
-from ._api import inline_subr as inline_subr
-from ._api import loop as loop
-from ._api import range_ as range_
-from ._api import while_ as while_
+from ._control_flow import block as block
+from ._control_flow import cjump as cjump
+from ._control_flow import if_ as if_
+from ._control_flow import loop as loop
+from ._control_flow import range_ as range_
+from ._control_flow import while_ as while_
 from ._tracing import break_ as break_
 from ._tracing import continue_ as continue_
 from ._tracing import else_ as else_
 
 # subroutines
-from ._api import return_ as return_
-from ._api import subr as subr
+from ._subr import inline_subr as inline_subr
+from ._subr import return_ as return_
+from ._subr import subr as subr
 
 # dataclasses
-from ._api import State as State
+from ._state import State as State
 from ._tree_utils import dataclass as dataclass
 from ._tree_utils import dataclasses as dataclasses
 from ._tree_utils import pytree as pytree
@@ -82,13 +82,13 @@ d4 = Pin(4)
 d5 = Pin(5)
 
 # stack
-from ._api import Pointer as Pointer
-from ._api import stack_var as stack_var
+from ._stack import Pointer as Pointer
+from ._stack import stack_var as stack_var
 
 # functions
-from ._api import comment as comment
-from ._api import select as select
 from ._api import undef as undef
+from ._comment import comment as comment
+from ._control_flow import select as select
 from ._stationeers import yield_ as yield_
 
 # crc32

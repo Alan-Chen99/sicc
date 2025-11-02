@@ -19,8 +19,8 @@ from rich import print as print  # autoflake: skip
 from rich.rule import Rule
 from rich.text import Text
 
-from ._api import comment
-from ._api import loop
+from ._comment import comment
+from ._control_flow import loop
 from ._diagnostic import SuppressExit
 from ._diagnostic import describe_fn
 from ._diagnostic import register_exclusion

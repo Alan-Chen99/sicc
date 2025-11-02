@@ -1,6 +1,6 @@
 from typing import Iterator
 
-from .._api import Comment
+from .._comment import Comment
 from .._core import Block
 from .._core import BoundInstr
 from .._core import Fragment

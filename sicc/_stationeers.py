@@ -18,7 +18,6 @@ from ._api import Function
 from ._api import Int
 from ._api import Str
 from ._api import UserValue
-from ._api import Variable
 from ._api import VarRead
 from ._api import _get_type
 from ._core import AnyType

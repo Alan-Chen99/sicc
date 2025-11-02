@@ -1519,7 +1519,7 @@ class TracedProgram:
         return block.contents
 
     def _get_asm_state(self) -> GenAsmState:
-        from ._api import Comment
+        from ._comment import Comment
         from ._instructions import EmitLabel
         from ._instructions import EndPlaceholder
         from ._instructions import RawInstr
@@ -1550,7 +1550,7 @@ class TracedProgram:
             return self._gen_asm()
 
     def _gen_asm(self) -> RawText:
-        from ._api import Comment
+        from ._comment import Comment
         from ._instructions import EmitLabel
         from ._instructions import EndPlaceholder
         from ._instructions import RawInstr

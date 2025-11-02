@@ -1,9 +1,9 @@
 from ._api import Int
 from ._api import Str
 from ._api import Variable
-from ._api import if_
-from ._api import range_
-from ._api import subr
+from ._control_flow import if_
+from ._control_flow import range_
+from ._subr import subr
 
 
 @subr
