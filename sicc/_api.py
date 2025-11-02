@@ -230,7 +230,7 @@ class VarRead[T: VarT](abc.ABC):
         return transmute(self, out_type)
 
 
-def _get[T: VarT](v: UserValue[T]) -> Value[T]:
+def read_uservalue[T: VarT](v: UserValue[T]) -> Value[T]:
     if isinstance(v, VarT):
         return v
     return v._read()
@@ -239,7 +239,7 @@ def _get[T: VarT](v: UserValue[T]) -> Value[T]:
 def _get_label(l: ValLabelLike) -> Value[Label]:
     if isinstance(l, str):
         return ensure_label(l)
-    return _get(l)
+    return read_uservalue(l)
 
 
 def label_ref(l: str | None = None, *, unique: bool = False) -> Label:
@@ -301,14 +301,14 @@ class Variable[T: VarT](VarRead[T]):
         if init is not None:
             assert isinstance(init_or_typ, type)
             self._inner = mk_mvar(init_or_typ)
-            self._inner.write(_get(init))
+            self._inner.write(read_uservalue(init))
             return
 
         if isinstance(init_or_typ, type):
             self._inner = mk_mvar(init_or_typ)
             return
 
-        x_val = _get(init_or_typ)
+        x_val = read_uservalue(init_or_typ)
         typ = get_type(x_val)
         if not read_only and typ == AnyType:
             raise TypeError("cannot infer type; specify one explicitly")
@@ -340,7 +340,7 @@ class Variable[T: VarT](VarRead[T]):
     def value(self, v: UserValue[T]) -> None:
         if self._read_only:
             raise TypeError(f"writing read-only variable {self}")
-        self._inner.write(_get(v))
+        self._inner.write(read_uservalue(v))
 
     @staticmethod
     def undef[T1: VarT](typ: type[T1]) -> Variable[T1]:
@@ -416,7 +416,7 @@ class Function[*Ts](_FunctionProto[tuple[*Ts]]):
             if not can_cast_implicit_many(arg_types, instr.in_types):
                 continue
 
-            argvals = tuple(_get(x) for x in args)
+            argvals = tuple(read_uservalue(x) for x in args)
             with must_use(), track_caller():
                 ans = cast_unchecked(instr.call(*argvals))  # pyright: ignore
             if ans is None:
@@ -540,7 +540,7 @@ class TreeSpec[T = Any]:
 
 def copy_tree[T](v: T) -> T:
     vals, tree = TreeSpec.flatten(v)
-    return tree._unflatten_vals_ro(_get(x) for x in vals)
+    return tree._unflatten_vals_ro(read_uservalue(x) for x in vals)
 
 
 ################################################################################
@@ -587,7 +587,7 @@ class State[T = Any]:
                     self._vars = [mk_mvar(t) for t in tree.types]
 
         leaves = self._tree.flatten_up_to(v)
-        vars = [_get(x) for x in leaves]
+        vars = [read_uservalue(x) for x in leaves]
 
         assert self._vars is not None
         with track_caller():
@@ -658,8 +658,8 @@ class Pointer[T = Any]:
         return pretty_repr(self)
 
     def read(self) -> T:
-        pin = _get(self._device._pin())
-        addr = _get(self._addr)
+        pin = read_uservalue(self._device._pin())
+        addr = read_uservalue(self._addr)
 
         with must_use():
             out_vars: list[Var] = []
@@ -680,9 +680,9 @@ class Pointer[T = Any]:
     def write(self, v: T, /) -> None: ...
 
     def write(self, v: T | Any, /) -> None:
-        pin = _get(self._device._pin())
-        addr = _get(self._addr)
-        v_flat = [_get(x) for x in self._tree.flatten_up_to(v)]
+        pin = read_uservalue(self._device._pin())
+        addr = read_uservalue(self._addr)
+        v_flat = [read_uservalue(x) for x in self._tree.flatten_up_to(v)]
 
         with must_use():
             instrs: list[BoundInstr[WriteStack]] = []
@@ -861,7 +861,7 @@ class TracedSubr[F = Any]:
     def call[**P, R](self: TracedSubr[Callable[P, R]]) -> Callable[P, R]:
         def inner(*args: P.args, **kwargs: P.kwargs) -> R:
             vals = self.arg_tree.flatten_up_to((args, kwargs))
-            vals_ = tuple(_get(x) for x in vals)
+            vals_ = tuple(read_uservalue(x) for x in vals)
             out_vars = self.subr.call(*vals_)
 
             out_vars_ = [Variable._from_val_ro(x) for x in out_vars]
@@ -1246,7 +1246,7 @@ def comment(*args_: Any) -> None:
         _CommentStatic(Text(x, "ic10.comment")) if isinstance(x, str) else x for x in args_
     )
     vars, tree = TreeSpec.flatten(args)
-    vars_ = [_get(v) for v in vars]
+    vars_ = [read_uservalue(v) for v in vars]
     return Comment(tree).call(*vars_)
 
 
@@ -1258,22 +1258,22 @@ def jump(label: ValLabelLike) -> None:
 
 
 def branch(cond: Bool, on_true: ValLabelLike, on_false: ValLabelLike) -> None:
-    return _f.branch(_get(cond), _get_label(on_true), _get_label(on_false))
+    return _f.branch(read_uservalue(cond), _get_label(on_true), _get_label(on_false))
 
 
 def cjump(cond: Bool, on_true: ValLabelLike) -> None:
     cont = mk_internal_label("cjump_cont")
-    _f.branch(_get(cond), _get_label(on_true), cont)
+    _f.branch(read_uservalue(cond), _get_label(on_true), cont)
     label(cont)
 
 
 def if_(cond: Bool) -> AbstractContextManager[None]:
-    return trace_if(_get(cond))
+    return trace_if(read_uservalue(cond))
 
 
 def while_(cond_fn: Callable[[], Bool]) -> AbstractContextManager[None]:
     def inner():
-        return _get(cond_fn())
+        return read_uservalue(cond_fn())
 
     return trace_while(inner)
 
@@ -1330,7 +1330,7 @@ def cond[V](pred: Bool, on_true: _CallableOr[V], on_false: _CallableOr[V]) -> V:
 def cond[V](  # pyright: ignore[reportInconsistentOverload]
     pred: Bool, on_true: _CallableOr[V], on_false: _CallableOr[V]
 ) -> V:
-    pred_ = _get(pred)
+    pred_ = read_uservalue(pred)
 
     true_l = mk_internal_label("cond_true_branch")
     false_l = mk_internal_label("cond_false_branch")
@@ -1347,12 +1347,12 @@ def cond[V](  # pyright: ignore[reportInconsistentOverload]
 
     label(true_l)
     true_out, true_tree = TreeSpec.flatten(get_val(on_true))
-    true_vals = [_get(x) for x in true_out]
+    true_vals = [read_uservalue(x) for x in true_out]
     jump(true_l2)
 
     label(false_l)
     false_out, false_tree = TreeSpec.flatten(get_val(on_false))
-    false_vals = [_get(x) for x in false_out]
+    false_vals = [read_uservalue(x) for x in false_out]
     jump(false_l2)
 
     out_tree = true_tree.promote_types(false_tree)
@@ -1379,7 +1379,7 @@ def select[V](pred: Bool, on_true: V, on_false: V) -> V: ...
 
 
 def select[V](pred: Bool, on_true: V, on_false: V) -> V:
-    pred_ = _get(pred)
+    pred_ = read_uservalue(pred)
 
     true_vars, true_tree = TreeSpec.flatten(on_true)
     false_vars, false_tree = TreeSpec.flatten(on_false)
@@ -1388,8 +1388,8 @@ def select[V](pred: Bool, on_true: V, on_false: V) -> V:
     ans_vars: list[Var] = []
 
     for x, y, typ in zip(true_vars, false_vars, out_tree.types):
-        x_ = _get(x)
-        y_ = _get(y)
+        x_ = read_uservalue(x)
+        y_ = read_uservalue(y)
         ans_vars.append(Select(typ).call(pred_, x_, y_))
 
     return out_tree._unflatten_vals_ro(ans_vars)
@@ -1406,7 +1406,7 @@ def asm(opcode: str, outputs: Sequence[Variable[Any]], /, *args: UserValue) -> N
         assert isinstance(x, Variable)
         assert not x._read_only
 
-    args_ = [_get(x) for x in args]
+    args_ = [read_uservalue(x) for x in args]
 
     instr = RawInstr(
         opcode=opcode,
@@ -1454,7 +1454,7 @@ def asm_block(*lines_: AsmBlockLine) -> None:
         if isinstance(v, Variable) and not v._read_only:
             return v._inner
         idx = len(inputs)
-        inputs.append(_get(v))
+        inputs.append(read_uservalue(v))
         return idx
 
     linespecs: list[tuple[str, tuple[MVar | int, ...]]] = []
