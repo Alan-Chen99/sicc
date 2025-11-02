@@ -31,8 +31,14 @@ def _stack_chain_to_push_pop_one(ctx: TransformCtx, instr: BoundInstr[StackOpCha
 
     parts = instr.unpack()
 
-    if len(parts) <= 1:
+    if len(parts) == 0:
         return False
+
+    if len(parts) == 1:
+        (part,) = parts
+        _pin, addr, *_val = part.inputs_
+        if not isinstance(addr, Var):
+            return False
 
     device, addr, *_val = parts[0].inputs_
     for p in parts[1:]:

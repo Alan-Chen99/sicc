@@ -16,13 +16,13 @@ from types import ModuleType
 from types import TracebackType
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Iterable
 from typing import Iterator
 from typing import Never
 from typing import Self
 
 import rich
 import rich.repr
-from rich import print as print  # autoflake: skip
 from rich.console import Group
 from rich.console import RenderableType
 from rich.console import group
@@ -37,6 +37,7 @@ from . import _utils
 from ._utils import Cell
 from .config import RICH_SPINNER
 from .config import _status_text
+from .config import print as print
 from .config import show_src_info
 from .config import verbose
 
@@ -79,6 +80,7 @@ class SuppressExit(Exception):
 
 
 def get_location(depth: int = 0) -> Frame:
+    # print("get_location", get_location)
     frame = sys._getframe(depth + 1)
     while True:
         if frame.f_back is None:
@@ -104,6 +106,7 @@ def format_location(loc: Frame):
 
 
 def get_trace(depth: int = 0) -> Trace:
+    # print("get_trace")
     # frame = _get_traceback_frame()
     frame = sys._getframe(depth + 1)
 
@@ -128,9 +131,9 @@ def get_trace(depth: int = 0) -> Trace:
     return ans
 
 
-def format_backtrace(trace: Trace, max_frames: int = 100):
+def format_backtrace(trace: Trace, max_frames: int = 100, suppress: Iterable[str] = ()):
     stack = Stack("", "", frames=trace.stacks[0].frames[-max_frames:])
-    return Traceback(trace)._render_stack(stack)
+    return Traceback(trace, suppress=suppress)._render_stack(stack)
 
 
 def frame_short_desc(frame: Frame) -> str:
@@ -158,6 +161,13 @@ mustuse_ctxs: Cell[list[MustuseCtx]] = Cell([])
 class MustuseCtx:
     parents: list[weakref.ref[DebugInfo]]
     debug: DebugInfo
+    did_warn: bool = False
+
+    def __eq__(self, other: Any):
+        return id(self) == id(other)
+
+    def __hash__(self):
+        return hash(id(self))
 
     @staticmethod
     def new() -> MustuseCtx:
@@ -168,6 +178,9 @@ class MustuseCtx:
             return ans
 
     def add_parent(self, parent: DebugInfo):
+        for prev in self.parents:
+            if prev() is parent:
+                return
         self.parents.append(weakref.ref(parent))
 
     def _get_parents(self):
@@ -185,7 +198,10 @@ class MustuseCtx:
 
     def check(self):
         assert len(self.debug._must_use_ctx) == 0
+        if self.did_warn:
+            return
         if len(self._get_parents()) == 0:
+            self.did_warn = True
             self.debug.warn("expression has no effect:", typ=Warnings.Unused)
 
 
@@ -193,13 +209,15 @@ def check_must_use():
     gc.collect()
     for x in mustuse_ctxs.value:
         x.check()
+    # so that it doesnt work if making multiple programs
+    # (such as in tests)
     mustuse_ctxs.value = []
 
 
 @contextmanager
 def must_use() -> Iterator[None]:
     mc = MustuseCtx.new()
-    tmp_di = DebugInfo(_must_use_ctx=[mc])
+    tmp_di = DebugInfo(_must_use_ctx={mc})
     mc.add_parent(tmp_di)
 
     with add_debug_info(tmp_di):
@@ -212,7 +230,7 @@ class DebugInfo:
     created_at: str | None = None
     traceback: Trace | None = None
     # other files should use `fuse_must_use`
-    _must_use_ctx: list[MustuseCtx] = field(default_factory=lambda: [])
+    _must_use_ctx: set[MustuseCtx] = field(default_factory=lambda: set())
     describe: str = ""
     location: Frame | None = None
     track_caller: bool = False
@@ -240,7 +258,7 @@ class DebugInfo:
         yield "describe", self.describe
 
     def fuse_must_use(self, other: DebugInfo) -> Self:
-        self._must_use_ctx += other._must_use_ctx
+        self._must_use_ctx |= other._must_use_ctx
         for x in other._must_use_ctx:
             x.add_parent(self)
         return self
@@ -274,9 +292,9 @@ class DebugInfo:
     def location_info_full(self) -> Iterator[RenderableType]:
         if desc := self.describe:
             yield f"({desc})"
-        # if tb := self.traceback:
-        #     yield format_backtrace(tb)
-        #     return
+        if verbose.value >= 2 and (tb := self.traceback):
+            yield format_backtrace(tb, suppress=TRACEBACK_SUPPRESS.value)
+            return
         if loc := self.location:
             yield format_location(loc)
 

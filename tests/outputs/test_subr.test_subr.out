@@ -1,0 +1,31 @@
+lb r0 336213101 ImportCount 0
+move r1 r0
+move ra 15
+add r1 r1 1
+add r2 r1 -2
+j ra
+move r1 1
+blt 0 r2 10
+move r1 r2
+move r2 1
+j ra
+move r1 r0
+blt 0 r0 14
+move r1 1
+j ra
+# func_with_ret, ImportCount: Data(x=r1, y=r2)
+lb r1 336213101 ExportCount 0
+jal 3
+# func_with_ret, ExportCount: Data(x=r1, y=r2)
+move r2 r0
+jal 6
+# func_with_yield, ImportCount: Data(x=r1, y=r2)
+lb r2 336213101 ExportCount 0
+jal 6
+# func_with_yield, ExportCount: Data(x=r1, y=r2)
+jal 11
+# func_with_yield_nested, ImportCount: Data(x=r0, y=r1)
+lb r0 336213101 ExportCount 0
+jal 11
+# func_with_yield_nested, ExportCount: Data(x=r0, y=r1)
+# 30 lines total (not including this line)

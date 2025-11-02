@@ -1,0 +1,11 @@
+lb r0 336213101 On 0
+bltal r0 1 8
+lb r0 336213101 ImportCount 0
+bneal r0 0 8
+lb r0 336213101 ExportCount 0
+bltal 2 r0 8
+move ra 9
+blt 1 r0 9
+sb -815193061 Setting ra
+# noop (jump here to exit)
+# 10 lines total (not including this line)

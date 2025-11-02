@@ -29,21 +29,15 @@ from .basic import map_mvars
 from .basic import split_blocks
 from .fuse_blocks import fuse_blocks_trivial_jumps
 from .optimize_mvars import compute_mvar_lifetime
-from .optimize_mvars import support_mvar_analysis
 from .utils import LoopingTransform
 from .utils import TransformCtx
 
 
 def _is_suitable_as_ra(ctx: TransformCtx, mv: MVar):
-    index = get_index.call_cached(ctx)
 
-    if not index.mvars[mv].private:
-        return False
     if mv.reg.force_reg:
         return False
     if mv.reg.preferred_reg is not None and mv.reg.preferred_reg != Register.RA:
-        return False
-    if not support_mvar_analysis(ctx, mv, AlwaysUnpack()):
         return False
 
     return True
@@ -78,8 +72,6 @@ def _try_pack_call_one(
 
     # check if possible to fuse ret_label block after jump
     # if not making link instr does not acomplish anything
-    if not l.private:
-        return False
     if list(l.uses) != [write_instr]:
         return False
     assert ret_label in f.blocks  # bc of split_blocks

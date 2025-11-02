@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import sys
 import zlib
 from contextlib import contextmanager
@@ -13,7 +14,6 @@ from typing import Final
 from typing import Iterator
 from typing import Protocol
 from typing import TypeGuard
-from typing import cast
 from typing import final
 from weakref import WeakSet
 
@@ -189,8 +189,8 @@ class ByIdMixin:
     def __hash__(self: _HaveId) -> int:
         return hash(self.id)
 
-    def __lt__(self, other: _HaveId) -> bool:
-        id1 = cast(_HaveId, self).id
+    def __lt__(self: _HaveId, other: _HaveId) -> bool:
+        id1 = self.id
         id2 = other.id
         return (_TYPE_TO_IDX[type(id1)], id1) < (_TYPE_TO_IDX[type(id2)], id2)
 
@@ -224,3 +224,42 @@ def load_module_from_file(file_path: Path, module_name: str) -> ModuleType:
     finally:
         sys.path = prev_path
     return module
+
+
+################################################################################
+
+
+def normalize_function_args[Ar: tuple[Any, ...], Kw: dict[str, Any]](
+    fn: Any, args: Ar, kwargs: Kw
+) -> tuple[Ar, Kw]:
+    sig = inspect.signature(fn)
+
+    # print("normalize_function_args:", sig, args, kwargs)
+
+    bound = sig.bind_partial(*args, **kwargs)
+    bound.apply_defaults()
+
+    args_out: list[Any] = []
+    kwargs_out: dict[str, Any] = {}
+    ba = bound.arguments
+
+    for name, p in sig.parameters.items():
+        has = name in ba
+        if p.kind is inspect.Parameter.POSITIONAL_ONLY:
+            if has:
+                args_out.append(ba[name])
+        elif p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD:
+            if has:
+                kwargs_out[name] = ba[name]
+        elif p.kind is inspect.Parameter.VAR_POSITIONAL:
+            if has:
+                args_out.extend(ba[name])  # tuple
+        elif p.kind is inspect.Parameter.KEYWORD_ONLY:
+            if has:
+                kwargs_out[name] = ba[name]
+        elif p.kind is inspect.Parameter.VAR_KEYWORD:
+            if has:
+                for k in sorted(ba[name]):  # dict
+                    kwargs_out[k] = ba[name][k]
+
+    return tuple(args_out), kwargs_out  # pyright: ignore[reportReturnType]

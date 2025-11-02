@@ -11,6 +11,7 @@ from .._core import VirtualConst
 from .._diagnostic import add_debug_info
 from .._instructions import Branch
 from .._instructions import CondJump
+from .._instructions import EmitLabel
 from .._instructions import EndPlaceholder
 from .._instructions import Jump
 from .._instructions import PredBranch
@@ -168,11 +169,14 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
         # currently we cant keep the non-implicit label since we have a "split_blocks"
 
         # if len(pred) == 1 and target_block.label.implicit:
-        if len(pred) == 1:
+
+        if len(index.labels[target].uses) == 1:
             append = target_block.contents[1:]
         else:
             assert not trivial_only
-            append = target_block.contents
+            append = [
+                EmitLabel(allow_split=False).bind((), target_block.label)
+            ] + target_block.contents[1:]
 
         if cur.end.isinst(Jump):
             keep = cur.contents[:-1]

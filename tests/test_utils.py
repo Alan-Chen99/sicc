@@ -20,6 +20,8 @@ def run_one_test(prog: Program):
             f = prog.trace()
         with with_status("Optimize"):
             f.optimize()
+        with with_status("Optimize (final)"):
+            f.optimize_final()
         with with_status("Regalloc"):
             f.regalloc()
 

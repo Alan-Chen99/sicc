@@ -10,11 +10,12 @@ from .._core import AlwaysUnpack
 from .._core import Block
 from .._core import BoundInstr
 from .._core import EffectBase
-from .._core import EffectMvar
 from .._core import Label
 from .._core import NeverUnpack
+from .._core import Undef
 from .._core import UnpackPolicy
 from .._core import Var
+from .._instructions import EmitLabel
 from .._instructions import Jump
 from .._instructions import UnreachableChecked
 from .._utils import Cell
@@ -121,7 +122,7 @@ def compute_label_provenance(
         for instr in ef.writes_instrs:
             G.add_edge(instr, ef.loc)
 
-        if not isinstance(ef.loc, EffectMvar) and not frag_is_global.value:
+        if not frag_is_global.value:
             G.add_edge(external, ef.loc)
             G.add_edge(ef.loc, external)
 
@@ -136,11 +137,6 @@ def compute_label_provenance(
             # so we add "l" -> "external"
             # print(("adding:", external, l.v))
             G.add_edge(l.v, external)
-
-    for var in index.mvars.values():
-        if not var.private:
-            G.add_edge(external, EffectMvar(var.v))
-            G.add_edge(EffectMvar(var.v), external)
 
     # print(f)
 
@@ -231,11 +227,23 @@ def remove_unreachable_code(ctx: TransformCtx) -> None:
 
     live_instrs = nx.descendants(G, external)  # pyright: ignore[reportUnknownMemberType]
 
+    dead_labels: list[Label] = []
+
+    for b in f.blocks.values():
+        for x in b.contents:
+            if not x in live_instrs and (i := x.isinst(EmitLabel)):
+                (label,) = i.inputs_
+                assert isinstance(label, Label)
+                dead_labels.append(label)
+
     def process_block():
         for b in f.blocks.values():
             ans: list[BoundInstr] = []
             for x in b.contents:
                 if x in live_instrs:
+                    for arg in x.inputs:
+                        if arg in dead_labels:
+                            x = x.sub_val(arg, Undef(Label), inputs=True)
                     ans.append(x)
 
             if len(ans) > 0:

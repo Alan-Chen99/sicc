@@ -1,8 +1,0 @@
-lbn r0 -324331872 -44753248 X 0
-blt r0 1 4
-yield
-j 0
-yield
-lbn r0 -324331872 -44753248 Y 0
-ble 1 r0 4
-# 7 lines total (not including this line)

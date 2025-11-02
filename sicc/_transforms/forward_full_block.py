@@ -5,11 +5,9 @@ from .._core import WriteMVar
 from .._instructions import Bundle
 from .._instructions import Jump
 from .._utils import is_eq_typed
-from .basic import get_index
 from .control_flow import build_control_flow_graph
 from .control_flow import external
 from .optimize_mvars import compute_mvar_lifetime
-from .optimize_mvars import support_mvar_analysis
 from .utils import LoopingTransform
 from .utils import TransformCtx
 
@@ -29,7 +27,6 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
     """
     f = ctx.frag
     graph = build_control_flow_graph.call_cached(ctx)
-    index = get_index.call_cached(ctx)
 
     if not (b_end := b.end.isinst(Jump)):
         return False
@@ -74,15 +71,11 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
             continue
 
         mv = i.instr.s
-        if not index.mvars[mv].private:
-            return False
 
         if pred_block.end.isinst(Bundle):
             # TODO
             return False
 
-        if not support_mvar_analysis(ctx, mv, AlwaysUnpack()):
-            return False
         lifetime = compute_mvar_lifetime(ctx, mv, AlwaysUnpack())
         if (lt := lifetime.reachable.get(pred_block.end)) and len(lt.possible_defs) > 0:
             return False

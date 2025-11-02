@@ -11,7 +11,6 @@ from typing import override
 from rich.pretty import pretty_repr
 from rich.text import Text
 
-from ._api import TreeSpec
 from ._api import read_uservalue
 from ._core import AsRawCtx
 from ._core import BoundInstr
@@ -22,9 +21,13 @@ from ._core import TypeList
 from ._core import Value
 from ._core import format_raw_val
 from ._core import format_val
-from ._tree_utils import dataclass as optree_dataclass
+from ._diagnostic import register_exclusion
+from ._tree_utils import TreeSpec
 from ._tree_utils import field as optree_field  # pyright: ignore[reportUnknownVariableType]
+from ._tree_utils import optree_dataclass
 from ._utils import ReprAs
+
+register_exclusion(__file__)
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,8 @@ class _CommentStatic:
 
 
 class Comment(InstrBase):
+    jumps = False
+
     def __init__(self, tree: TreeSpec[tuple[Any, ...]]) -> None:
         self.tree = tree
         self.in_types = cast(TypeList[tuple[Value, ...]], TypeList(tree.types))

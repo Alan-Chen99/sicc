@@ -60,8 +60,13 @@ reportUnusedImport = "warning"
 reportUnusedFunction = "warning"
 reportUnusedVariable = "warning"
 
-reportUnreachable = "warning"
 reportUnnecessaryTypeIgnoreComment = "warning"
+
+# basedpyright only
+reportImplicitAbstractClass = true
+reportInvalidCast = true
+reportPrivateLocalImportUsage = true
+reportUnreachable = "warning"
 
 [tool.coverage.run]
 omit = [

@@ -13,7 +13,9 @@ from .._instructions import AddI
 from .._instructions import MoveBase
 from .._instructions import Pop
 from .._instructions import Push
+from .._instructions import SplitLifetime
 from .._instructions import SubI
+from .._tracing import mk_var
 from .._utils import cast_unchecked
 from .basic import get_index
 from .basic import remove_unused_side_effect_free
@@ -30,6 +32,8 @@ class UnpackPushPop(UnpackPolicy):
 
 
 def _as_offset_arith(instr: BoundInstr) -> tuple[Var[int], Var[int], Const[int]] | None:
+    # returns (o, base, offset)
+    # where instr is equivalent to o := base + offset
     if i := instr.isinst(AddI):
         x, y = i.inputs_
         (o,) = i.outputs_
@@ -83,6 +87,23 @@ def opt_offset_arith(ctx: TransformCtx) -> bool:
     def is_removable(instr: BoundInstr) -> bool:
         return bool(instr.isinst((AddI, SubI)) and index.instrs[instr].parent is None)
 
+    def maybe_create_alias(v: Var[int]) -> Var[int]:
+        """
+        create an alias if one should not extend the lifetime of "v"
+        """
+        if v.reg.preferred_reg is None:
+            return v
+        v_def = index.get_parent_rec(index.vars[v].def_instr)
+
+        tmp_var = mk_var(int, debug=v.debug)
+
+        @f.replace_instr(v_def)
+        def _():
+            yield v_def
+            yield SplitLifetime(int).bind((tmp_var,), v)
+
+        return tmp_var
+
     def walk(cur: CfgNode) -> bool:
         if isinstance(cur, BoundInstr) and (specs := _as_offset_arith(cur)) and is_removable(cur):
             o, base, offset = specs
@@ -111,18 +132,29 @@ def opt_offset_arith(ctx: TransformCtx) -> bool:
                 if base == v:
                     break
 
-                # make cur based on v instead
+                v_alias = maybe_create_alias(v)
+
+                cur.debug.fuse_must_use(index.vars[base].def_instr.debug)
+
                 @f.replace_instr(cur)
                 def _():
-                    return AddI().bind((o,), v, ConstEval.subi(tot_offset, vo))
+                    return AddI().bind((o,), v_alias, ConstEval.subi(tot_offset, vo))
 
                 return True
 
-        if isinstance(cur, BoundInstr):
-            # possible to replace input with the result %sp of a push pop chain?
+        if isinstance(cur, BoundInstr) and not cur.isinst((Push, Pop)):
+            # possible to replace input with a previously computed value
+            # (prehaps the result %sp of a push pop chain)?
 
             for arg in cur.inputs:
                 if not isinstance(arg, Var):
+                    continue
+                # TODO: maybe handle this case?
+                #
+                # TODO: it seems that Push/Pop does not fall here
+                # bc there is a SplitLifetime before it;
+                # think more on why this is the case
+                if arg.reg.preferred_reg is not None:
                     continue
 
                 if specs := offsets_map.get(cast_unchecked(arg)):
@@ -140,9 +172,16 @@ def opt_offset_arith(ctx: TransformCtx) -> bool:
 
                     if vo == offset:
 
-                        @f.replace_instr(cur)
+                        # note that only bundles possible are push and pop
+                        # the relavent variable here must not be %sp
+                        # (that doesnt pass the "no reg pref" check earlier)
+                        cur_parent = index.get_parent_rec(cur)
+
+                        v_alias = maybe_create_alias(v)
+
+                        @f.replace_instr(cur_parent)
                         def _():
-                            return cur.sub_val(arg, v, inputs=True)
+                            return cur_parent.sub_val(arg, v_alias, inputs=True)
 
                         return True
 

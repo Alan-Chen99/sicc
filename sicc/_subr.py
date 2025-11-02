@@ -1,39 +1,37 @@
 from __future__ import annotations
 
 import functools
-import inspect
 from dataclasses import dataclass
+from types import GeneratorType
 from typing import Any
 from typing import Callable
 from typing import Concatenate
-from typing import Final
+from typing import Generator
+from typing import Generic
 from typing import Self
 from typing import TypedDict
+from typing import TypeVar
 from typing import Unpack
+from typing import cast
 from typing import overload
 
-from . import _functions as _f
-from ._api import TreeSpec
 from ._api import Variable
-from ._api import _get_type
-from ._api import copy_tree
-from ._api import jump
 from ._api import read_uservalue
+from ._control_flow import BlockRef
 from ._control_flow import block
-from ._core import Label
+from ._control_flow import clear_control_flow_hooks
+from ._core import Value
 from ._core import Var
-from ._diagnostic import DebugInfo
-from ._diagnostic import add_debug_info
-from ._diagnostic import debug_info
-from ._diagnostic import describe_fn
-from ._state import State
-from ._tracing import _CUR_SCOPE
+from ._diagnostic import register_exclusion
+from ._instructions import unreachable_checked as _unreachable_checked
 from ._tracing import RawSubr
-from ._tracing import label
-from ._tracing import mk_internal_label
 from ._tracing import trace_to_raw_subr
+from ._tree_utils import TreeSpec
 from ._utils import Cell
-from ._utils import get_id
+from ._utils import cast_unchecked_val
+from ._utils import normalize_function_args
+
+register_exclusion(__file__)
 
 
 @dataclass
@@ -55,78 +53,72 @@ class TracedSubr[F = Any]:
         return inner
 
 
-_RETURN_HOOK: Cell[Callable[[Any], None]] = Cell()
+R_co = TypeVar("R_co", covariant=True, default=Any)
 
 
-def return_(val: Any = None) -> None:
-    return _RETURN_HOOK(val)
+@dataclass
+class Return(Generic[R_co]):
+    value: R_co
+
+    def __init__(self, val: R_co = None, /):
+        self.value = val
+
+
+type FunctionRet[R] = Generator[Return[R], None, None] | R
 
 
 def trace_to_subr[**P, R](
-    fn: Callable[P, R | None], *args: P.args, **kwargs: P.kwargs
+    fn: Callable[P, FunctionRet[R]],
+    arg_tree_: TreeSpec | None,
+    /,
+    *args: P.args,
+    **kwargs: P.kwargs,
 ) -> TracedSubr[Callable[P, R]]:
-    arg_vars, arg_tree = TreeSpec.flatten((args, kwargs))
-    arg_types = tuple(_get_type(x) for x in arg_vars)
+    _arg_vars, arg_tree = TreeSpec.flatten((args, kwargs))
+    if arg_tree_ is not None:
+        arg_tree.can_cast_implicit_many_or_err(arg_tree_)
+        arg_tree = cast_unchecked_val(arg_tree)(arg_tree_)
 
     out_tree: Cell[TreeSpec[R]] = Cell()
 
     @functools.wraps(fn)
-    def inner(*args: Var) -> tuple[Var, ...]:
+    def inner(*args: Var) -> tuple[Value, ...]:
         ar, kw = arg_tree.unflatten(Variable._from_val_ro(x) for x in args)
 
-        id = get_id()
+        ans = inline_subr(fn)(*ar, **kw)
 
-        subr_scope = _CUR_SCOPE.value
-        exit_paths: list[tuple[Label, R, DebugInfo]] = []
+        vals, tree = TreeSpec.flatten(ans)
+        out_tree.value = tree
+        return tuple(read_uservalue(x) for x in vals)
 
-        def ret_hook(val: Any) -> None:
-            with _CUR_SCOPE.bind(subr_scope):
-                exit_label = mk_internal_label(f"trace_to_subr_ret({len(exit_paths)})", id)
-                # FIXME: this is a out of scope use;
-                # we dont currenty error for that but will probably in future
-                exit_paths.append((exit_label, copy_tree(val), debug_info()))
-                jump(exit_label)
-
-        with _RETURN_HOOK.bind(ret_hook):
-            ans = fn(*ar, **kw)
-
-            with add_debug_info(DebugInfo(describe=f"return val from end of {describe_fn(fn)}")):
-                return_(ans)
-                _f.unreachable_checked()
-
-        ret_tree = TreeSpec.promote_types_many(
-            *(TreeSpec.flatten(x)[1] for _, x, _ in exit_paths),
-        )
-        out_tree.value = ret_tree
-        ret_state = State(_tree=ret_tree)
-
-        actual_exit = mk_internal_label(f"trace_to_subr_exit", id)
-
-        for exit_label, exit_val, debug in exit_paths:
-            with add_debug_info(debug):
-                label(exit_label)
-                ret_state.write(exit_val)
-                jump(actual_exit)
-
-        label(actual_exit)
-
-        assert ret_state._vars is not None
-        return tuple(x.read() for x in ret_state._vars)
-
-    ans = trace_to_raw_subr(arg_types, inner)
+    ans = trace_to_raw_subr(arg_tree.types, inner)
 
     return TracedSubr(ans, arg_tree, out_tree.value)
 
 
-class Subr[F]:
-    fn: Final[F]
+@dataclass
+class ArgSpec:
+    _spec: TreeSpec[tuple[tuple[Any, ...], dict[str, Any]]]
 
-    def __init__(self, fn: F) -> None:
-        self.fn = fn
-        self._subr: TracedSubr | None = None
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self._spec = TreeSpec.from_schema((args, kwargs))
+
+
+F_co = TypeVar("F_co", covariant=True)
+
+
+@dataclass
+class Subr(Generic[F_co]):
+    fn: F_co
+    arg_types: ArgSpec | None = None
+
+    _subr: TracedSubr[F_co] | None = None
 
     def __repr__(self):
         return repr(self.fn)
+
+    def __post_init__(self):
+        self.__qualname__ = self.fn.__qualname__
 
     @overload
     def __get__(self, obj: None, objtype: type, /) -> Self: ...
@@ -147,53 +139,113 @@ class Subr[F]:
         return inner
 
     def __call__[**P, R](self: Subr[Callable[P, R]], *args: P.args, **kwargs: P.kwargs) -> R:
-        bound = inspect.signature(self.fn).bind_partial(*args, **kwargs)
-        bound.apply_defaults()
+        args, kwargs = normalize_function_args(self.fn, args, kwargs)
+
         if self._subr is None:
-            self._subr = trace_to_subr(
-                self.fn, **bound.arguments
-            )  # pyright: ignore[reportCallIssue]
-        return self._subr.call(**bound.arguments)
+            if self.arg_types is not None:
+                spec_ar, spec_kw = self.arg_types._spec.as_schema()
+                arg_types = TreeSpec.from_schema(normalize_function_args(self.fn, spec_ar, spec_kw))
+            else:
+                arg_types = None
+
+            self._subr = trace_to_subr(self.fn, arg_types, *args, **kwargs)
+
+        return self._subr.call(*args, **kwargs)
+
+
+class _Invalid:
+    pass
 
 
 @dataclass
 class SubrFactory:
     inline_always: bool = False
+    arg_types: ArgSpec | None = None
 
-    def __call__[F](self, fn: F) -> Subr[F]:
+    @overload
+    def __call__[**P, R](
+        self, func: Callable[P, Generator[Return[R]]], /
+    ) -> Subr[Callable[P, R]]: ...
+    @overload
+    def __call__[**P, R](  # pyright: ignore[reportOverlappingOverload]
+        self, func: Callable[P, Generator[Any, Any, Any]], /
+    ) -> Subr[_Invalid]: ...
+    @overload
+    def __call__[**P, R](self, func: Callable[P, FunctionRet[R]]) -> Subr[Callable[P, R]]: ...
+
+    def __call__[**P, R](  # pyright: ignore[reportInconsistentOverload]
+        self, func: Callable[P, FunctionRet[R]], /
+    ) -> Subr[Callable[P, R]]:
         if self.inline_always:
             raise NotImplementedError()
-        return Subr(fn)
+        return Subr(cast(Callable[P, R], func), self.arg_types)
 
 
 class SubrOpts(TypedDict, total=False):
     inline_always: bool
+    arg_types: ArgSpec | None
 
 
 @overload
 def subr(**kwargs: Unpack[SubrOpts]) -> SubrFactory: ...
 @overload
-def subr[F](func: F, /, **kwargs: Unpack[SubrOpts]) -> Subr[F]: ...
+def subr[**P, R](
+    func: Callable[P, Generator[Return[R]]], /, **kwargs: Unpack[SubrOpts]
+) -> Subr[Callable[P, R]]: ...
+@overload
+def subr[**P, R](  # pyright: ignore[reportOverlappingOverload]
+    func: Callable[P, Generator[Any, Any, Any]], /, **kwargs: Unpack[SubrOpts]
+) -> Subr[_Invalid]: ...
+@overload
+def subr[**P, R](
+    func: Callable[P, FunctionRet[R]], /, **kwargs: Unpack[SubrOpts]
+) -> Subr[Callable[P, R]]: ...
 
 
-def subr[F](func: F | None = None, /, **kwargs: Unpack[SubrOpts]) -> SubrFactory | Subr[F]:
+def subr[**P, R](  # pyright: ignore[reportInconsistentOverload]
+    func: Callable[P, FunctionRet[R]] | None = None, /, **kwargs: Unpack[SubrOpts]
+):
     config = SubrFactory(**kwargs)
     if func is None:
         return config
     return config(func)
 
 
-def inline_subr[**P, R](fn: Callable[P, R]) -> Callable[P, R]:
+_RETURN_HOOK: Cell[Callable[[Any], None]] = Cell()
+
+
+def return_(val: Any = None) -> None:
+    return _RETURN_HOOK(val)
+
+
+def inline_subr[**P, R](fn: Callable[P, FunctionRet[R]]) -> Callable[P, R]:
     def inner(*args: P.args, **kwargs: P.kwargs) -> R:
-        with block() as b:
+        with (
+            block(BlockRef[R]) as b,
+            clear_control_flow_hooks(),
+            _RETURN_HOOK.bind(b.break_),
+        ):
+            ans = fn(*args, **kwargs)
 
-            def ret_hook(val: Any) -> None:
-                b.break_(val)
-
-            with _RETURN_HOOK.bind(ret_hook):
-                ans = fn(*args, **kwargs)
-                return_(ans)
-                _f.unreachable_checked()
+            if isinstance(ans, GeneratorType):
+                ans = cast(Generator[Return[R]], ans)
+                try:
+                    while True:
+                        item = next(ans)
+                        if not isinstance(
+                            item, Return
+                        ):  # pyright: ignore[reportUnnecessaryIsInstance]
+                            raise TypeError()
+                        b.break_(item.value)
+                except StopIteration as e:
+                    if e.value is not None:
+                        raise TypeError("Generator-based subr should not also return") from None
+                _unreachable_checked(
+                    f"Generator-based subr {ans.__qualname__} is required to return at the end"
+                )
+            else:
+                ans = cast(R, ans)
+                b.break_(ans)
 
         return b.value
 

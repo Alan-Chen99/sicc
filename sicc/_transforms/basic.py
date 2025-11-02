@@ -27,7 +27,6 @@ from .._instructions import EndPlaceholder
 from .._instructions import Jump
 from .._tracing import ck_val
 from .._tracing import mk_internal_label
-from .._tracing import mk_mvar
 from .._tracing import mk_var
 from .._utils import Cell
 from .._utils import in_typed
@@ -59,7 +58,6 @@ class MVarInfo:
     v: MVar
     defs: OrderedSet[BoundInstr] = field(default_factory=mk_ordered_set)
     uses: OrderedSet[BoundInstr] = field(default_factory=mk_ordered_set)
-    private: bool = False
 
 
 @dataclass
@@ -118,6 +116,11 @@ class Index:
 
     def instrs_unpacked(self) -> list[BoundInstr]:
         return [i.i for i in self.instrs.values() if i.children is None]
+
+    def get_parent_rec(self, instr: BoundInstr) -> BoundInstr:
+        if parent := self.instrs[instr].parent:
+            return self.get_parent_rec(parent)
+        return instr
 
 
 @CachedFn
@@ -207,17 +210,11 @@ def get_index(ctx: TransformCtx, unpack: UnpackPolicy = NeverUnpack()) -> Index:
         if isinstance(x.loc, EffectMvar)
     }
 
-    # note: we dont add private_mvar members that are no longer relavant
-    for x in res_mvars.values():
-        if x.v in f.scope.private_mvars:
-            x.private = True
-
     for x in res_labels.values():
         if x.v in f.scope.private_labels:
             x.private = True
 
     # FIXME: move this, this function should not mutate scope
-    f.scope.private_mvars = OrderedSet(x for x in f.scope.private_mvars if x in res_mvars)
     f.scope.private_labels = OrderedSet(x for x in f.scope.private_labels if x in res_labels)
     f.scope.vars = OrderedSet(x for x in f.scope.vars if x in res_vars)
 
@@ -266,7 +263,7 @@ def split_blocks(ctx: TransformCtx) -> bool:
             if len(cur) == 0 and not x.isinst(EmitLabel):
                 cur.append(EmitLabel().bind((), mk_internal_label("_split_blocks_dead")))
 
-            if len(cur) > 0 and (x_ := x.isinst(EmitLabel)):
+            if len(cur) > 0 and (x_ := x.isinst(EmitLabel)) and x_.instr.allow_split:
                 (l,) = x_.inputs_
                 cur.append(Jump().bind((), l))
                 yield get()
@@ -374,33 +371,33 @@ def rename_private_labels(ctx: TransformCtx) -> None:
         )
 
 
-_DEAD_MVARS: Cell[WeakSet[MVar]] = Cell(WeakSet())
+# _DEAD_MVARS: Cell[WeakSet[MVar]] = Cell(WeakSet())
 
 
-@Transform
-def rename_private_mvars(ctx: TransformCtx) -> None:
-    f = ctx.frag
-    index = get_index.call_cached(ctx)
+# @Transform
+# def rename_private_mvars(ctx: TransformCtx) -> None:
+#     f = ctx.frag
+#     index = get_index.call_cached(ctx)
 
-    _dead = _DEAD_MVARS.value
-    for v in index.mvars.values():
-        if in_typed(v.v, _dead):
-            use_instr = (list(v.uses) + list(v.defs))[0]
-            report = use_instr.debug.error(f"use of out-of-scope variable {v.v}")
-            report.note("in instruction", use_instr)
-            report.note("defined here", v.v.debug)
-            report.throw()
+#     _dead = _DEAD_MVARS.value
+#     for v in index.mvars.values():
+#         if in_typed(v.v, _dead):
+#             use_instr = (list(v.uses) + list(v.defs))[0]
+#             report = use_instr.debug.error(f"use of out-of-scope variable {v.v}")
+#             report.note("in instruction", use_instr)
+#             report.note("defined here", v.v.debug)
+#             report.throw()
 
-    for v in index.mvars.values():
-        if v.private:
-            _dead.add(v.v)
+#     for v in index.mvars.values():
+#         if v.private:
+#             _dead.add(v.v)
 
-    new_mvars = {
-        x.v: mk_mvar(x.v.type, reg=x.v.reg, debug=x.v.debug)
-        for x in index.mvars.values()
-        if x.private
-    }
-    map_mvars(f, new_mvars)
+#     new_mvars = {
+#         x.v: mk_mvar(x.v.type, reg=x.v.reg, debug=x.v.debug)
+#         for x in index.mvars.values()
+#         if x.private
+#     }
+#     map_mvars(f, new_mvars)
 
 
 def map_mvars(f: Fragment, new_mvars: dict[MVar, MVar]) -> None:
@@ -440,8 +437,6 @@ def mark_all_private_except(ctx: TransformCtx, labels: list[Label]) -> None:
     f = ctx.frag
     index = get_index.call_cached(ctx)
 
-    for l in index.mvars:
-        f.scope.private_mvars.add(l)
     for l in index.labels:
         if l not in labels:
             f.scope.private_labels.add(l)

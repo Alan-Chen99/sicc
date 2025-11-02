@@ -1,17 +1,17 @@
-move r1 0
-jal 12
-jal 7
-jal 7
-jal 7
-jal 7
-move ra 15
-move r2 ra
-jal 12
-jal 12
-jal 12
-j r2
+move r2 0
+move ra 10
 lb r0 336213101 ImportCount 0
-add r1 r1 r0
+add r2 r2 r0
 j ra
-# result: r1
+move r1 ra
+jal 2
+jal 2
+jal 2
+j r1
+jal 5
+jal 5
+jal 5
+jal 5
+jal 5
+# result: r2
 # 16 lines total (not including this line)

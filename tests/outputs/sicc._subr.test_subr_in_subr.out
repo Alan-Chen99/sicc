@@ -1,0 +1,10 @@
+lb r0 336213101 ImportCount 0
+jal 5
+jal 5
+blt 0 r0 8
+j 7
+add r0 r0 1
+j ra
+sb 336213101 On 0
+# noop (jump here to exit)
+# 9 lines total (not including this line)

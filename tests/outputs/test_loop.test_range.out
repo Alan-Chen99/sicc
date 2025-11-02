@@ -1,0 +1,12 @@
+move r0 0
+beq r0 5 10
+yield
+add r0 r0 1
+move r1 34
+bne r0 12 1
+beq r1 50 10
+yield
+add r1 r1 1
+bne r1 56 6
+# noop (jump here to exit)
+# 11 lines total (not including this line)

@@ -12,7 +12,6 @@ from .control_flow import build_control_flow_graph
 from .control_flow import compute_label_provenance
 from .control_flow import external
 from .optimize_mvars import compute_mvar_lifetime
-from .optimize_mvars import support_mvar_analysis
 from .utils import CachedFn
 from .utils import TransformCtx
 
@@ -58,8 +57,6 @@ def check_mvars_defined(ctx: TransformCtx) -> None:
     index = get_index.call_cached(ctx, AlwaysUnpack())
 
     for v in index.mvars.values():
-        if not support_mvar_analysis(ctx, v.v, AlwaysUnpack()):
-            continue
         res = compute_mvar_lifetime(ctx, v.v, AlwaysUnpack())
 
         undef_uses = [

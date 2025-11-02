@@ -11,9 +11,11 @@ put db 27 9
 move sp 3
 pop r0
 pop r1
-# value: (r1, r0)
+pop r2
+# value: Pointer(sp, Data(x=int, y=(int, float))) Data(x=r2, y=(r1, r0))
 push r1
-push r1
+push r2
+push r2
 add sp sp 3
 bne sp 33 11
-# 18 lines total (not including this line)
+# 20 lines total (not including this line)

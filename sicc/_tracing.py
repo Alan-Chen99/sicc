@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable
@@ -13,7 +12,6 @@ from ._core import FORMAT_ANNOTATE
 from ._core import Block
 from ._core import BoundInstr
 from ._core import Fragment
-from ._core import InteralBool
 from ._core import Label
 from ._core import LabelLike
 from ._core import MVar
@@ -24,25 +22,26 @@ from ._core import Value
 from ._core import Var
 from ._core import VarT
 from ._core import VarTS
-from ._core import get_id
+from ._core import get_type
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
 from ._diagnostic import clear_debug_info
 from ._diagnostic import debug_info
 from ._diagnostic import describe_fn
+from ._diagnostic import register_exclusion
 from ._diagnostic import track_caller
-from ._functions import branch
-from ._functions import jump
-from ._functions import unreachable_checked
 from ._instructions import Bundle
 from ._instructions import EmitLabel
 from ._instructions import EndPlaceholder
+from ._instructions import jump
+from ._instructions import unreachable_checked
 from ._utils import ByIdMixin
 from ._utils import Cell
+from ._utils import get_id
 from .config import verbose
 from .config import with_status
 
-# register_exclusion(__file__)
+register_exclusion(__file__)
 
 
 @dataclass
@@ -50,17 +49,18 @@ class Trace:
     fragment: Fragment
     instrs: list[BoundInstr]
 
-    continue_to: Label | None = None
-    break_to: Label | None = None
 
-    else_hook: Callable[[], AbstractContextManager[None]] | None = None
-
-
-_CUR_SCOPE: Cell[Scope] = Cell()
+SCOPE_STACK: Cell[list[Scope]] = Cell([])
 
 _CUR_TRACE: Cell[Trace] = Cell()
 
 _EXISTING_EMITTED_LABELS: Cell[set[Label]] = Cell(set())
+
+
+def top_scope_or_err() -> Scope:
+    if len(SCOPE_STACK.value) == 0:
+        raise RuntimeError("cannot do this without being inside a function")
+    return SCOPE_STACK.value[-1]
 
 
 def mk_var[T: VarT](
@@ -68,7 +68,7 @@ def mk_var[T: VarT](
 ) -> Var[T]:
     """create a Var, tied to the current scope"""
     ans = Var(typ, get_id(), Cell(True), reg, debug or debug_info())
-    _CUR_SCOPE.value.vars.add(ans)
+    top_scope_or_err().vars.add(ans)
     return ans
 
 
@@ -87,13 +87,13 @@ def ck_val(v: Value) -> None:
 def mk_mvar[T: VarT](
     typ: type[T],
     *,
-    force_public: bool = False,
+    scoped: bool = False,
     reg: RegInfo = RegInfo(),
     debug: DebugInfo | None = None,
 ) -> MVar[T]:
     ans = MVar(typ, get_id(), reg, debug or debug_info(1))
-    if not force_public and (scope := _CUR_SCOPE.get()):
-        scope.private_mvars.append(ans)
+    if scoped:
+        top_scope_or_err().scoped_mvars.append(ans)
     return ans
 
 
@@ -108,7 +108,9 @@ def ensure_label(l: LabelLike | None = None, unique: bool = False) -> Label:
     return ans
 
 
-def mk_internal_label(prefix: str, id: int | None = None, private: bool = True) -> Label:
+def mk_internal_label(
+    prefix: str, id: int | None = None, private: bool = True, scope: Scope | None = None
+) -> Label:
     if id is None:
         id = get_id()
 
@@ -123,8 +125,10 @@ def mk_internal_label(prefix: str, id: int | None = None, private: bool = True) 
         return prefix.removeprefix("_").removesuffix("_" + last)
 
     ans = Label(f"_{get_prefix()}_{id}", debug_info(), implicit=True)
-    if private:
-        _CUR_SCOPE.value.private_labels.add(ans)
+    if scope:
+        scope.private_labels.add(ans)
+    elif private:
+        top_scope_or_err().private_labels.add(ans)
     return ans
 
 
@@ -149,22 +153,26 @@ def emit_frag(subf: Fragment) -> None:
     _CUR_TRACE.value.fragment.merge_child(subf)
 
 
+_out_of_scope_mvars: Cell[set[MVar]] = Cell(set())
+
+
+def check_mvar_scope(v: MVar):
+    pass
+
+
 @contextmanager
 def trace_to_fragment(
     emit: bool = False,
     optimize: bool = True,
-    continue_to: Label | None = None,
-    break_to: Label | None = None,
-    else_hook: Callable[[], AbstractContextManager[None]] | None = None,
-) -> Iterator[Cell[Fragment]]:
-    from ._transforms import compute_label_provenance
+) -> Iterator[tuple[Scope, Cell[Fragment]]]:
     from ._transforms import optimize_frag
+    from ._transforms.control_flow import compute_label_provenance
 
     res: Cell[Fragment] = Cell()
 
     scope = Scope(
         vars=OrderedSet(()),
-        private_mvars=OrderedSet(()),
+        scoped_mvars=OrderedSet(()),
         private_labels=OrderedSet(()),
     )
     f = Fragment(
@@ -175,25 +183,27 @@ def trace_to_fragment(
     trace = Trace(
         f,
         [],
-        continue_to=continue_to,
-        break_to=break_to,
-        else_hook=else_hook,
+        # continue_to=continue_to,
+        # break_to=break_to,
+        # else_hook=else_hook,
     )
     with (
         clear_debug_info(),
         _CUR_TRACE.bind(trace),
-        _CUR_SCOPE.bind(scope),
+        SCOPE_STACK.bind(SCOPE_STACK.value + [scope]),
     ):
         start = mk_internal_label("frag_fake_start")
         label(start)
         unreachable_checked()
-        yield res
+        yield scope, res
         unreachable_checked()
 
     assert trace.fragment is f
     f.blocks[start] = Block(trace.instrs, debug_info())
 
     f.finish()
+    _out_of_scope_mvars.value |= scope.scoped_mvars
+
     if verbose.value >= 1:
         print("raw traced:")
         if verbose.value >= 2:
@@ -214,12 +224,7 @@ def trace_to_fragment(
 
 @contextmanager
 def internal_transform(frag: Fragment) -> Iterator[None]:
-    if _CUR_TRACE.get() is None and _CUR_SCOPE.get() is frag.scope:
-        with clear_debug_info():
-            yield
-        return
-
-    with _CUR_TRACE.bind_clear(), _CUR_SCOPE.bind(frag.scope), clear_debug_info():
+    with _CUR_TRACE.bind_clear(), SCOPE_STACK.bind([frag.scope]), clear_debug_info():
         yield
 
 
@@ -228,9 +233,8 @@ PROGRAM_EXIT_TO: Cell[Label] = Cell()
 
 @contextmanager
 def trace_program() -> Iterator[Cell[TracedProgram]]:
-    from ._transforms import optimize_frag
+    from ._transforms import global_opts
     from ._transforms.basic import mark_all_private_except
-    from ._transforms.utils import frag_is_global
 
     ans: Cell[TracedProgram] = Cell()
 
@@ -246,7 +250,7 @@ def trace_program() -> Iterator[Cell[TracedProgram]]:
     with (
         SUBR_CALL_HOOK.bind(subr_hook),
         PROGRAM_EXIT_TO.bind(exit),
-        trace_to_fragment() as res,
+        trace_to_fragment() as (_, res),
     ):
         label(start)
         yield ans
@@ -259,8 +263,7 @@ def trace_program() -> Iterator[Cell[TracedProgram]]:
 
     f = res.value
     mark_all_private_except(f, [start])
-    with frag_is_global.bind(True):
-        optimize_frag(f)
+    global_opts(f)
 
     if verbose.value >= 1:
         print("after optimize with marked private:")
@@ -269,103 +272,8 @@ def trace_program() -> Iterator[Cell[TracedProgram]]:
     ans.value = TracedProgram(start, f)
 
 
-def continue_():
-    cont = _CUR_TRACE.value.continue_to
-    if cont is None:
-        raise RuntimeError("nothing to continue to")
-    jump(cont)
-
-
-def break_():
-    br = _CUR_TRACE.value.break_to
-    if br is None:
-        raise RuntimeError("nothing to break to")
-    jump(br)
-
-
-def else_() -> AbstractContextManager[None]:
-    hook = _CUR_TRACE.value.else_hook
-    if hook is None:
-        raise RuntimeError("not during 'if_'")
-    return hook()
-
-
 def exit_program() -> None:
     jump(PROGRAM_EXIT_TO.value)
-
-
-@contextmanager
-def trace_if(cond: InteralBool) -> Iterator[None]:
-    id = get_id()
-    true_branch = mk_internal_label("if_true_branch", id)
-    false_branch = mk_internal_label("if_false_branch", id)
-    if_end = mk_internal_label("if_end", id)
-
-    with track_caller():
-        branch(cond, true_branch, false_branch)
-
-    traced_else = Cell(False)
-
-    @contextmanager
-    def else_hook() -> Iterator[None]:
-        if traced_else.value:
-            raise RuntimeError("already traced a else branch")
-        traced_else.value = True
-
-        with trace_to_fragment(
-            emit=True,
-            continue_to=_CUR_TRACE.value.continue_to,
-            break_to=_CUR_TRACE.value.break_to,
-        ):
-            label(false_branch)
-            yield
-            jump(if_end)
-
-    with trace_to_fragment(
-        emit=True,
-        continue_to=_CUR_TRACE.value.continue_to,
-        break_to=_CUR_TRACE.value.break_to,
-        else_hook=else_hook,
-    ):
-        label(true_branch)
-        yield
-        jump(if_end)
-
-    if not traced_else.value:
-        with track_caller():
-            label(false_branch)
-            jump(if_end)
-
-    with track_caller():
-        label(if_end)
-
-
-@contextmanager
-def trace_while(cond_block: Callable[[], InteralBool]) -> Iterator[None]:
-    id = get_id()
-    while_cond = mk_internal_label("while_cond", id)
-    while_body = mk_internal_label("while_body", id)
-    while_end = mk_internal_label("while_end", id)
-
-    with trace_to_fragment(emit=True):
-        with track_caller():
-            label(while_cond)
-        cond = cond_block()
-        with track_caller():
-            branch(cond, while_body, while_end)
-
-    with trace_to_fragment(
-        emit=True,
-        continue_to=while_cond,
-        break_to=while_end,
-    ):
-        label(while_body)
-        yield
-        jump(while_cond)
-
-    with track_caller():
-        jump(while_cond)
-        label(while_end)
 
 
 ################################################################################
@@ -393,8 +301,9 @@ class RawSubr(ByIdMixin):
 
         l = mk_internal_label("call_ret")
 
-        for arg, argvar in zip(args, self.arg_mvars):
-            argvar.write(arg)
+        with track_caller():
+            for arg, argvar in zip(args, self.arg_mvars):
+                argvar.write(arg)
 
         self.ra_mvar.write(l)
         with track_caller():
@@ -407,51 +316,50 @@ class RawSubr(ByIdMixin):
 SUBR_CALL_HOOK: Cell[Callable[[RawSubr], None]] = Cell()
 
 
-def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[Var, ...]]):
-    # should not matter but safer
-    with _CUR_TRACE.bind_clear(), _CUR_SCOPE.bind_clear():
-        ra_mvar = mk_mvar(Label, force_public=True)
+def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[Value, ...]]):
+    ra_mvar = mk_mvar(Label)
+    arg_mvars = tuple(mk_mvar(x) for x in arg_types)
+
+    start = mk_internal_label(f"[{describe_fn(fn)}]", private=False)
+
+    with with_status(describe_fn(fn)), trace_to_fragment() as (_scope, res):
+        with add_debug_info(DebugInfo(describe=f"<function {describe_fn(fn)}>")):
+            label(start)
+
         # allow spilling ra into another reg at function start
-        # regalloc code for this is not implemented yet
-        ra_mvar_inner = mk_mvar(Label, force_public=True)
-        arg_mvars = tuple(mk_mvar(x, force_public=True) for x in arg_types)
+        ra_mvar_inner = mk_mvar(Label)
+        ra_mvar_inner.write(ra_mvar.read())
 
-        start = mk_internal_label(f"[{describe_fn(fn)}]", private=False)
+        with add_debug_info(DebugInfo(describe=f"args of {describe_fn(fn)}")):
+            argvals = tuple(x.read() for x in arg_mvars)
+        out_vars = fn(*argvals)
+        ret_mvars = tuple(mk_mvar(get_type(x)) for x in out_vars)
+        for mv, v in zip(ret_mvars, out_vars):
+            with add_debug_info(DebugInfo(describe=f"return value from {describe_fn(fn)}")):
+                mv.write(v)
+        with add_debug_info(DebugInfo(describe=f"return from {describe_fn(fn)}")):
+            jump(ra_mvar_inner.read())
 
-        with with_status(describe_fn(fn)), trace_to_fragment() as res:
-            with add_debug_info(DebugInfo(describe=repr(fn))):
-                label(start)
-            ra_mvar_inner.write(ra_mvar.read())
-            with add_debug_info(DebugInfo(describe=f"args of {describe_fn(fn)}")):
-                argvals = tuple(x.read() for x in arg_mvars)
-            out_vars = fn(*argvals)
-            ret_mvars = tuple(mk_mvar(x.type, force_public=True) for x in out_vars)
-            for mv, v in zip(ret_mvars, out_vars):
-                with add_debug_info(DebugInfo(describe=f"return value from {describe_fn(fn)}")):
-                    mv.write(v)
-            with add_debug_info(DebugInfo(describe=f"return from {describe_fn(fn)}")):
-                jump(ra_mvar_inner.read())
-
-        return RawSubr(
-            get_id(),
-            frag=res.value,
-            start=start,
-            ra_mvar=ra_mvar,
-            arg_mvars=arg_mvars,
-            ret_mvars=ret_mvars,
-        )
+    return RawSubr(
+        get_id(),
+        frag=res.value,
+        start=start,
+        ra_mvar=ra_mvar,
+        arg_mvars=arg_mvars,
+        ret_mvars=ret_mvars,
+    )
 
 
 @contextmanager
 def trace_bundle() -> Iterator[None]:
     """for debugging/testing purposes"""
-    from ._transforms import fuse_blocks_all
     from ._transforms import global_opts
     from ._transforms.fuse_blocks import force_fuse_into_one
+    from ._transforms.fuse_blocks import fuse_blocks_all
 
     start = mk_internal_label(f"isolate")
 
-    with trace_to_fragment() as res:
+    with trace_to_fragment() as (_, res):
         label(start)
         yield
         EndPlaceholder().call()

@@ -9,7 +9,8 @@ from ..config import verbose
 from .arith import opt_identity_arith
 from .basic import remove_unused_side_effect_free
 from .basic import rename_private_labels
-from .basic import rename_private_mvars
+
+# from .basic import rename_private_mvars
 from .basic import rename_private_vars
 from .basic import split_blocks
 from .branch import handle_const_or_not_branch
@@ -55,15 +56,18 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
     fuse_blocks_trivial_jumps,
     handle_const_or_not_branch,
     #
-    elim_mvars_read_writes,
-    forward_remove_full_block,
-    #
     opt_offset_arith,
     common_sub_elim,
+    handle_nan_eq,
 ]
 
-GLOBAL_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
-    handle_nan_eq,
+GLOBAL_FRAG_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
+    # uses mvar analysis
+    elim_mvars_read_writes,
+    forward_remove_full_block,
+]
+
+FINAL_OPTS: list[Callable[[Fragment], bool | None]] = GLOBAL_FRAG_OPTS + [
     #
     inline_pred_to_branch,
     pack_cond_call,
@@ -75,30 +79,36 @@ GLOBAL_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
 def optimize_frag(f: Fragment) -> None:
     rename_private_vars(f)
     rename_private_labels(f)
-    rename_private_mvars(f)
+    # rename_private_mvars(f)
     run_phases(f, *FRAG_OPTS)
 
 
 def global_checks(f: Fragment):
     with frag_is_global.bind(True):
         check_vars_defined(f)
-        if verbose.value >= 1:
-            with FORMAT_ANNOTATE.bind(compute_label_provenance(f).annotate):
-                print(
-                    f.__rich__("{possible jump targets} and [possible values Label vars can take]")
-                )
-
         check_mvars_defined(f)
 
 
 def global_opts(f: Fragment):
     with frag_is_global.bind(True):
         optimize_frag(f)
+
+        run_phases(f, *GLOBAL_FRAG_OPTS)
         writeback_mvar_use(f)
         logging.info("opts after writeback_mvar_use")
-        optimize_frag(f)
-        logging.info("running GLOBAL_OPTS")
-        run_phases(f, *GLOBAL_OPTS)
+        run_phases(f, *GLOBAL_FRAG_OPTS)
+
+
+def global_final_opts(f: Fragment):
+    with frag_is_global.bind(True):
+        if verbose.value >= 1:
+            with FORMAT_ANNOTATE.bind(compute_label_provenance(f).annotate):
+                print(
+                    f.__rich__("{possible jump targets} and [possible values Label vars can take]")
+                )
+
+        logging.info("running FINAL_OPTS")
+        run_phases(f, *FINAL_OPTS)
 
         fuse_blocks_all(f, efficient_only=True)
         if verbose.value >= 1:
@@ -107,6 +117,7 @@ def global_opts(f: Fragment):
 
 
 def regalloc_and_lower(f: Fragment):
-    # fuse_blocks_all(f)
-    regalloc(f)
-    lower_instrs(f)
+    with frag_is_global.bind(True):
+        # fuse_blocks_all(f)
+        regalloc(f)
+        lower_instrs(f)

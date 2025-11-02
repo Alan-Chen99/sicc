@@ -1,0 +1,8 @@
+lbn r0 -324331872 -44753248 Power 0
+blt r0 1 6
+lbn r0 -324331872 -44753248 Open 0
+ble 1 r0 0
+yield
+j 0
+# noop (jump here to exit)
+# 7 lines total (not including this line)

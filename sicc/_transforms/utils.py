@@ -14,6 +14,7 @@ from rich.pretty import pretty_repr
 from .._core import Fragment
 from .._diagnostic import CompilerError
 from .._diagnostic import Report
+from .._diagnostic import SuppressExit
 from .._diagnostic import register_exclusion
 from .._tracing import internal_transform
 from .._utils import Cell
@@ -68,6 +69,7 @@ class Transform[**P, R]:
                 assert before is not None
                 if frag.blocks != before.blocks:
                     logging.info(f"modified by {self.fn.__qualname__}")
+
                     if verbose.value >= 2:
                         print(
                             frag.__rich__(title=f"Fragment after {self.fn}"),
@@ -77,10 +79,14 @@ class Transform[**P, R]:
                     # validate result
                     try:
                         get_index(frag)
+                    except SuppressExit:
+                        raise
                     except Exception as e:
                         raise RuntimeError(f"Transform {self.fn} returned invalid fragment") from e
 
                 return ans
+            except SuppressExit:
+                raise
             except Exception as e:
                 if isinstance(e, CompilerError):
                     report = e.report

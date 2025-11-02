@@ -27,6 +27,7 @@ from .control_flow import external
 from .utils import LoopingTransform
 from .utils import Transform
 from .utils import TransformCtx
+from .utils import frag_is_global
 
 
 @dataclass
@@ -67,36 +68,13 @@ class MvarLifetimeRes:
             yield
 
 
-def support_mvar_analysis(
-    ctx: TransformCtx, v_: MVar, unpack: UnpackPolicy = NeverUnpack()
-) -> bool:
-    """
-    note: previously operations other than WriteMVar and ReadMVar is not supported
-    this is no longer the case and now this function only checks if v is private
-    this function may get removed in future
-    """
-    index = get_index.call_cached(ctx, unpack)
-    v = index.mvars[v_]
-
-    if not v.private:
-        return False
-
-    # # not sufficiently expanded
-    # if not all(x.isinst(WriteMVar) for x in v.defs):
-    #     return False
-    # if not all(x.isinst(ReadMVar) for x in v.uses):
-    #     return False
-
-    return True
-
-
 def compute_mvar_lifetime(
     ctx: TransformCtx, v_: MVar, unpack: UnpackPolicy = NeverUnpack()
 ) -> MvarLifetimeRes:
     graph = build_control_flow_graph.call_cached(ctx, out_unpack=unpack)
     index = get_index.call_cached(ctx, unpack)
 
-    assert support_mvar_analysis(ctx, v_, unpack=unpack)
+    assert frag_is_global.value
     v = index.mvars[v_]
 
     ########################################
@@ -160,9 +138,6 @@ def elim_mvars_read_writes(ctx: TransformCtx, unpack: UnpackPolicy = AlwaysUnpac
     index = get_index.call_cached(ctx, unpack)
 
     for v in index.mvars.values():
-        if not support_mvar_analysis(ctx, v.v, unpack):
-            continue
-
         res = compute_mvar_lifetime(ctx, v.v, unpack)
         reachable = res.reachable
 

@@ -1,9 +1,8 @@
-jal 2
-move ra 7
+move ra 6
 move r0 ra
-jal 6
-jal 6
+jal 5
+jal 5
 j r0
 j ra
-# noop (jump here to exit)
-# 8 lines total (not including this line)
+jal 1
+# 7 lines total (not including this line)

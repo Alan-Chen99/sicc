@@ -36,8 +36,8 @@ from ._diagnostic import debug_info
 from ._diagnostic import register_exclusion
 from ._instructions import AsmInstrBase
 from ._instructions import EffectExternal
-from ._tree_utils import dataclass as optree_dataclass
 from ._tree_utils import field as optree_field  # pyright: ignore[reportUnknownVariableType]
+from ._tree_utils import optree_dataclass
 from ._tree_utils import pytree
 from ._utils import ReprAs
 from ._utils import cast_unchecked
@@ -139,19 +139,28 @@ class Yield(AsmInstrBase):
     in_types = ()
     out_types = ()
 
-    @override
-    def reads(self, instr: BoundInstr[Self]) -> EffectRes:
-        return EffectExternal()
-
-    @override
-    def writes(self, instr: BoundInstr[Self]) -> EffectRes:
-        return EffectExternal()
+    reads_ = EffectExternal()
+    writes_ = EffectExternal()
 
 
 yield_ = Function(Yield())
 
 
+class Sleep(AsmInstrBase):
+    opcode = "sleep"
+    in_types = (float,)
+    out_types = ()
+
+    reads_ = EffectExternal()
+    writes_ = EffectExternal()
+
+
+sleep = Function(Sleep())
+
+
 class Load[T: VarT](AsmInstrBase):
+    jumps = False
+
     def __init__(self, out_type: type[T]) -> None:
         self.opcode = "l"
         self.in_types = (PinType, LogicType)
@@ -163,6 +172,8 @@ class Load[T: VarT](AsmInstrBase):
 
 
 class Store[T: VarT](AsmInstrBase):
+    jumps = False
+
     def __init__(self, in_type: type[T]) -> None:
         self.opcode = "s"
         self.in_types = (PinType, LogicType, in_type)
@@ -174,6 +185,8 @@ class Store[T: VarT](AsmInstrBase):
 
 
 class LoadBatch[T: VarT](AsmInstrBase):
+    jumps = False
+
     def __init__(self, out_type: type[T]) -> None:
         self.opcode = "lb"
         self.in_types = (str, LogicType, BatchMode)
@@ -185,6 +198,8 @@ class LoadBatch[T: VarT](AsmInstrBase):
 
 
 class StoreBatch[T: VarT](AsmInstrBase):
+    jumps = False
+
     def __init__(self, in_type: type[T]) -> None:
         self.opcode = "sb"
         self.in_types = (str, LogicType, in_type)
@@ -196,6 +211,8 @@ class StoreBatch[T: VarT](AsmInstrBase):
 
 
 class LoadBatchNamed[T: VarT](AsmInstrBase):
+    jumps = False
+
     def __init__(self, out_type: type[T]) -> None:
         self.opcode = "lbn"
         self.in_types = (str, str, LogicType, BatchMode)
@@ -207,6 +224,8 @@ class LoadBatchNamed[T: VarT](AsmInstrBase):
 
 
 class StoreBatchNamed[T: VarT](AsmInstrBase):
+    jumps = False
+
     def __init__(self, in_type: type[T]) -> None:
         self.opcode = "sbn"
         self.in_types = (str, str, LogicType, in_type)
@@ -532,6 +551,8 @@ class Slot:
 
 
 class LoadBatchSlot[T: VarT](AsmInstrBase):
+    jumps = False
+
     # lbs r? deviceHash slotIndex logicSlotType batchMode
     def __init__(self, out_type: type[T]) -> None:
         self.opcode = "lbs"
@@ -542,6 +563,8 @@ class LoadBatchSlot[T: VarT](AsmInstrBase):
 
 
 class LoadBatchNamedSlot[T: VarT](AsmInstrBase):
+    jumps = False
+
     # lbns r? deviceHash nameHash slotIndex logicSlotType batchMode
     def __init__(self, out_type: type[T]) -> None:
         self.opcode = "lbns"
@@ -648,3 +671,6 @@ class DeviceTyped(DeviceBase[str]):
     PrefabHash: FieldDesc[str] = mk_field_ro(str)
     NameHash: FieldDesc[str] = mk_field_ro(str)
     ReferenceId: FieldDesc[int] = mk_field_ro(int)
+
+    def is_unique(self) -> VarRead[bool]:
+        return self.PrefabHash.sum == self.StaticPrefabHash

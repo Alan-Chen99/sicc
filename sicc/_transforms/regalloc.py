@@ -436,8 +436,13 @@ def regalloc(ctx: TransformCtx) -> None:
 
     ########################################
     # map colors to registers;
-    # the prefered reg ones have only one choice;
-    # else it is arbitrary
+    # we already allocated ones that have pref.
+    #
+    # if something non-pref is colored the same as a pref,
+    # they would use the pref register
+    #
+    # if two pref regs gets the same color,
+    # then anything else can be alloctated with either one of the pref regs
 
     have_pref = OrderedSet(x for x in fuse_res.groups.values() if x.reg.preferred_reg is not None)
 
@@ -465,7 +470,11 @@ def regalloc(ctx: TransformCtx) -> None:
 
     for v, g in fuse_res.groups.items():
         assert v.reg.allocated_reg is None
-        reg = RegInfo(allocated_reg=color_map[colors[g]])
+
+        if pref := g.reg.preferred_reg:
+            reg = RegInfo(allocated_reg=pref)
+        else:
+            reg = RegInfo(allocated_reg=color_map[colors[g]])
         if isinstance(v, Var):
             var_mapping[v] = mk_var(v.type, reg=reg, debug=v.debug)
         else:

@@ -1,0 +1,5 @@
+lb r0 -815193061 On 0
+ble 1 r0 3
+move r1 0
+# l: r1
+# 4 lines total (not including this line)

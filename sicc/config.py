@@ -1,8 +1,10 @@
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Annotated
+from typing import Any
 from typing import Callable
 from typing import Iterator
 
@@ -11,6 +13,8 @@ import rich.status
 import rich.traceback
 from cappa import Arg
 from cappa import ArgAction
+from rich import print as rich_print
+from rich.console import Console
 from rich.logging import RichHandler
 
 from ._theme import theme
@@ -26,8 +30,9 @@ verbose: Cell[int] = Cell(3)
 show_src_info: Cell[bool] = Cell(True)
 
 # currently only used in console_setup
-# atm binding this does NOT work
+# atm binding these does NOT work
 console_width: Cell[int | None] = Cell(None)
+log_file: Cell[Path | None] = Cell(None)
 
 ################################################################################
 
@@ -91,12 +96,29 @@ def console_setup() -> None:
         datefmt="[%X]",
         handlers=[RichHandler(show_time=False)],
     )
+
+    if f := log_file.value:
+        # clear the file
+        with f.open("w"):
+            pass
+
     reconfigure(theme=theme, width=console_width.value)
     if verbose.value >= 1:
         rich.traceback.install()
     else:
         rich.traceback.install(suppress=TRACEBACK_SUPPRESS.value)
 
+
+def print(*objects: Any, sep: str = " ", end: str = "\n") -> None:
+    rich_print(*objects, sep=sep, end=end)
+
+    if f := log_file.value:
+        with f.open("a") as stream:
+            console = Console(file=stream, theme=theme, width=console_width.value or 100)
+            console.print(*objects, sep=sep, end=end)
+
+
+print_ = print
 
 ################################################################################
 
@@ -133,7 +155,20 @@ class Config:
         ),
     ] = True
 
+    output: Annotated[
+        Path | None,
+        Arg(long=True, short=True, group=cappa_group, propagate=True),
+    ] = None
+    """ write output also to a file """
+
+    raw_output: Annotated[
+        Path | None,
+        Arg(long=True, short=True, group=cappa_group, propagate=True),
+    ] = None
+    """ write only the final raw output to file """
+
     def set_vars(self) -> None:
         verbose.value = self.verbose - self.quiet
         console_width.value = self.width
         show_src_info.value = self.src_info
+        log_file.value = self.output

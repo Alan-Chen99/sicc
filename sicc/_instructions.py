@@ -27,6 +27,7 @@ from ._core import EffectBase
 from ._core import EffectMvar
 from ._core import EffectRes
 from ._core import InstrBase
+from ._core import InteralBool
 from ._core import InternalValLabel
 from ._core import Label
 from ._core import MVar
@@ -54,6 +55,7 @@ from ._core import get_types
 from ._diagnostic import DebugInfo
 from ._diagnostic import add_debug_info
 from ._diagnostic import clear_debug_info
+from ._diagnostic import track_caller
 from ._utils import cast_unchecked
 from ._utils import narrow_unchecked
 from .config import verbose
@@ -70,11 +72,14 @@ class EffectExternal(EffectBase):
 ################################################################################
 
 
+@dataclass
 class EmitLabel(InstrBase):
     in_types = (Label,)
     out_types = ()
 
     jumps = False
+
+    allow_split: bool = True
 
     @override
     def format(self, instr: BoundInstr[Self], /) -> Text:
@@ -222,6 +227,8 @@ class MoveBase[O: VarT = Any, I: VarT = Any](AsmInstrBase):
         (opt,) = instr.outputs_
 
         if isinstance(ipt, Undef):
+            if verbose.value >= 1:
+                instr.debug.warn("undef assignment lowered as a no-op")
             return
         elif isinstance(ipt, Var) and ipt.reg.allocated == opt.reg.allocated:
             return
@@ -275,10 +282,16 @@ class Jump(AsmInstrBase):
     continues = False
 
 
+jump = Jump().call
+
+
+@dataclass
 class UnreachableChecked(InstrBase):
     in_types = ()
     out_types = ()
     continues = False
+
+    message: str | None = None
 
     @override
     def writes(self, instr: BoundInstr[Self]) -> None:
@@ -286,7 +299,14 @@ class UnreachableChecked(InstrBase):
 
     @override
     def lower(self, instr: BoundInstr[Self]) -> Never:
-        instr.debug.error("expected unreachable, but that can not be proved").throw()
+        instr.debug.error(
+            self.message or "expected unreachable, but that can not be proved"
+        ).throw()
+
+
+def unreachable_checked(msg: str | None = None):
+    with track_caller():
+        UnreachableChecked(msg).call()
 
 
 class BlackBox[T: VarT](AsmInstrBase):
@@ -364,6 +384,10 @@ class Branch(InstrBase):
     continues = False
 
 
+def branch(cond: InteralBool, on_true: InternalValLabel, on_false: InternalValLabel) -> None:
+    return Branch().call(cond, on_true, on_false)
+
+
 class CondJump(InstrBase):
     """
     jumps to a label if pred evaluates equal to "jump_on"; otherwise continue
@@ -430,6 +454,12 @@ class DivF(AsmInstrBase):
     opcode = "div"
     in_types = (float, float)
     out_types = (float,)
+
+
+class Mod(AsmInstrBase):
+    opcode = "mod"
+    in_types = (int, int)
+    out_types = (int,)
 
 
 class OrB(AsmInstrBase):
@@ -810,6 +840,18 @@ class CondJumpAndLink(
         BoundInstr[EmitLabel],
     ]
 ):
+    """
+    FIXME:
+    currently the semantic of CondJumpAndLink is that the
+    "WriteMVar" happens unconditionally. this is not consistent
+    with actual behavior; it:
+    (1) extends the lifetime of the mvar
+    (2) the mvar may be used later; making CondJumpAndLink
+        causes the write to be possibly skipped and
+        the wrong value be read later
+        (i am not aware of any "reasonable" usage that will hit this problem)
+    """
+
     @override
     def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
         write_mv, pred, cjump, emit_label = instr.unpack()

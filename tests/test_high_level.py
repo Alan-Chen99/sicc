@@ -7,18 +7,6 @@ d = GlassDoor("MyDoor")
 
 @wrap_test
 @program()
-def test_loops():
-    with while_(lambda: d["X"]):
-        yield_()
-
-    with loop():
-        yield_()
-        with if_(~d["Y"]):
-            break_()
-
-
-@wrap_test
-@program()
 def test_select():
     comment("select", select(d.Idle, d.Power, 5))
 

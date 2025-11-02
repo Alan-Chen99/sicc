@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import Iterator
 from typing import Literal
 from typing import Protocol
-from typing import TypeVar
 from typing import cast
 from typing import overload
 
@@ -15,13 +13,14 @@ from rich.pretty import pretty_repr
 
 from ._api import Constant
 from ._api import Int
-from ._api import TreeSpec
 from ._api import UserValue
 from ._api import Variable
 from ._api import read_uservalue
 from ._api import undef
+from ._control_flow import break_
 from ._control_flow import if_
 from ._control_flow import loop
+from ._control_flow import wrap_iterator_fn
 from ._core import BoundInstr
 from ._core import StaticBuffer
 from ._core import Var
@@ -30,16 +29,12 @@ from ._diagnostic import must_use
 from ._instructions import ReadStack
 from ._instructions import StackOpChain
 from ._instructions import WriteStack
-from ._tracing import break_
-from ._tree_utils import dataclass as optree_dataclass
+from ._stationeers import Pin
+from ._tree_utils import TreeSpec
 from ._tree_utils import field as optree_field  # pyright: ignore[reportUnknownVariableType]
+from ._tree_utils import optree_dataclass
 from ._utils import cast_unchecked
 from ._utils import get_id
-
-if TYPE_CHECKING:
-    from ._stationeers import Pin
-
-T_co = TypeVar("T_co", covariant=True, bound=VarT, default=Any)
 
 
 class PointerProto[T_co](Protocol):
@@ -48,7 +43,7 @@ class PointerProto[T_co](Protocol):
 
 @optree_dataclass(kw_only=True)
 class Pointer[T = Any]:
-    _device: Pin
+    _device: Pin = Pin.db()
     _addr: Int
     _tree: TreeSpec[T] = optree_field(pytree_node=False)
 
@@ -66,6 +61,10 @@ class Pointer[T = Any]:
 
     def __repr__(self):
         return pretty_repr(self)
+
+    @staticmethod
+    def _from_raw[T1](addr: Int, schema: T1, device: Pin = Pin.db()) -> Pointer[T1]:
+        return Pointer(_device=device, _addr=addr, _tree=TreeSpec.from_schema(schema))
 
     def read(self) -> T:
         pin = read_uservalue(self._device._pin())
@@ -132,6 +131,9 @@ class Pointer[T = Any]:
     # def value(self, val: T) -> None:
     #     self.write(val)
 
+    def static_project[R](self, field: Callable[[T], R]) -> R:
+        return self._tree.static_project(field)
+
     def offset_of(self, field: Callable[[T], Any], /) -> int:
         ans, _ = self._tree.offset_of(field)
         return ans
@@ -195,23 +197,58 @@ class Pointer[T = Any]:
     def __setitem__(self, idx: Int, val: Any, /) -> None:
         self._getitem_impl(idx).write(val)
 
-    def __iter__[E](self: Pointer[list[E]]) -> Iterator[Pointer[E]]:
+    @wrap_iterator_fn
+    def iter_mut[E](self: Pointer[list[E]]) -> Iterator[Pointer[E]]:
         elem_tree, length = self._check_list()
         assert length != 0
 
-        idx = Variable(self._addr)
-        end = self._addr + len(elem_tree) * length
+        size = len(elem_tree)
+
+        # iterator points to the end of the object
+        # so that object can be read directly by
+        # pop %x
+
+        it = Variable(self._addr + size)
+        end = self._addr + (size + size * length)
 
         with loop():
             yield Pointer(
                 _device=self._device,
-                _addr=idx,
+                _addr=it - size,
                 _tree=elem_tree,
             )
-            idx.value += len(elem_tree)
+            it.value += size
 
-            with if_(idx == end):
+            with if_(it == end):
                 break_()
+
+    @wrap_iterator_fn
+    def iter_mut_rev[E](self: Pointer[list[E]]) -> Iterator[Pointer[E]]:
+        elem_tree, length = self._check_list()
+        assert length != 0
+        size = len(elem_tree)
+
+        # end ptr of self
+        it = Variable(self._addr + size * length)
+
+        with loop():
+            yield Pointer(
+                _device=self._device,
+                _addr=it - size,
+                _tree=elem_tree,
+            )
+            it.value -= size
+
+            with if_(it == self._addr):
+                break_()
+
+    def __iter__[E](self: Pointer[list[E]]) -> Iterator[E]:
+        for x in self.iter_mut():
+            yield x.read()
+
+    def iter_rev[E](self: Pointer[list[E]]) -> Iterator[E]:
+        for x in self.iter_mut_rev():
+            yield x.read()
 
 
 class SupportsGetItem[K, V](Protocol):
@@ -235,7 +272,7 @@ def stack_var[T](init_or_typ: T | Any, /, device: Pin | None = None) -> Pointer[
     from ._stationeers import Pin
 
     tree = TreeSpec.from_schema(init_or_typ)
-    leaves: list[Any] = tree.flatten_up_to(init_or_typ)
+    leaves: list[Any] = tree.tree.flatten_up_to(cast_unchecked(init_or_typ))
 
     ans = Pointer(
         _device=device or Pin.db(),
@@ -248,3 +285,6 @@ def stack_var[T](init_or_typ: T | Any, /, device: Pin | None = None) -> Pointer[
     leaves = [undef(l) if isinstance(l, type) else l for l in leaves]
     ans.write(tree.unflatten(leaves))
     return ans
+
+
+################################################################################

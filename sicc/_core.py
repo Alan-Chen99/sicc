@@ -217,6 +217,7 @@ class ConstEval[T: VarT](VirtualConst[T]):
         args = [ctx.resolve_const(x) for x in self.args]
         if any(isinstance(x, Undef) for x in args):
             return Undef(self.typ)
+        print("resolve!", self.fn, args)
         return self.fn(*args)
 
     def __repr__(self):
@@ -1112,8 +1113,7 @@ class MVar[T: VarT = Any](ByIdMixin):
         return f"%s{self.id}"
 
     def _format(self):
-        priv = (f := FORMAT_SCOPE_CONTEXT.get()) and (self in f.private_mvars)
-        ans = Text("", "underline" if priv else "underline reverse")
+        ans = Text("", "underline")
         ans.append(FORMAT_VAL_FN(self), get_style(self.type))
         return Text() + ans
 
@@ -1309,7 +1309,7 @@ class Scope:
     vars: OrderedSet[Var]
 
     #: private to this fragment
-    private_mvars: OrderedSet[MVar]
+    scoped_mvars: OrderedSet[MVar]
 
     #: Labels that must not be explicity referenced outside this Fragment
     #:
@@ -1320,7 +1320,6 @@ class Scope:
 
     def merge_child(self, child: Scope) -> None:
         self.vars = disjoint_union(self.vars, child.vars)
-        self.private_mvars = disjoint_union(self.private_mvars, child.private_mvars)
         self.private_labels = disjoint_union(self.private_labels, child.private_labels)
 
 
@@ -1478,6 +1477,7 @@ class TracedProgram:
     frag: Fragment
 
     did_optimize: bool = False
+    did_optimize_final: bool = False
     did_regalloc: bool = False
 
     def check(self) -> None:
@@ -1493,17 +1493,29 @@ class TracedProgram:
         global_opts(self.frag)
 
         if verbose.value >= 1:
-            print("after global optimize:")
+            print("after optimize:")
             print(self.frag)
 
         self.did_optimize = True
+
+    def optimize_final(self) -> None:
+        from ._transforms import global_final_opts
+
+        assert self.did_optimize
+        global_final_opts(self.frag)
+
+        if verbose.value >= 1:
+            print("after final optimize:")
+            print(self.frag)
+
+        self.did_optimize_final = True
 
     def regalloc(self) -> None:
         """required to first run optimize"""
         from ._transforms import regalloc_and_lower
         from ._transforms.fuse_blocks import force_fuse_into_one
 
-        assert self.did_optimize
+        assert self.did_optimize_final
         if self.did_regalloc:
             return
 

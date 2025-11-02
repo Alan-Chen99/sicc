@@ -15,21 +15,23 @@ from typing import overload
 import cappa
 from cappa import Arg
 from cappa import Destructured
-from rich import print as print  # autoflake: skip
 from rich.rule import Rule
 from rich.text import Text
 
 from ._comment import comment
 from ._control_flow import loop
+from ._core import TracedProgram
 from ._diagnostic import SuppressExit
 from ._diagnostic import describe_fn
 from ._diagnostic import register_exclusion
 from ._diagnostic import show_pending_diagnostics
-from ._tracing import TracedProgram
+from ._subr import FunctionRet
+from ._subr import inline_subr
 from ._tracing import trace_program
 from ._utils import load_module_from_file
 from .config import Config
 from .config import console_setup
+from .config import print as print
 from .config import with_rich_spinner
 from .config import with_status
 
@@ -38,11 +40,13 @@ register_exclusion(__file__)
 
 @dataclass
 class Program:
-    fn: Callable[[], None]
+    fn: Callable[[], FunctionRet[None]]
     loop: bool = False
     header: str | None = None
 
     def trace(self) -> TracedProgram:
+        fn_ = inline_subr(self.fn)
+
         try:
             with trace_program() as res:
                 if self.header is not None:
@@ -50,9 +54,9 @@ class Program:
 
                 if self.loop:
                     with loop():
-                        self.fn()
+                        fn_()
                 else:
-                    self.fn()
+                    fn_()
 
             prog = res.value
             prog.check()
@@ -71,15 +75,17 @@ class ProgramOpts(TypedDict, total=False):
 
 
 @overload
-def program(**kwargs: Unpack[ProgramOpts]) -> Callable[[Callable[[], None]], Program]: ...
+def program(
+    **kwargs: Unpack[ProgramOpts],
+) -> Callable[[Callable[[], FunctionRet[None]]], Program]: ...
 @overload
-def program(func: Callable[[], None], /, **kwargs: Unpack[ProgramOpts]) -> Program: ...
+def program(func: Callable[[], FunctionRet[None]], /, **kwargs: Unpack[ProgramOpts]) -> Program: ...
 
 
 def program(
-    func: Callable[[], None] | None = None, /, **kwargs: Unpack[ProgramOpts]
-) -> Callable[[Callable[[], None]], Program] | Program:
-    def inner(fn: Callable[[], None]) -> Program:
+    func: Callable[[], FunctionRet[None]] | None = None, /, **kwargs: Unpack[ProgramOpts]
+) -> Callable[[Callable[[], FunctionRet[None]]], Program] | Program:
+    def inner(fn: Callable[[], FunctionRet[None]]) -> Program:
         return Program(fn, **kwargs)
 
     if func is None:
@@ -91,7 +97,7 @@ def program(
 @dataclass
 class CliTied:
     config: Annotated[Destructured[Config], Arg(hidden=True)] = field(default_factory=Config)
-    cmd: cappa.Subcommands[Asm | Ir | Optimize | None] = None
+    cmd: cappa.Subcommands[Asm | Trace | Ir | Optimize | None] = None
 
     def call(self, prog: Program) -> Never:
         if self.cmd is None:
@@ -101,7 +107,7 @@ class CliTied:
         console_setup()
 
         try:
-            self.cmd.call(prog)
+            self.cmd.call(prog, self.config)
         except SuppressExit as e:
             exit(e.code)
 
@@ -118,7 +124,7 @@ class Cli:
     """program name, if there are multiple"""
 
     config: Annotated[Destructured[Config], Arg(hidden=True)] = field(default_factory=Config)
-    cmd: cappa.Subcommands[Asm | Ir | Optimize | None] = None
+    cmd: cappa.Subcommands[Asm | Trace | Ir | Optimize | None] = None
 
     def call(self) -> Never:
         if self.cmd is None:
@@ -147,7 +153,7 @@ class Cli:
             exit(2)
 
         try:
-            self.cmd.call(prog)
+            self.cmd.call(prog, self.config)
         except SuppressExit as e:
             exit(e.code)
 
@@ -155,12 +161,8 @@ class Cli:
 
 
 @dataclass
-class Ir:
-    """
-    print internal representation after a subset of optimizations
-    """
-
-    def call(self, prog: Program) -> None:
+class Trace:
+    def call(self, prog: Program, config: Config) -> None:
         with with_rich_spinner(), with_status(f"{describe_fn(prog.fn)}"):
             ans = prog.trace()
 
@@ -169,15 +171,31 @@ class Ir:
 
 
 @dataclass
+class Ir:
+    """
+    print internal representation after a subset of optimizations
+    """
+
+    def call(self, prog: Program, config: Config) -> None:
+        with with_rich_spinner(), with_status(f"{describe_fn(prog.fn)}"):
+            f = prog.trace()
+            f.optimize()
+
+        print(Rule(title=Text("Success; Internal Representation:", "ic10.title")))
+        print(f)
+
+
+@dataclass
 class Optimize:
     """
     print optimized version. instructions here have one-to-one correspondence to output asm
     """
 
-    def call(self, prog: Program) -> None:
+    def call(self, prog: Program, config: Config) -> None:
         with with_rich_spinner(), with_status(f"{describe_fn(prog.fn)}"):
             f = prog.trace()
             f.optimize()
+            f.optimize_final()
 
         print(Rule(title=Text("Success; Optimized:", "ic10.title")))
         print(f)
@@ -187,12 +205,14 @@ class Optimize:
 class Asm:
     """(default) run the compiler and get assembly"""
 
-    def call(self, prog: Program) -> None:
+    def call(self, prog: Program, config: Config) -> None:
         with with_rich_spinner(), with_status(f"{describe_fn(prog.fn)}"):
             with with_status("Trace"):
                 f = prog.trace()
             with with_status("Optimize"):
                 f.optimize()
+            with with_status("Optimize (final)"):
+                f.optimize_final()
             with with_status("Regalloc"):
                 f.regalloc()
 
@@ -201,8 +221,12 @@ class Asm:
         print(Rule(title=Text("Success; Output (readable):", "ic10.title")))
         print(f)
         print(Rule(title=Text("Raw Equivalent:", "ic10.title")))
-        print(f.gen_asm().text)
+        out_text = f.gen_asm().text
+        print(out_text)
         print(Rule())
+
+        if config.raw_output:
+            config.raw_output.write_text(out_text.plain)
 
 
 def main():

@@ -4,20 +4,14 @@ import abc
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-from typing import Callable
-from typing import Iterable
 from typing import Never
 from typing import Protocol
 from typing import Self
 from typing import Sequence
 from typing import TypedDict
-from typing import TypeVar
 from typing import Unpack
-from typing import cast
 from typing import overload
 from typing import override
-
-import rich.repr
 
 from ._core import AnyType
 from ._core import AsRawCtx
@@ -32,8 +26,8 @@ from ._core import Undef
 from ._core import Value
 from ._core import Var
 from ._core import VarT
-from ._core import VarTS
 from ._core import VirtualConst
+from ._core import can_cast_implicit
 from ._core import can_cast_implicit_many
 from ._core import can_cast_implicit_many_or_err
 from ._core import get_type
@@ -61,6 +55,7 @@ from ._instructions import Jump
 from ._instructions import LShift
 from ._instructions import Max
 from ._instructions import Min
+from ._instructions import Mod
 from ._instructions import MulF
 from ._instructions import MulI
 from ._instructions import Not
@@ -77,17 +72,17 @@ from ._instructions import SubF
 from ._instructions import SubI
 from ._instructions import Transmute
 from ._instructions import UnreachableChecked
+from ._instructions import branch as _branch
 from ._tracing import ensure_label
+from ._tracing import label
+from ._tracing import mk_internal_label
 from ._tracing import mk_mvar
-from ._tree_utils import pytree
-from ._utils import ReprAs
 from ._utils import cast_unchecked
 from ._utils import isinst
 from ._utils import late_fn
 
 register_exclusion(__file__)
 
-T_co = TypeVar("T_co", covariant=True, bound=VarT, default=Any)
 
 type UserValue[T: VarT = VarT] = VarRead[T] | T
 
@@ -102,7 +97,7 @@ Str = UserValue[str]
 # type Float = UserValue[float]
 type Float = VarRead[float] | float
 
-type ValLabelLike = UserValue[Label] | str
+ValLabelLike = UserValue[Label] | str
 
 
 class VarRead[T: VarT](abc.ABC):
@@ -159,6 +154,9 @@ class VarRead[T: VarT](abc.ABC):
     __lshift__ = late_fn(lambda: lshift)
     __rshift__ = late_fn(lambda: rshift_signed)
 
+    __mod__ = late_fn(lambda: mod)
+    __rmod__ = late_fn(lambda: mod._rev_same_sig())
+
     def __eq__(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, other: Any
     ) -> VarRead[bool]:
@@ -199,7 +197,7 @@ def _get_label(l: ValLabelLike) -> Value[Label]:
 
 def label_ref(l: str | None = None, *, unique: bool = False) -> Label:
     """make a label to be emitted later"""
-    return ensure_label(l)
+    return ensure_label(l, unique=unique)
 
 
 def _get_type[T: VarT](v: UserValue[T]) -> type[T]:
@@ -215,6 +213,7 @@ def _get_type[T: VarT](v: UserValue[T]) -> type[T]:
 class VariableOpts(TypedDict, total=False):
     _read_only: bool
     _mvar: MVar | None
+    _scoped: bool
 
 
 class Variable[T: VarT](VarRead[T]):
@@ -245,37 +244,36 @@ class Variable[T: VarT](VarRead[T]):
     ) -> None:
         read_only = kwargs.get("_read_only", False)
         mvar = kwargs.get("_mvar", None)
+        scoped = kwargs.get("_scoped", False)
 
         self._read_only = read_only
 
         if mvar:
             assert mvar.type == init_or_typ
             self._inner = mvar
-            return
 
-        if init is not None:
+        elif init is not None:
             assert isinstance(init_or_typ, type)
-            self._inner = mk_mvar(init_or_typ)
+            self._inner = mk_mvar(init_or_typ, scoped=scoped)
             self._inner.write(read_uservalue(init))
-            return
 
-        if isinstance(init_or_typ, type):
-            self._inner = mk_mvar(init_or_typ)
-            return
+        elif isinstance(init_or_typ, type):
+            self._inner = mk_mvar(init_or_typ, scoped=scoped)
 
-        x_val = read_uservalue(init_or_typ)
-        typ = get_type(x_val)
-        if not read_only and typ == AnyType:
-            raise TypeError("cannot infer type; specify one explicitly")
-        self._inner = mk_mvar(typ)
-        self._inner.write(x_val)
+        else:
+            x_val = read_uservalue(init_or_typ)
+            typ = get_type(x_val)
+            if not read_only and typ == AnyType:
+                raise TypeError("cannot infer type; specify one explicitly")
+            self._inner = mk_mvar(typ, scoped=scoped)
+            self._inner.write(x_val)
 
     def __repr__(self) -> str:
         return repr(self._inner)
 
     @staticmethod
     def _from_val_ro[T1: VarT](v: Value[T1], typ: type[T1] | None = None) -> VarRead[T1]:
-        ans = Variable(typ or get_type(v), _read_only=True)
+        ans = Variable(typ or get_type(v), _read_only=True, _scoped=True)
         ans._inner.write(v)
         return ans
 
@@ -407,118 +405,6 @@ class _BoundFunction[V, Ts: tuple[Any, ...]](Protocol):
     ) -> O: ...
 
 
-################################################################################
-
-
-@dataclass
-class TreeSpec[T = Any]:
-    tree: pytree.PyTreeSpec
-    types: VarTS
-
-    def as_schema(self) -> T:
-        return self.unflatten_unchecked(self.types)
-
-    @staticmethod
-    def from_schema[T1](val: T1) -> TreeSpec[T1]:
-        leaves, tree = pytree.flatten(cast_unchecked(val))
-
-        def handle_leaf(leaf: Any) -> type[VarT]:
-            if not isinstance(leaf, type):
-                return _get_type(leaf)
-            if not issubclass(leaf, VarT):
-                raise TypeError(f"unsupported type: {leaf}")
-            return leaf
-
-        return TreeSpec(tree, tuple(handle_leaf(l) for l in leaves))
-
-    @staticmethod
-    def flatten[T1](val: T1) -> tuple[list[UserValue], TreeSpec[T1]]:
-        leaves, tree = pytree.flatten(cast_unchecked(val))
-        return leaves, TreeSpec(tree, tuple(_get_type(x) for x in leaves))
-
-    def flatten_up_to(self, val: T) -> list[UserValue]:
-        return cast_unchecked(self.tree.flatten_up_to(cast_unchecked(val)))
-
-    def unflatten_unchecked(self, leaves: Iterable[Any], /) -> T:
-        return cast_unchecked(self.tree.unflatten(leaves))
-
-    def unflatten(self, leaves_: Iterable[UserValue], /) -> T:
-        leaves = list(leaves_)
-        can_cast_implicit_many_or_err(self.types, tuple(_get_type(x) for x in leaves))
-        return self.unflatten_unchecked(leaves)
-
-    def _unflatten_vals_ro(self, leaves: Iterable[Value], /) -> T:
-        return self.unflatten([Variable._from_val_ro(x, typ) for x, typ in zip(leaves, self.types)])
-
-    def __repr__(self) -> str:
-        return repr(self.tree.unflatten(ReprAs(x.__name__) for x in self.types))
-
-    def __len__(self) -> int:
-        return len(self.types)
-
-    def promote_types(self, other: TreeSpec[T]) -> TreeSpec[T]:
-        if self.tree != other.tree:
-            raise TypeError(f"incompatible types: {self} and {other}")
-        out_types = tuple(promote_types(t1, t2) for t1, t2 in zip(self.types, other.types))
-        return TreeSpec(self.tree, out_types)
-
-    @staticmethod
-    def promote_types_many[T1](*trees: TreeSpec[T1]) -> TreeSpec[T1]:
-        x = trees[0]
-        for tree in trees[1:]:
-            x = x.promote_types(tree)
-        return x
-
-    def project[R](self, field: Callable[[T], R], /) -> tuple[list[int], TreeSpec[R]]:
-        proxy = self.unflatten_unchecked(_OffsetProxy(i, typ) for i, typ in enumerate(self.types))
-        res = field(proxy)
-
-        leaves, out_tree = pytree.flatten(cast_unchecked(res))
-        for l in leaves:
-            assert isinstance(l, _OffsetProxy)
-        leaves = cast(list[_OffsetProxy], leaves)
-
-        return [x.offset for x in leaves], TreeSpec(out_tree, tuple(x.typ for x in leaves))
-
-    def offset_of[R](self, field: Callable[[T], R], /) -> tuple[int, TreeSpec[R]]:
-        idxs, subtree = self.project(field)
-
-        if len(idxs) == 0:
-            raise ValueError("result is empty, thus have no address")
-
-        for x, y in zip(idxs[:-1], idxs[1:]):
-            if y != x + 1:
-                raise ValueError("not a continuous segment")
-
-        return idxs[0], subtree
-
-
-def copy_tree[T](v: T) -> T:
-    vals, tree = TreeSpec.flatten(v)
-    return tree._unflatten_vals_ro(read_uservalue(x) for x in vals)
-
-
-@dataclass
-class _OffsetProxy:
-    offset: int
-    typ: type[VarT]
-
-    def __rich_repr__(self) -> rich.repr.Result:
-        yield self.offset
-        yield ReprAs(self.typ.__qualname__)
-
-
-################################################################################
-
-
-class EnumEx(Enum):
-    def as_raw(self, ctx: AsRawCtx) -> RawText:
-        return RawText.str(repr(self.value))
-
-
-################################################################################
-
-
 def undef[T: VarT](typ: type[T] = AnyType) -> VarRead[T]:
     """return the undef constant"""
     return Constant(Undef(typ))
@@ -530,6 +416,7 @@ add = Function(AddI(), AddF())
 sub = Function(SubI(), SubF())
 mul = Function(MulI(), MulF())
 div = Function(DivF())
+mod = Function(Mod())
 
 and_ = Function(AndB(), AndI())
 or_ = Function(OrB(), OrI())
@@ -595,6 +482,8 @@ def transmute[O: VarT](v: UserValue, out_type: type[O] = AnyType) -> VarRead[O]:
     """
     currently often generate extra move instructions; might get fixed later
     """
+    if can_cast_implicit(_get_type(v), out_type):
+        return Variable._from_val_ro(read_uservalue(cast_unchecked(v)), typ=out_type)
     return Function(Transmute(_get_type(v), out_type)).call(v)
 
 
@@ -603,6 +492,16 @@ def transmute[O: VarT](v: UserValue, out_type: type[O] = AnyType) -> VarRead[O]:
 
 def jump(label: ValLabelLike) -> None:
     return Jump().call(_get_label(label))
+
+
+def branch(cond: Bool, on_true: ValLabelLike, on_false: ValLabelLike) -> None:
+    return _branch(read_uservalue(cond), _get_label(on_true), _get_label(on_false))
+
+
+def cjump(cond: Bool, on_true: ValLabelLike) -> None:
+    cont = mk_internal_label("cjump_cont")
+    _branch(read_uservalue(cond), _get_label(on_true), cont)
+    label(cont)
 
 
 ################################################################################
@@ -678,3 +577,8 @@ def asm_block(*lines_: AsmBlockLine) -> None:
             in_types=TypeList([get_type(x) for x in inputs]),
             out_types=(),
         ).call(*inputs)
+
+
+class EnumEx(Enum):
+    def as_raw(self, ctx: AsRawCtx) -> RawText:
+        return RawText.str(repr(self.value))

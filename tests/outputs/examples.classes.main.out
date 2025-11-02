@@ -1,19 +1,18 @@
 move r1 1
 move r2 HASH("A")
 move r3 HASH("B")
-jal 7
-move r2 HASH("C")
-move r3 HASH("D")
-move ra 17
+move ra 14
 move r0 ra
 move r4 r1
-jal 13
+jal 10
 add r4 r1 r4
-jal 13
+jal 10
 j r0
 sbn -321403609 r3 Setting r4
 lbn r1 545937711 r2 TotalMoles 0
 add r4 r1 r4
 j ra
-# noop (jump here to exit)
-# 18 lines total (not including this line)
+move r2 HASH("C")
+move r3 HASH("D")
+jal 4
+# 17 lines total (not including this line)

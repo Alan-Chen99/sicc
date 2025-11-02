@@ -8,14 +8,10 @@ put db 18 6
 put db 21 7
 put db 24 8
 put db 27 9
-move sp 0
-add sp sp 3
+move sp 30
 pop r0
 pop r1
 pop r2
-# value: Pointer(sp, Data(x=int, y=(int, float))) Data(x=r2, y=(r1, r0))
-push r1
-push r2
-push r2
-bne sp 30 11
-# 20 lines total (not including this line)
+# d: Data(x=r2, y=(r1, r0))
+bne sp 0 11
+# 16 lines total (not including this line)

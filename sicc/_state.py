@@ -7,16 +7,19 @@ from typing import Callable
 import rich.repr
 from rich.pretty import pretty_repr
 
-from ._api import TreeSpec
 from ._api import Variable
 from ._api import read_uservalue
 from ._core import MVar
 from ._core import Scope
+from ._diagnostic import register_exclusion
 from ._diagnostic import track_caller
-from ._tracing import _CUR_SCOPE
+from ._tracing import SCOPE_STACK
 from ._tracing import mk_mvar
+from ._tree_utils import TreeSpec
 from ._utils import empty
 from ._utils import empty_t
+
+register_exclusion(__file__)
 
 
 @dataclass
@@ -25,8 +28,23 @@ class State[T = Any]:
     _tree: TreeSpec[T] | None = None
     _vars: list[MVar] | None = None
 
-    def __init__(self, init: T | empty_t = empty, *, _tree: TreeSpec[T] | None = None):
-        self._scope = _CUR_SCOPE.get()
+    def __init__(
+        self,
+        init: T | empty_t = empty,
+        *,
+        _tree: TreeSpec[T] | None = None,
+        _global: bool = False,
+        # _scope: Scope | None = None,
+    ):
+        if _global:
+            self._scope = None
+        else:
+            # self._scope = _scope or top_scope_or_err()
+            if len(SCOPE_STACK.value) >= 1:
+                self._scope = SCOPE_STACK.value[-1]
+            else:
+                # global var
+                self._scope = None
         if _tree:
             self._tree = _tree
             self._vars = [mk_mvar(t) for t in _tree.types]
@@ -52,12 +70,7 @@ class State[T = Any]:
             _leaves, tree = TreeSpec.flatten(v)
             assert self._vars is None
             self._tree = tree
-            if self._scope:
-                with _CUR_SCOPE.bind(self._scope):
-                    self._vars = [mk_mvar(t) for t in tree.types]
-            else:
-                with _CUR_SCOPE.bind_clear():
-                    self._vars = [mk_mvar(t) for t in tree.types]
+            self._vars = [mk_mvar(t) for t in tree.types]
 
         leaves = self._tree.flatten_up_to(v)
         vars = [read_uservalue(x) for x in leaves]

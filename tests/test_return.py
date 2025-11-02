@@ -6,11 +6,11 @@ d = Autolathe()
 
 
 @subr
-def fn() -> tuple[Float, Float, Bool]:
+def fn() -> FunctionRet[tuple[Float, Float, Bool]]:
     with if_(d.On):
-        return_((5.0, True, True))
+        yield Return((5.0, True, True))
 
-    return True, 5.0, d.On
+    yield Return((True, 5.0, d.On))
 
 
 @wrap_test
