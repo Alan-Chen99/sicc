@@ -10,6 +10,10 @@ from datetime import datetime
 from pathlib import Path
 
 gases = [
+    "Combustion",
+    "Pressure",
+    "Temperature",
+    "TotalMoles",
     "RatioCarbonDioxide",
     "RatioLiquidCarbonDioxide",
     "RatioLiquidNitrogen",
@@ -35,7 +39,11 @@ field_types: dict[str, str] = {
     #
     "Color": "_Color",
     #
-    **{(name + suf): "float" for name in gases for suf in ["", "Input", "Output", "Output2"]},
+    **{
+        (name + suf): "float"
+        for name in gases
+        for suf in ["", "Input", "Input2", "Output", "Output2"]
+    },
 }
 
 _run_date = datetime.now().strftime("%Y-%m-%d")
@@ -169,6 +177,7 @@ def parse_xml_file(xml_file: str) -> dict:
     base_classes = [
         S("_BaseGas", None, set([P(name) for name in gases]), []),
         S("_BaseGasInput", None, set([P(name + "Input") for name in gases]), []),
+        S("_BaseGasInput2", None, set([P(name + "Input2") for name in gases]), []),
         S("_BaseGasOutput", None, set([P(name + "Output") for name in gases]), []),
         S("_BaseGasOutput2", None, set([P(name + "Output2") for name in gases]), []),
         S("_Power", None, set([P("On", True), P("RequiredPower"), P("Power")]), []),
@@ -185,7 +194,7 @@ def parse_xml_file(xml_file: str) -> dict:
         S("_ModeR", None, set([P("Mode")]), []),
         S("_Temperature", None, set([P("Temperature"), P("Pressure")]), []),
         S("_PollWater", None, set([P("RatioPollutedWater")]), []),
-        S("_Combustion", None, set([P("Combustion"), P("TotalMoles")]), []),
+        # S("_Combustion", None, set([P("Combustion"), P("TotalMoles")]), []),
         S("_Idle", None, set([P("Idle")]), []),
         # S("_ImportCount", None, set([P("ImportCount", True)]), []),
         S("_ClearMemory", None, set([P("ClearMemory", True, False)]), []),
