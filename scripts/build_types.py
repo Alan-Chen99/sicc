@@ -1,7 +1,9 @@
 # this file is taken and modified from
 # https://github.com/aproposmath/stationeers-pytrapic/blob/main/scripts/build_types.py
 
-# pyright: basic, reportArgumentType=false, reportOperatorIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false
+# pyright: basic, reportOperatorIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false
+
+from __future__ import annotations
 
 import subprocess
 import xml.etree.ElementTree
@@ -138,6 +140,12 @@ class Structure:
     properties: set[Property]
     bases: set[str]
 
+    @staticmethod
+    def create(
+        name: str, *properties: Property, id: int | None = None, bases: list[str] = []
+    ) -> Structure:
+        return Structure(name, id, set(properties), set(bases))
+
 
 def generate_generic_structure(struct: Structure, multiple: bool = False) -> str:
     code = ""
@@ -172,42 +180,43 @@ def parse_xml_file(xml_file: str) -> dict:
 
     structure_types = set()
     P = Property
-    S = Structure
+    S = Structure.create
 
     base_classes = [
-        S("_BaseGas", None, set([P(name) for name in gases]), []),
-        S("_BaseGasInput", None, set([P(name + "Input") for name in gases]), []),
-        S("_BaseGasInput2", None, set([P(name + "Input2") for name in gases]), []),
-        S("_BaseGasOutput", None, set([P(name + "Output") for name in gases]), []),
-        S("_BaseGasOutput2", None, set([P(name + "Output2") for name in gases]), []),
-        S("_Power", None, set([P("On", True), P("RequiredPower"), P("Power")]), []),
-        S("_On", None, set([P("On", True)]), []),
-        S("_Activate", None, set([P("Activate", True)]), []),
-        S("_Lock", None, set([P("Lock", True)]), []),
-        S("_Open", None, set([P("Open", True)]), []),
-        S("_Error", None, set([P("Error")]), []),
-        S("_Ratio", None, set([P("Ratio")]), []),
-        S("_Maximum", None, set([P("Maximum")]), []),
-        S("_SettingW", None, set([P("Setting", True)]), []),
-        S("_SettingR", None, set([P("Setting")]), []),
-        S("_Mode", None, set([P("Mode", True)]), []),
-        S("_ModeR", None, set([P("Mode")]), []),
-        S("_Temperature", None, set([P("Temperature"), P("Pressure")]), []),
-        S("_PollWater", None, set([P("RatioPollutedWater")]), []),
-        # S("_Combustion", None, set([P("Combustion"), P("TotalMoles")]), []),
-        S("_Idle", None, set([P("Idle")]), []),
-        # S("_ImportCount", None, set([P("ImportCount", True)]), []),
-        S("_ClearMemory", None, set([P("ClearMemory", True, False)]), []),
-        S("_Hydrogen", None, set([P("RatioHydrogen"), P("RatioLiquidHydrogen")]), []),
-        S("_ImportCount", None, set([P("ImportCount")]), []),
-        S("_ExportCount", None, set([P("ExportCount")]), []),
-        S("_Volume", None, set([P("Volume"), P("VolumeOfLiquid")]), []),
-        S("_Vertical", None, set([P("Vertical"), P("Horizontal")]), []),
-        S("_VerticalW", None, set([P("Vertical", True), P("Horizontal", True)]), []),
-        S("_RecipeHash", None, set([P("RecipeHash", True)]), []),
-        S("_Charge", None, set([P("Charge")]), []),
-        S("_Reagents", None, set([P("Reagents")]), []),
-        S("_Quantity", None, set([P("Quantity")]), []),
+        S("_BaseGas", *[P(name) for name in gases]),
+        S("_BaseGasInput", *[P(name + "Input") for name in gases]),
+        S("_BaseGasInput2", *[P(name + "Input2") for name in gases]),
+        S("_BaseGasOutput", *[P(name + "Output") for name in gases]),
+        S("_BaseGasOutput2", *[P(name + "Output2") for name in gases]),
+        #
+        S("_Power", P("On", True), P("RequiredPower"), P("Power")),
+        S("_On", P("On", True)),
+        S("_Activate", P("Activate", True)),
+        S("_Lock", P("Lock", True)),
+        S("_Open", P("Open", True)),
+        S("_Error", P("Error")),
+        S("_Ratio", P("Ratio")),
+        S("_Maximum", P("Maximum")),
+        S("_SettingW", P("Setting", True)),
+        S("_SettingR", P("Setting")),
+        S("_Mode", P("Mode", True)),
+        S("_ModeR", P("Mode")),
+        S("_Temperature", P("Temperature"), P("Pressure")),
+        S("_PollWater", P("RatioPollutedWater")),
+        # S("_Combustion", P("Combustion"), P("TotalMoles")),
+        S("_Idle", P("Idle")),
+        # S("_ImportCount", P("ImportCount", True)),
+        S("_ClearMemory", P("ClearMemory", True, False)),
+        S("_Hydrogen", P("RatioHydrogen"), P("RatioLiquidHydrogen")),
+        S("_ImportCount", P("ImportCount")),
+        S("_ExportCount", P("ExportCount")),
+        S("_Volume", P("Volume"), P("VolumeOfLiquid")),
+        S("_Vertical", P("Vertical"), P("Horizontal")),
+        S("_VerticalW", P("Vertical", True), P("Horizontal", True)),
+        S("_RecipeHash", P("RecipeHash", True)),
+        S("_Charge", P("Charge")),
+        S("_Reagents", P("Reagents")),
+        S("_Quantity", P("Quantity")),
     ]
 
     with open(xml_file, "r") as file:
@@ -220,7 +229,7 @@ def parse_xml_file(xml_file: str) -> dict:
                 continue
 
             var_name = name.replace("ThingStructure", "")
-            prefab_hash = int(page.find("PrefabHash").text)
+            prefab_hash = int(page.find("PrefabHash").text)  # pyright: ignore[reportArgumentType]
             # print(f"Processing page: {var_name}")
             properties = set()
             for prop in page.findall("./LogicInsert/Entry"):
@@ -235,7 +244,9 @@ def parse_xml_file(xml_file: str) -> dict:
                 access = prop.find("LogicAccessTypes").text
                 can_read = "Read" in access
                 can_write = "Write" in access
-                properties.add(Property(prop_name, can_write, can_read))
+                properties.add(
+                    Property(prop_name, can_write, can_read)  # pyright: ignore[reportArgumentType]
+                )
                 # print(f"  {'r' if can_read else ' '}{'w' if can_write else ' '} {prop_name}")
 
             bases = set()
@@ -304,7 +315,9 @@ def parse_xml_file(xml_file: str) -> dict:
 
 if __name__ == "__main__":
     xml_file = Path(__file__).parent / "stationpedia.xml"
-    for file_name, content in parse_xml_file(xml_file).items():
+    for file_name, content in parse_xml_file(
+        xml_file  # pyright: ignore[reportArgumentType]
+    ).items():
         out_file = Path(__file__).parent.parent / "sicc" / file_name
 
         out_file.write_text(content, encoding="utf-8")
