@@ -136,7 +136,7 @@ def generate_generic_structure(struct: Structure, multiple: bool = False) -> str
     is_base = struct.id is None
     suffix = "s" if multiple else ""
     bases = (
-        ", ".join([f"_DeviceTyped" + suffix] + [b + suffix for b in sorted(struct.bases)])
+        ", ".join([f"_DeviceTyped" + suffix] + [b + suffix for b in sorted(struct.bases)]) + ","
         if not is_base
         else ""
     )
