@@ -4,7 +4,7 @@ from test_utils import wrap_test
 
 
 @wrap_test
-@program()
+@program
 def test_devices():
     all = "all", Autolathe()
     named = "named", Autolathe("Autolathe1")
@@ -20,7 +20,7 @@ def test_devices():
 
 
 @wrap_test
-@program()
+@program
 def test_pins():
     comment("db:", db.Temperature)
     db.Setting = 0
@@ -33,3 +33,18 @@ def test_pins():
         d_var.value = d1
 
     d_var.value.Setting = d_var.value.On
+
+
+filt = Filtration("filt1")
+
+
+def port_fn(x: GasPort):
+    return x.RatioLiquidCarbonDioxide + x.RatioCarbonDioxide
+
+
+@wrap_test
+@program
+def test_gas_ports():
+    comment("input:", port_fn(filt.input))
+    comment("output:", port_fn(filt.output))
+    comment("output2:", port_fn(filt.output2))

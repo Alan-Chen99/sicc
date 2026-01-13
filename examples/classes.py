@@ -31,7 +31,7 @@ def main():
     group1 = Group(AdvancedFurnace("A"), VolumePump("B"))
     group2 = Group(AdvancedFurnace("C"), VolumePump("D"))
 
-    x = do_other(group1, 1)
+    x = do_other(group1, 1.0)
     do_other(group2, x)
 
 

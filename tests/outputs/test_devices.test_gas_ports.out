@@ -1,0 +1,13 @@
+lbn r0 -348054045 -851557387 RatioLiquidCarbonDioxideInput 0
+lbn r1 -348054045 -851557387 RatioCarbonDioxideInput 0
+add r0 r0 r1
+# input: r0
+lbn r0 -348054045 -851557387 RatioLiquidCarbonDioxideOutput 0
+lbn r1 -348054045 -851557387 RatioCarbonDioxideOutput 0
+add r0 r0 r1
+# output: r0
+lbn r0 -348054045 -851557387 RatioLiquidCarbonDioxideOutput2 0
+lbn r1 -348054045 -851557387 RatioCarbonDioxideOutput2 0
+add r0 r0 r1
+# output2: r0
+# 12 lines total (not including this line)

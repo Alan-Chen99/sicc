@@ -680,3 +680,41 @@ class DeviceTyped(DeviceBase[str]):
 
     def is_unique(self) -> VarRead[bool]:
         return self.PrefabHash.sum == self.StaticPrefabHash
+
+
+################################################################################
+
+
+@dataclass(frozen=True)
+class GasPort:
+    # for debug/printing mostly
+    device: DeviceBase
+    suffix: str
+
+    Combustion: DeviceLogicTypeRead[bool]
+    Pressure: DeviceLogicTypeRead[float]
+    Temperature: DeviceLogicTypeRead[float]
+    TotalMoles: DeviceLogicTypeRead[float]
+
+    RatioCarbonDioxide: DeviceLogicTypeRead[float]
+    RatioLiquidCarbonDioxide: DeviceLogicTypeRead[float]
+    RatioLiquidNitrogen: DeviceLogicTypeRead[float]
+    RatioLiquidNitrousOxide: DeviceLogicTypeRead[float]
+    RatioLiquidOxygen: DeviceLogicTypeRead[float]
+    RatioLiquidPollutant: DeviceLogicTypeRead[float]
+    RatioLiquidVolatiles: DeviceLogicTypeRead[float]
+    RatioNitrogen: DeviceLogicTypeRead[float]
+    RatioNitrousOxide: DeviceLogicTypeRead[float]
+    RatioOxygen: DeviceLogicTypeRead[float]
+    RatioPollutant: DeviceLogicTypeRead[float]
+    RatioSteam: DeviceLogicTypeRead[float]
+    RatioVolatiles: DeviceLogicTypeRead[float]
+    RatioWater: DeviceLogicTypeRead[float]
+
+    def __rich_repr__(self) -> rich.repr.Result:
+        yield self.device
+        if self.suffix:
+            yield self.suffix
+
+    def __repr__(self) -> str:
+        return pretty_repr(self)

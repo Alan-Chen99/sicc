@@ -42,7 +42,7 @@ field_types: dict[str, str] = {
     "Color": "_Color",
     #
     **{
-        (name + suf): "float"
+        (name + suf): "float" if name != "Combustion" else "bool"
         for name in gases
         for suf in ["", "Input", "Input2", "Output", "Output2"]
     },
@@ -55,9 +55,11 @@ __header = f"""
 # do NOT modifiy
 
 from ._stationeers import Color as _Color
+from ._stationeers import DeviceBase
 from ._stationeers import DeviceTyped as _DeviceTyped
 from ._stationeers import FieldDesc as _FieldDesc
 from ._stationeers import FieldDescW as _FieldDescW
+from ._stationeers import GasPort
 from ._stationeers import mk_field as _mk_field
 from ._stationeers import mk_field_ro as _mk_field_ro
 
@@ -94,6 +96,13 @@ __generic_structure_property = """
     {property_name}: _FieldDesc = _mk_field()
 """
 
+__gas_prop_template = """
+  @property
+  def {prop_name}(self) -> GasPort:
+      assert isinstance(self, DeviceBase)
+      return GasPort({args})
+"""
+
 
 @dataclass(order=True)
 class Property:
@@ -104,9 +113,9 @@ class Property:
     def __hash__(self):
         return hash((self.name, self.can_read, self.can_write))
 
-    def generate_code(self, multiple: bool = False) -> str:
-        logic_type = "DevicesLogicType" if multiple else "DeviceLogicType"
-        return_type = "DevicesLogicType" if multiple else "float"
+    def generate_code(self) -> str:
+        # logic_type = "DevicesLogicType" if multiple else "DeviceLogicType"
+        # return_type = "DevicesLogicType" if multiple else "float"
         name = self.name
         code = ""
         # args = []
@@ -139,39 +148,40 @@ class Structure:
     id: int | None
     properties: set[Property]
     bases: set[str]
+    extra: str = ""
 
     @staticmethod
     def create(
-        name: str, *properties: Property, id: int | None = None, bases: list[str] = []
+        name: str,
+        *properties: Property,
+        id: int | None = None,
+        bases: list[str] = [],
+        extra: str = "",
     ) -> Structure:
-        return Structure(name, id, set(properties), set(bases))
+        return Structure(name, id, set(properties), set(bases), extra=extra)
 
 
-def generate_generic_structure(struct: Structure, multiple: bool = False) -> str:
+def generate_generic_structure(struct: Structure) -> str:
     code = ""
     is_base = struct.id is None
-    suffix = "s" if multiple else ""
     bases = (
-        ", ".join([f"_DeviceTyped" + suffix] + [b + suffix for b in sorted(struct.bases)]) + ","
+        ", ".join([f"_DeviceTyped"] + [b for b in sorted(struct.bases)]) + ","
         if not is_base
         else ""
     )
-    name = struct.name + suffix
-    prefix = ""
-    if multiple and not is_base:
-        prefix = "_"
-    classname = f"{prefix}{name}"
+    name = struct.name
+    classname = name
     code += f"class {classname}({bases}):\n"
     if not is_base:
         code += f"  _hash: int = {struct.id}\n"
-    if multiple and not is_base:
-        code += f"  def __getitem__(self, name: str | int) -> '{classname}':\n"
-        code += f"      return {classname}(name)\n"
+    # if multiple and not is_base:
+    #     code += f"  def __getitem__(self, name: str | int) -> '{classname}':\n"
+    #     code += f"      return {classname}(name)\n"
 
     for prop in sorted(struct.properties):
-        code += prop.generate_code(multiple)
-    if multiple and not is_base:
-        code += f"{name} : {classname} = {classname}()\n"
+        code += prop.generate_code()
+
+    code += struct.extra
     return code
 
 
@@ -182,41 +192,63 @@ def parse_xml_file(xml_file: str) -> dict:
     P = Property
     S = Structure.create
 
-    base_classes = [
-        S("_BaseGas", *[P(name) for name in gases]),
-        S("_BaseGasInput", *[P(name + "Input") for name in gases]),
-        S("_BaseGasInput2", *[P(name + "Input2") for name in gases]),
-        S("_BaseGasOutput", *[P(name + "Output") for name in gases]),
-        S("_BaseGasOutput2", *[P(name + "Output2") for name in gases]),
+    base_classes: list[Structure] = []
+
+    for suf in ["", "Input", "Input2", "Output", "Output2"]:
+        prop_name = suf.lower() if suf else "gas_info"
+        args = ["device=self"] + [f"suffix={repr(suf)}"] + [f"{x}=self.{x}{suf}" for x in gases]
+
+        extra = __gas_prop_template.format(
+            prop_name=prop_name,
+            args=",".join(args),
+        )
+
+        base_classes.append(
+            S(f"_BaseGas{suf}", *[P(name + suf) for name in gases], extra=extra),
+        )
+
+    base_classes += [
+        # S("_BaseGas", *[P(name) for name in gases]),
+        # S("_BaseGasInput", *[P(name + "Input") for name in gases]),
+        # S("_BaseGasInput2", *[P(name + "Input2") for name in gases]),
+        # S("_BaseGasOutput", *[P(name + "Output") for name in gases]),
+        # S("_BaseGasOutput2", *[P(name + "Output2") for name in gases]),
         #
-        S("_Power", P("On", True), P("RequiredPower"), P("Power")),
-        # S("_On", P("On", True)),
-        # S("_Activate", P("Activate", True)),
-        # S("_Lock", P("Lock", True)),
-        # S("_Open", P("Open", True)),
-        # S("_Error", P("Error")),
-        # S("_Ratio", P("Ratio")),
-        # S("_Maximum", P("Maximum")),
-        # S("_SettingW", P("Setting", True)),
-        # S("_SettingR", P("Setting")),
-        # S("_Mode", P("Mode", True)),
-        # S("_ModeR", P("Mode")),
-        S("_Temperature", P("Temperature"), P("Pressure")),
-        # S("_PollWater", P("RatioPollutedWater")),
-        # S("_Combustion", P("Combustion"), P("TotalMoles")),
-        # S("_Idle", P("Idle")),
-        # S("_ImportCount", P("ImportCount", True)),
-        S("_ClearMemory", P("ClearMemory", True, False)),
-        S("_Hydrogen", P("RatioHydrogen"), P("RatioLiquidHydrogen")),
-        # S("_ImportCount", P("ImportCount")),
-        # S("_ExportCount", P("ExportCount")),
+        S("_Powered", P("Power"), P("RequiredPower"), P("On", True)),
+        S("_NumericalSetting", P("Maximum"), P("Ratio"), P("Setting", True)),
+        S("_ImportExport", P("ImportCount"), P("ExportCount"), P("ClearMemory", True, False)),
+        S("_ImportOnly", P("ImportCount"), P("ClearMemory", True, False)),
+        S("_PowerMeasure", P("PowerActual"), P("PowerPotential")),
         S("_Volume", P("Volume"), P("VolumeOfLiquid")),
-        S("_Vertical", P("Vertical"), P("Horizontal")),
-        S("_VerticalW", P("Vertical", True), P("Horizontal", True)),
-        # S("_RecipeHash", P("RecipeHash", True)),
-        # S("_Charge", P("Charge")),
-        # S("_Reagents", P("Reagents")),
-        # S("_Quantity", P("Quantity")),
+        S("_Battery", P("Charge"), P("Maximum")),
+        S("_Hydrogen", P("RatioHydrogen"), P("RatioLiquidHydrogen"), P("RatioPollutedWater")),
+        #
+        S(
+            "_Door",
+            P("Idle"),
+            P("Lock", True),
+            P("Mode", True),
+            P("Open", True),
+            P("Setting", True),
+        ),
+        S(
+            "_Machine",
+            P("Activate", True),
+            P("CompletionRatio"),
+            P("Error"),
+            P("Lock", True),
+            P("Open", True),
+            P("Reagents"),
+            P("RecipeHash", True),
+        ),
+        S(
+            "_Sleeper",
+            P("Activate", True),
+            P("EntityState"),
+            P("Error"),
+            P("Lock", True),
+            P("Open", True),
+        ),
     ]
 
     with open(xml_file, "r") as file:
@@ -282,7 +314,7 @@ def parse_xml_file(xml_file: str) -> dict:
 
         structures = base_classes + structures
         for struct in structures:
-            code += generate_generic_structure(struct, False)
+            code += generate_generic_structure(struct)
             # code += generate_generic_structure(struct, True)
             for p in struct.properties:
                 prop_count[p.name] = prop_count.get(p.name, 0) + 1
@@ -304,7 +336,7 @@ def parse_xml_file(xml_file: str) -> dict:
         print("Found properties", len(prop_count))
         print("Property counts:")
         for prop, count in prop_count.items():
-            if count > 10:
+            if count > 5:
                 print(f"  {prop}: {count}")
 
         # print("Structure types:")
