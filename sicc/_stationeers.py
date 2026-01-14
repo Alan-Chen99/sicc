@@ -678,7 +678,12 @@ class DeviceTyped(DeviceBase[str]):
     NameHash: FieldDesc[str] = mk_field_ro(str)
     ReferenceId: FieldDesc[int] = mk_field_ro(int)
 
+    def exist(self) -> VarRead[bool]:
+        # >=1 devices with this PrefabHash
+        return self.PrefabHash.sum != 0
+
     def is_unique(self) -> VarRead[bool]:
+        # ==1 devices with this PrefabHash
         return self.PrefabHash.sum == self.StaticPrefabHash
 
 
