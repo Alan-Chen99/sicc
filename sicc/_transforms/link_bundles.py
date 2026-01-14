@@ -156,54 +156,56 @@ def _try_predbranch_one(
         return False
 
     other_uses = list(l.uses - {instr})
-    if len(other_uses) == 1 and (write_instr := other_uses[0].isinst(WriteMVar)):
-        pass
-    else:
-        return False
 
-    assert write_instr.inputs_ == (ret_label,)
+    for write_instr in other_uses:
+        if not (write_instr := write_instr.isinst(WriteMVar)):
+            continue
 
-    # try to move write_instr to before instr
+        assert write_instr.inputs_ == (ret_label,)
 
-    mv = write_instr.instr.s
-    if not _is_suitable_as_ra(ctx, mv):
-        return False
-    res = compute_mvar_lifetime(ctx, mv, AlwaysUnpack())
+        # try to move write_instr to before instr
 
-    if (info := res.reachable.get(branch)) and info.possible_defs == [write_instr]:
-        # valid to write label to mv before instr
-        pass
-    else:
-        return False
+        mv = write_instr.instr.s
+        if not _is_suitable_as_ra(ctx, mv):
+            return False
+        res = compute_mvar_lifetime(ctx, mv, AlwaysUnpack())
 
-    # make the change
-    predvar, l_t, l_f = branch.inputs_
-    # (pred_var,) = instr.outputs_
+        if (info := res.reachable.get(branch)) and info.possible_defs == [write_instr]:
+            # valid to write label to mv before instr
+            pass
+        else:
+            return False
 
-    @f.replace_instr(instr)
-    def _():
-        tmp_label = mk_internal_label(ret_label.id)
+        # make the change
+        predvar, l_t, l_f = branch.inputs_
+        # (pred_var,) = instr.outputs_
 
-        if l_t == ret_label:
-            yield CondJumpAndLink.from_parts(
-                WriteMVar(mv).bind((), tmp_label),
-                pred.instr.negate(pred),
-                CondJump().bind((), predvar, l_f),
-                EmitLabel().bind((), tmp_label),
-            )
-        if l_f == ret_label:
-            yield CondJumpAndLink.from_parts(
-                WriteMVar(mv).bind((), tmp_label),
-                pred,
-                CondJump().bind((), predvar, l_t),
-                EmitLabel().bind((), tmp_label),
-            )
+        @f.replace_instr(instr)
+        def _():
+            tmp_label = mk_internal_label(ret_label.id)
 
-        yield Jump().bind((), ret_label)
+            if l_t == ret_label:
+                yield CondJumpAndLink.from_parts(
+                    WriteMVar(mv).bind((), tmp_label),
+                    pred.instr.negate(pred),
+                    CondJump().bind((), predvar, l_f),
+                    EmitLabel().bind((), tmp_label),
+                )
+            if l_f == ret_label:
+                yield CondJumpAndLink.from_parts(
+                    WriteMVar(mv).bind((), tmp_label),
+                    pred,
+                    CondJump().bind((), predvar, l_t),
+                    EmitLabel().bind((), tmp_label),
+                )
 
-    _mark_prefer_ra(f, mv)
+            yield Jump().bind((), ret_label)
 
-    return True
+        _mark_prefer_ra(f, mv)
+
+        return True
+
+    return False
 
 
 @LoopingTransform
