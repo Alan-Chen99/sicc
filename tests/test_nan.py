@@ -9,8 +9,8 @@ d = Autolathe()
 @program
 def test_nan():
     with if_(d.On == nan):
-        comment("is nan:", d.On)
+        comment("is nan1:", d.On)
     with if_(d.On != nan):
-        comment("not nan:", d.On)
+        comment("not nan2:", d.On)
     with if_(d.On.is_nan()):
-        comment("is nan:", d.On)
+        comment("is nan3:", d.On)
