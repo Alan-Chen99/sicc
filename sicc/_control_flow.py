@@ -3,14 +3,12 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 from contextlib import contextmanager
 from dataclasses import dataclass
-from types import NoneType
 from typing import Any
 from typing import Callable
 from typing import Iterator
 from typing import overload
 
 from ._api import Bool
-from ._api import Int
 from ._api import UserValue
 from ._api import Variable
 from ._api import VarRead
@@ -143,8 +141,8 @@ def block_impl[T](_ret_typ: type[BlockRef[T] | T] | None = None) -> Iterator[Blo
 
 ################################################################################
 
-CONTINUE_TO: Cell[Label] = Cell()
-BREAK_TO: Cell[Label] = Cell()
+CONTINUE_TO: Cell[UserValue[Label]] = Cell()
+BREAK_TO: Cell[UserValue[Label]] = Cell()
 
 ELSE_HOOK: Cell[Callable[[], AbstractContextManager[None]]] = Cell()
 
@@ -256,68 +254,6 @@ def while_(cond_fn: Callable[[], Bool]) -> Iterator[None]:
 
 def loop() -> AbstractContextManager[None]:
     return while_(lambda: True)
-
-
-################################################################################
-
-
-def wrap_iterator[T](it: Iterator[T]) -> Iterator[T]:
-    """
-    wrap an iterator so that in a `for x in it` loop,
-    continue_() and _break() would function correctly
-    (instead of continue/break to the internal implementation of the iterator)
-    """
-    with block(NoneType) as outer:
-        for x in it:
-            with (
-                block(NoneType) as inner,
-                BREAK_TO.bind(outer.exit_label),
-                CONTINUE_TO.bind(inner.exit_label),
-                ELSE_HOOK.bind_clear(),
-            ):
-                yield x
-
-
-def wrap_iterator_fn[**P, T](fn: Callable[P, Iterator[T]]) -> Callable[P, Iterator[T]]:
-    def inner(*args: P.args, **kwargs: P.kwargs):
-        return wrap_iterator(fn(*args, **kwargs))
-
-    return inner
-
-
-################################################################################
-
-
-@overload
-def range_(stop: Int, /) -> Iterator[VarRead[int]]: ...
-@overload
-def range_(start: Int, stop: Int, /) -> Iterator[VarRead[int]]: ...
-
-
-@wrap_iterator_fn
-def range_(x: Int, y: Int | None = None, /) -> Iterator[VarRead[int]]:
-    # will be implemented to support all args to python range in future
-    if y is None:
-        start, stop = 0, x
-    else:
-        start, stop = x, y
-
-    if isinstance(start, int) and isinstance(stop, int) and start < stop:
-        # do while is 1 less instruction
-        idx = Variable(int, start)
-        # some VarRead is defferred; make sure its only read once
-        stop_ = Variable(int, stop)
-        with loop():
-            yield idx.value
-            idx.value += 1
-            with if_(idx.value == stop_):
-                break_()
-    else:
-        idx = Variable(int, start)
-        stop_ = Variable(int, stop)
-        with while_(lambda: idx < stop):
-            yield idx.value
-            idx.value += 1
 
 
 ################################################################################

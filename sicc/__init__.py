@@ -53,8 +53,12 @@ from ._control_flow import continue_ as continue_
 from ._control_flow import else_ as else_
 from ._control_flow import if_ as if_
 from ._control_flow import loop as loop
-from ._control_flow import range_ as range_
 from ._control_flow import while_ as while_
+
+# iterators
+from ._iterator import Iterator_ as Iterator_
+from ._iterator import range_ as range_
+from ._iterator import wrap_generator as wrap_generator
 
 # subroutines
 from ._subr import ArgSpec as ArgSpec

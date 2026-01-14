@@ -20,7 +20,6 @@ from ._api import undef
 from ._control_flow import break_
 from ._control_flow import if_
 from ._control_flow import loop
-from ._control_flow import wrap_iterator_fn
 from ._core import BoundInstr
 from ._core import RegInfo
 from ._core import Register
@@ -37,6 +36,7 @@ from ._instructions import SplitLifetime
 from ._instructions import StackOpChain
 from ._instructions import SubI
 from ._instructions import WriteStack
+from ._iterator import wrap_generator
 from ._stationeers import Pin
 from ._tracing import mk_var
 from ._tree_utils import TreeSpec
@@ -260,7 +260,7 @@ class Pointer[T = Any]:
     def __setitem__(self, idx: Int, val: Any, /) -> None:
         self._getitem_impl(idx).write(val)
 
-    @wrap_iterator_fn
+    @wrap_generator
     def iter_mut[E](self: Pointer[list[E]]) -> Iterator[Pointer[E]]:
         elem_tree, length = self._check_list()
         assert length != 0
@@ -285,7 +285,7 @@ class Pointer[T = Any]:
             with if_(it == end):
                 break_()
 
-    @wrap_iterator_fn
+    @wrap_generator
     def iter_mut_rev[E](self: Pointer[list[E]]) -> Iterator[Pointer[E]]:
         elem_tree, length = self._check_list()
         assert length != 0

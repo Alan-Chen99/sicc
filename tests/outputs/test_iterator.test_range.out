@@ -1,0 +1,9 @@
+move r0 0
+move r1 r0
+ble 10 r1 6
+# i,j: r0 r1
+add r1 r1 1
+j 2
+add r0 r0 1
+bne r0 10 1
+# 8 lines total (not including this line)
