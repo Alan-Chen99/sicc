@@ -104,6 +104,10 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
     graph = build_control_flow_graph.call_cached(ctx)
 
     def is_fusable(cur: Block, target: Label) -> bool:
+        """
+        target is typically part of the final instr of cur; if it is not False is returned
+        """
+
         # in the middle of some other block
         if target not in f.blocks:
             return False
@@ -124,6 +128,12 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
             # dont fuse start and exit block, if there are other blocks
             return False
 
+        if j := cur.end.isinst(Jump):
+            (dest,) = j.inputs_
+            if dest == target:
+                return True
+            return False
+
         # since there is no "bnanz"
         if pb := cur.end.isinst(PredBranch):
             pred, br = pb.unpack()
@@ -133,10 +143,11 @@ def _fuse_blocks_impl(ctx: TransformCtx, trivial_only: bool, efficient_only: boo
             if t_l == target:
                 if pred.isinst(PredNAN):
                     return False
-            else:
-                assert f_l == target
+            elif f_l == target:
                 if pred.isinst(PredNotNAN):
                     return False
+            else:
+                return False
 
         return True
 
