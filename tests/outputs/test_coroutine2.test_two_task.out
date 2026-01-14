@@ -1,0 +1,27 @@
+move r1 16
+move r0 0
+move sp 2
+sbn 1944485013 -723064940 Color 4
+jal 23
+sbn 1944485013 -723064940 Color 2
+move ra 3
+j 23
+move r0 0
+jal 12
+move ra 8
+move r0 10
+move r1 ra
+get sp db r0
+pop ra
+j ra
+move r1 8
+move r0 10
+move sp 12
+sbn 1944485013 1307555374 Color 0
+jal 23
+sbn 1944485013 1307555374 Color 11
+move ra 19
+push ra
+put db r0 sp
+j r1
+# 26 lines total (not including this line)

@@ -242,23 +242,18 @@ def trace_program() -> Iterator[Cell[TracedProgram]]:
     start = mk_internal_label("program_start", id, private=False)
     exit = mk_internal_label("program_exit", id, private=False)
 
-    subrs: OrderedSet[RawSubr] = OrderedSet(())
-
-    def subr_hook(subr: RawSubr):
-        subrs.add(subr)
-
     with (
-        SUBR_CALL_HOOK.bind(subr_hook),
         PROGRAM_EXIT_TO.bind(exit),
         trace_to_fragment() as (_, res),
     ):
         label(start)
-        yield ans
+        with record_subrs() as subrs:
+            yield ans
 
         label(exit)
         EndPlaceholder().call()
 
-        for x in subrs:
+        for x in subrs.value:
             emit_frag(x.frag)
 
     f = res.value
@@ -294,8 +289,12 @@ class RawSubr(ByIdMixin):
     arg_mvars: tuple[MVar, ...]
     ret_mvars: tuple[MVar, ...]
 
+    subr_deps: OrderedSet[RawSubr]
+
     def call(self, *args: Value) -> tuple[Var, ...]:
         SUBR_CALL_HOOK.value(self)
+        for d in self.subr_deps:
+            SUBR_CALL_HOOK(d)
 
         assert len(args) == len(self.arg_mvars)
 
@@ -316,6 +315,21 @@ class RawSubr(ByIdMixin):
 SUBR_CALL_HOOK: Cell[Callable[[RawSubr], None]] = Cell()
 
 
+@contextmanager
+def record_subrs() -> Iterator[Cell[OrderedSet[RawSubr]]]:
+    subrs: Cell[OrderedSet[RawSubr]] = Cell(OrderedSet(()))
+
+    prev_hook = SUBR_CALL_HOOK.get()
+
+    def subr_hook(subr: RawSubr):
+        subrs.value.add(subr)
+        if prev_hook is not None:
+            prev_hook(subr)
+
+    with SUBR_CALL_HOOK.bind(subr_hook):
+        yield subrs
+
+
 def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[Value, ...]]):
     ra_mvar = mk_mvar(Label)
     arg_mvars = tuple(mk_mvar(x) for x in arg_types)
@@ -332,7 +346,10 @@ def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[V
 
         with add_debug_info(DebugInfo(describe=f"args of {describe_fn(fn)}")):
             argvals = tuple(x.read() for x in arg_mvars)
-        out_vars = fn(*argvals)
+
+        with record_subrs() as subr_deps:
+            out_vars = fn(*argvals)
+
         ret_mvars = tuple(mk_mvar(get_type(x)) for x in out_vars)
         for mv, v in zip(ret_mvars, out_vars):
             with add_debug_info(DebugInfo(describe=f"return value from {describe_fn(fn)}")):
@@ -347,6 +364,7 @@ def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[V
         ra_mvar=ra_mvar,
         arg_mvars=arg_mvars,
         ret_mvars=ret_mvars,
+        subr_deps=subr_deps.value,
     )
 
 

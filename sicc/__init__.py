@@ -108,3 +108,8 @@ from ._utils import crc32 as crc32
 from ._diagnostic import Warnings as Warnings
 from ._diagnostic import show_pending_diagnostics as show_pending_diagnostics
 from ._diagnostic import suppress_warnings as suppress_warnings
+
+# coroutine (experimental)
+from ._coroutine import coro_yield as coro_yield
+from ._coroutine import create_static_task as create_static_task
+from ._coroutine import static_coroutine as static_coroutine
