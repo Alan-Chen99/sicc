@@ -64,7 +64,8 @@ class Return(Generic[R_co]):
         self.value = val
 
 
-type FunctionRet[R] = Generator[Return[R], None, None] | R
+# `Return` have limited usefulness but placeholds yield-based syntax
+type FunctionRet[R] = Generator[Return[R], None, None] | R | None
 
 
 def trace_to_subr[**P, R](
@@ -245,7 +246,8 @@ def inline_subr[**P, R](fn: Callable[P, FunctionRet[R]]) -> Callable[P, R]:
                 )
             else:
                 ans = cast(R, ans)
-                b.break_(ans)
+                if ans is not None or len(b._break_paths) == 0:
+                    b.break_(ans)
 
         return b.value
 
