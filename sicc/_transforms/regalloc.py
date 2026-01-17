@@ -323,9 +323,10 @@ def regalloc_try_fuse(ctx: TransformCtx) -> RegallocFuseRes:
                 return True
 
         # x has pref, y no pref
-        # check if anything conflicting with y with same pref as x
+        # check if fusing would create a *new* conflict with another group that wants
+        # the same preferred reg (which would then force one preference to be dropped)
         for z in graph.neighbors(y):
-            if z.reg.preferred_reg == x_pref:
+            if z.reg.preferred_reg == x_pref and not graph.has_edge(x, z):
                 return False
 
         return True
