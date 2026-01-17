@@ -58,6 +58,10 @@ R_co = TypeVar("R_co", covariant=True, default=Any)
 
 @dataclass
 class Return(Generic[R_co]):
+    """
+    experimental, not recommended to use
+    """
+
     value: R_co
 
     def __init__(self, val: R_co = None, /):
@@ -120,6 +124,7 @@ class Subr(Generic[F_co]):
 
     def __post_init__(self):
         self.__qualname__ = self.fn.__qualname__
+        self.__wrapped__ = self.fn
 
     @overload
     def __get__(self, obj: None, objtype: type, /) -> Self: ...

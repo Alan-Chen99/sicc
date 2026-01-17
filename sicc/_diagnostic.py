@@ -35,7 +35,6 @@ from rich.traceback import Traceback
 
 from . import _utils
 from ._utils import Cell
-from .config import RICH_SPINNER
 from .config import _status_text
 from .config import print as print
 from .config import show_src_info
@@ -428,14 +427,7 @@ class Report:
             return
         if self.suppress:
             return
-        if status := RICH_SPINNER.get():
-            status.stop()
-            try:
-                print(self)
-            finally:
-                status.start()
-        else:
-            print(self)
+        print(self)
         self.did_show = True
 
 

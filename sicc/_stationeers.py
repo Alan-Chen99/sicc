@@ -346,7 +346,7 @@ class DeviceBase(Generic[DT_co, N_co]):
         if _valid_logic_attr(name, self):
             return self[name]
         else:
-            raise AttributeError()
+            raise AttributeError(name)
 
     def _setattr(self, name: str, val: UserValue) -> None:
         if _valid_logic_attr(name, self):

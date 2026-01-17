@@ -24,7 +24,8 @@ from ordered_set import OrderedSet
 
 @final
 class empty_t:
-    pass
+    def __repr__(self) -> str:
+        return "<empty>"
 
 
 empty = empty_t()
@@ -36,24 +37,37 @@ empty = empty_t()
 @dataclass
 class Cell[T]:
     _value: T | empty_t = empty
+    _verbose: bool = False
+
+    def _log(self, msg: str):
+        from ._diagnostic import debug_info
+        from ._diagnostic import track_caller
+
+        if self._verbose:
+            with track_caller():
+                print(msg, self._value, debug_info().location_info_brief())
 
     @contextmanager
     def bind(self, val: T) -> Iterator[T]:
         old = self._value
         self._value = val
         try:
+            self._log("bind")
             yield val
         finally:
             self._value = old
+            self._log("bind: done")
 
     @contextmanager
     def bind_clear(self) -> Iterator[None]:
         old = self._value
         self._value = empty
+        self._log("bind_clear")
         try:
             yield None
         finally:
             self._value = old
+            self._log("bind_clear: done")
 
     def get[D](self, default: D = None) -> T | D:
         if not isinstance(self._value, empty_t):
@@ -62,6 +76,7 @@ class Cell[T]:
 
     def set(self, val: T | empty_t = empty):
         self._value = val
+        self._log("set")
 
     @property
     def value(self) -> T:
