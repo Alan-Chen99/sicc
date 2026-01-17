@@ -56,9 +56,9 @@ from ._control_flow import loop as loop
 from ._control_flow import while_ as while_
 
 # iterators
-from ._iterator import Iterator_ as Iterator_
+from ._iterator import GeneratorSubr as GeneratorSubr
 from ._iterator import range_ as range_
-from ._iterator import wrap_generator as wrap_generator
+from ._iterator import shared_generator as shared_generator
 
 # subroutines
 from ._subr import ArgSpec as ArgSpec

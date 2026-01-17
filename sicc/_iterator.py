@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
+from typing import Any
 from typing import Callable
+from typing import Concatenate
+from typing import Generator
 from typing import Iterable
 from typing import Iterator
+from typing import Self
 from typing import overload
 
 from ._api import Int
@@ -13,21 +18,77 @@ from ._api import jump
 from ._control_flow import BREAK_TO
 from ._control_flow import CONTINUE_TO
 from ._control_flow import ELSE_HOOK
+from ._control_flow import block
 from ._control_flow import break_
+from ._control_flow import clear_control_flow_hooks
 from ._control_flow import if_
 from ._control_flow import loop
 from ._control_flow import while_
 from ._core import Label
+from ._diagnostic import DebugInfo
+from ._diagnostic import add_debug_info
+from ._diagnostic import describe_fn
+from ._diagnostic import track_caller
 from ._state import State
+from ._subr import _RETURN_HOOK
+from ._subr import Subr
+from ._subr import subr
 from ._tracing import label
 from ._tracing import mk_internal_label
+from ._tracing import trace_to_fragment
 from ._utils import get_id
 
 
+def runtime_loop[E](it: Iterable[E]) -> Iterator[E]:
+    id = get_id()
+    it_yield = mk_internal_label("it_yield", id)
+    it_finish = mk_internal_label("it_finish", id)
+
+    it_resume = Variable(Label)
+    it_value: State[E] = State()
+
+    # generator part
+    with (
+        block() as b,
+        clear_control_flow_hooks(),
+        _RETURN_HOOK.bind(b.break_),
+    ):
+        for idx, item in enumerate(it):
+            resume_to = mk_internal_label(f"it_resume({idx})", id)
+
+            it_value.value = item
+            it_resume.value = resume_to
+            jump(it_yield)
+
+            label(resume_to)
+
+        label(it_finish)
+
+    # caller part
+    with trace_to_fragment(emit=True):
+        label(it_yield)
+        with (
+            BREAK_TO.bind(it_finish),
+            CONTINUE_TO.bind(it_resume),
+            ELSE_HOOK.bind_clear(),
+        ):
+            yield it_value.value
+        jump(it_resume)
+
+
+def inline_generator[**P, T](fn: Callable[P, Iterator[T]]) -> Callable[P, Iterator[T]]:
+    def inner(*args: P.args, **kwargs: P.kwargs) -> Iterator[T]:
+        return runtime_loop(fn(*args, **kwargs))
+
+    return inner
+
+
+################################################################################
+
+
 @dataclass(frozen=True)
-class Iterator_[T]:
-    # jump here to start
-    it_start: Label
+class GeneratorSubr[**P, Y, R]:
+    subr: tuple[Subr[Callable[P, R]]]  # tuple to satisfy pyright
 
     # jump here to advance iterator
     it_resume: Variable[Label]
@@ -35,77 +96,103 @@ class Iterator_[T]:
     # iterator jumps here to indicate item being yielded
     it_yield: Variable[Label]
 
-    # iterator jumps here to indicate iterator finished
-    it_end: Variable[Label]
+    # value of next item, valid after iterator jumps to it_yield
+    yield_value: State[Y]
 
-    # value of next item, valid after iterator jumps to it_back
-    it_value: State[T]
+    @overload
+    def __get__(self, obj: None, objtype: type, /) -> Self: ...
+    @overload
+    def __get__[T, **P_, Y_, R_](
+        self: GeneratorSubr[Concatenate[T, P_], Y_, R_], obj: T, objtype: Any, /
+    ) -> Callable[P_, Generator[Y_, None, R_]]: ...
 
-    @staticmethod
-    def from_iterable[T1](it: Iterable[T1]) -> Iterator_[T1]:
+    def __get__(self, obj: Any, objtype: Any, /):
+        if obj is None:
+            return self
+
+        def inner(*args: Any, **kwargs: Any) -> Any:
+            return self.__call__(obj, *args, **kwargs)  # pyright: ignore
+
+        return inner
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Generator[Y, None, R]:
+        (subr,) = self.subr
+
         id = get_id()
-        it_start = mk_internal_label("it_start", id)
+        yield_to = mk_internal_label("it_call_yield", id)
+        it_finish = mk_internal_label("it_finish", id)
 
-        it_resume = Variable(Label)
-        it_yield = Variable(Label)
-        it_end = Variable(Label)
-        it_value: State[T1] = State()
+        self.it_yield.value = yield_to
 
-        with if_(False):
-            label(it_start)
+        # trace subr first since that feels more sensible
+        # same thing if no crash
+        with track_caller():
+            ans = subr(*args, **kwargs)
 
-            for idx, item in enumerate(it):
+        label(it_finish)
+
+        with trace_to_fragment(emit=True):
+            with track_caller():
+                label(yield_to)
+                value = self.yield_value.value
+
+            with (
+                BREAK_TO.bind(it_finish),  # breaking causes return value to be undefined
+                CONTINUE_TO.bind(self.it_resume),
+                ELSE_HOOK.bind_clear(),
+            ):
+                yield value
+
+            with add_debug_info(DebugInfo(describe=f"continuing {describe_fn(subr.fn)}")):
+                jump(self.it_resume)
+
+        return ans
+
+
+def shared_generator[**P, Y, R](fn: Callable[P, Generator[Y, None, R]]) -> GeneratorSubr[P, Y, R]:
+    it_resume = Variable(Label)
+    it_yield = Variable(Label)
+
+    yield_value: State[Y] = State()
+
+    @subr
+    @functools.wraps(fn)
+    def inner(*args: P.args, **kwargs: P.kwargs) -> R:
+        id = get_id()
+
+        it = fn(*args, **kwargs)
+
+        try:
+            idx = 0
+            while True:
                 resume_to = mk_internal_label(f"it_resume({idx})", id)
+                idx += 1
 
-                it_value.value = item
-                it_resume.value = resume_to
-                jump(it_yield)
+                val = next(it)
 
+                with add_debug_info(DebugInfo(describe=f"yielding from {describe_fn(fn)}")):
+                    yield_value.value = val
+                    it_resume.value = resume_to
+                    # jump to caller; caller will jump back to it_resume
+                    jump(it_yield)
+
+                # caller jumps back here; we continue to yield next value
+                # with add_debug_info(DebugInfo(describe=f"continuing {describe_fn(fn)}")):
+                # with track_caller():
                 label(resume_to)
 
-            jump(it_end)
+        except StopIteration as e:
+            return e.value
 
-        return Iterator_(
-            it_start=it_start,
-            it_resume=it_resume,
-            it_yield=it_yield,
-            it_end=it_end,
-            it_value=it_value,
-        )
-
-    def __iter__(self) -> Iterator[T]:
-        id = get_id()
-
-        it_yield = mk_internal_label("iter_handle_item", id)
-        it_end = mk_internal_label("iter_end", id)
-
-        # start
-        self.it_yield.value = it_yield
-        self.it_end.value = it_end
-        jump(self.it_start)
-
-        # main loop (handle item)
-        label(it_yield)
-        value = self.it_value.value
-
-        with (
-            BREAK_TO.bind(it_end),
-            CONTINUE_TO.bind(self.it_resume),
-            ELSE_HOOK.bind_clear(),
-        ):
-            yield value
-
-        jump(self.it_resume)
-
-        # end
-        label(it_end)
+    return GeneratorSubr(
+        subr=(inner,),
+        it_resume=it_resume,
+        it_yield=it_yield,
+        yield_value=yield_value,
+    )
 
 
-def wrap_generator[**P, T](fn: Callable[P, Iterator[T]]) -> Callable[P, Iterator_[T]]:
-    def inner(*args: P.args, **kwargs: P.kwargs) -> Iterator_[T]:
-        return Iterator_.from_iterable(fn(*args, **kwargs))
-
-    return inner
+################################################################################
 
 
 @overload
@@ -114,7 +201,7 @@ def range_(stop: Int, /) -> Iterator[VarRead[int]]: ...
 def range_(start: Int, stop: Int, /) -> Iterator[VarRead[int]]: ...
 
 
-@wrap_generator
+@inline_generator
 def range_(x: Int, y: Int | None = None, /) -> Iterator[VarRead[int]]:
     # will be implemented to support all args to python range in future
     if y is None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from typing import Callable
+from typing import Generator
 from typing import Iterator
 from typing import Literal
 from typing import Protocol
@@ -36,7 +37,7 @@ from ._instructions import SplitLifetime
 from ._instructions import StackOpChain
 from ._instructions import SubI
 from ._instructions import WriteStack
-from ._iterator import wrap_generator
+from ._iterator import inline_generator
 from ._stationeers import Pin
 from ._tracing import mk_var
 from ._tree_utils import TreeSpec
@@ -260,8 +261,8 @@ class Pointer[T = Any]:
     def __setitem__(self, idx: Int, val: Any, /) -> None:
         self._getitem_impl(idx).write(val)
 
-    @wrap_generator
-    def iter_mut[E](self: Pointer[list[E]]) -> Iterator[Pointer[E]]:
+    @inline_generator
+    def iter_mut[E](self: Pointer[list[E]]) -> Generator[Pointer[E]]:
         elem_tree, length = self._check_list()
         assert length != 0
 
@@ -285,8 +286,8 @@ class Pointer[T = Any]:
             with if_(it == end):
                 break_()
 
-    @wrap_generator
-    def iter_mut_rev[E](self: Pointer[list[E]]) -> Iterator[Pointer[E]]:
+    @inline_generator
+    def iter_mut_rev[E](self: Pointer[list[E]]) -> Generator[Pointer[E]]:
         elem_tree, length = self._check_list()
         assert length != 0
         size = len(elem_tree)

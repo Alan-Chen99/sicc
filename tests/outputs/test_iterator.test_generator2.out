@@ -1,0 +1,27 @@
+move r3 10
+move ra 23
+move r4 4
+j 20
+# i1: r5
+move r5 ra
+j r5
+# i2: r5
+move r5 ra
+j r5
+add r1 r1 1
+move r5 r1
+move ra 10
+blt r1 r3 r4
+move r2 0
+move r5 r2
+jal r4
+add r2 r2 1
+beq r2 10 r0
+j 15
+move r0 ra
+move r1 0
+j 11
+move r4 7
+move r3 5
+jal 20
+# 26 lines total (not including this line)
