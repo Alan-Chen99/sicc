@@ -33,8 +33,8 @@ from ._tracing import mk_mvar
 from ._tracing import trace_to_fragment
 from ._tree_utils import TreeSpec
 from ._utils import Cell
+from ._utils import Empty
 from ._utils import empty
-from ._utils import empty_t
 from ._utils import get_id
 
 register_exclusion(__file__)
@@ -45,7 +45,7 @@ class BlockRef[T]:
     _id: int
     _scope: Scope
     _break_paths: list[tuple[Label, TreeSpec[T], list[MVar], DebugInfo]]
-    _out_value: T | empty_t = empty
+    _out_value: T | Empty = empty
 
     exit_label: Label
     finished_tracing: bool
@@ -73,7 +73,7 @@ class BlockRef[T]:
         if len(self._break_paths) == 0:
             raise RuntimeError("not possible to get break value because break_ is never called")
 
-        assert not isinstance(self._out_value, empty_t)
+        assert self._out_value is not empty
         return self._out_value
 
     @property

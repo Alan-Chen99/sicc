@@ -99,6 +99,10 @@ def get_location(depth: int = 0) -> Frame:
     return ans_frame
 
 
+def get_location_desc(depth: int = 0) -> str:
+    return frame_short_desc(get_location(depth))
+
+
 def format_location(loc: Frame):
     stack = Stack("", "", frames=[loc])
     return Traceback(Trace([stack]), suppress=TRACEBACK_SUPPRESS.value)._render_stack(stack)

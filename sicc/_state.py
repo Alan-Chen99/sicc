@@ -16,8 +16,8 @@ from ._diagnostic import track_caller
 from ._tracing import SCOPE_STACK
 from ._tracing import mk_mvar
 from ._tree_utils import TreeSpec
+from ._utils import Empty
 from ._utils import empty
-from ._utils import empty_t
 
 register_exclusion(__file__)
 
@@ -30,7 +30,7 @@ class State[T = Any]:
 
     def __init__(
         self,
-        init: T | empty_t = empty,
+        init: T | Empty = empty,
         *,
         _tree: TreeSpec[T] | None = None,
         _global: bool = False,
@@ -48,7 +48,7 @@ class State[T = Any]:
         if _tree:
             self._tree = _tree
             self._vars = [mk_mvar(t) for t in _tree.types]
-        if not isinstance(init, empty_t):
+        if init is not empty:
             self.write(init)
 
     def __rich_repr__(self) -> rich.repr.Result:

@@ -6,46 +6,46 @@ import sys
 import zlib
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 from typing import Callable
 from typing import Final
 from typing import Iterator
+from typing import Literal
 from typing import Protocol
 from typing import TypeGuard
-from typing import final
 from weakref import WeakSet
 
 from ordered_set import OrderedSet
+from rich import print
 
 ################################################################################
 
 
-@final
-class empty_t:
+class Empty(Enum):
+    EMPTY = 0
+
     def __repr__(self) -> str:
         return "<empty>"
 
 
-empty = empty_t()
-
+empty: Literal[Empty.EMPTY] = Empty.EMPTY
 
 ################################################################################
 
 
 @dataclass
 class Cell[T]:
-    _value: T | empty_t = empty
+    _value: T | Empty = empty
     _verbose: bool = False
 
     def _log(self, msg: str):
-        from ._diagnostic import debug_info
-        from ._diagnostic import track_caller
+        from ._diagnostic import get_location_desc
 
         if self._verbose:
-            with track_caller():
-                print(msg, self._value, debug_info().location_info_brief())
+            print(msg, self._value, get_location_desc())
 
     @contextmanager
     def bind(self, val: T) -> Iterator[T]:
@@ -70,17 +70,17 @@ class Cell[T]:
             self._log("bind_clear: done")
 
     def get[D](self, default: D = None) -> T | D:
-        if not isinstance(self._value, empty_t):
+        if self._value is not empty:
             return self._value
         return default
 
-    def set(self, val: T | empty_t = empty):
+    def set(self, val: T | Empty = empty):
         self._value = val
         self._log("set")
 
     @property
     def value(self) -> T:
-        if isinstance(self._value, empty_t):
+        if self._value is empty:
             raise RuntimeError(f"reading from empty cell")
         return self._value
 
