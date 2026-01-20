@@ -8,10 +8,8 @@ from types import GeneratorType
 from typing import Annotated
 from typing import Any
 from typing import Callable
-from typing import Concatenate
 from typing import Generator
 from typing import Generic
-from typing import Self
 from typing import TypedDict
 from typing import TypeVar
 from typing import Unpack
@@ -53,6 +51,7 @@ from ._tree_utils import TreeSpec
 from ._tree_utils import ValSpec
 from ._tree_utils import pytree
 from ._tree_utils import tree_flatten
+from ._utils import CallDescMixin
 from ._utils import Cell
 from ._utils import normalize_function_args
 from .config import with_status
@@ -447,8 +446,8 @@ F_co = TypeVar("F_co", covariant=True)
 
 
 @dataclass
-class Subr(Generic[F_co]):
-    fn: F_co
+class Subr[**P, R](CallDescMixin):
+    fn: Callable[P, FunctionRet[R]]
     arg_spec: ArgSpec
 
     _subr: TracedSubr[Any, Any] | None = None
@@ -460,29 +459,11 @@ class Subr(Generic[F_co]):
         self.__qualname__ = self.fn.__qualname__
         self.__wrapped__ = self.fn
 
-    @overload
-    def __get__(self, obj: None, objtype: type, /) -> Self: ...
-    @overload
-    def __get__[T, **P, R](
-        self: Subr[Callable[Concatenate[T, P], R]], obj: T, objtype: Any, /
-    ) -> Callable[P, R]: ...
-
-    def __get__(self, obj: Any, objtype: Any, /):
-        if obj is None:
-            return self
-
-        def inner(*args: Any, **kwargs: Any) -> Any:
-            return self(
-                obj, *args, **kwargs
-            )  # pyright: ignore[reportCallIssue, reportUnknownVariableType]
-
-        return inner
-
-    def __call__[**P, R](self: Subr[Callable[P, R]], *args: P.args, **kwargs: P.kwargs) -> R:
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
         args, kwargs = normalize_function_args(self.fn, args, kwargs)
 
         @functools.wraps(self.fn)
-        def inner(args_kwargs: tuple[tuple[Any, ...], dict[str, Any]]) -> R:
+        def inner(args_kwargs: tuple[tuple[Any, ...], dict[str, Any]]) -> FunctionRet[R]:
             args, kwargs = args_kwargs
             return self.fn(*args, **kwargs)
 
@@ -503,26 +484,24 @@ class SubrFactory:
     arg_spec: ArgSpec | None = None
 
     @overload
+    def __call__[**P, R](self, func: Callable[P, Generator[Return[R]]], /) -> Subr[P, R]: ...
+    @overload
     def __call__[**P, R](
-        self, func: Callable[P, Generator[Return[R]]], /
-    ) -> Subr[Callable[P, R]]: ...
-    @overload
-    def __call__[**P, R](  # pyright: ignore[reportOverlappingOverload]
         self, func: Callable[P, Generator[Any, Any, Any]], /
-    ) -> Subr[_Invalid]: ...
+    ) -> Subr[[_Invalid], _Invalid]: ...
     @overload
-    def __call__[**P, R](self, func: Callable[P, FunctionRet[R]]) -> Subr[Callable[P, R]]: ...
+    def __call__[**P, R](self, func: Callable[P, FunctionRet[R]]) -> Subr[P, R]: ...
 
     def __call__[**P, R](  # pyright: ignore[reportInconsistentOverload]
         self, func: Callable[P, FunctionRet[R]], /
-    ) -> Subr[Callable[P, R]]:
+    ) -> Subr[P, R]:
         if self.inline_always:
             raise NotImplementedError()
         if self.arg_spec:
             arg_spec = self.arg_spec
         else:
             arg_spec = ArgSpec.from_args(get_argspec_from_annotations(func))
-        return Subr(cast(Callable[P, R], func), arg_spec)
+        return Subr(func, arg_spec)
 
 
 class SubrOpts(TypedDict, total=False):
@@ -535,15 +514,15 @@ def subr(**kwargs: Unpack[SubrOpts]) -> SubrFactory: ...
 @overload
 def subr[**P, R](
     func: Callable[P, Generator[Return[R]]], /, **kwargs: Unpack[SubrOpts]
-) -> Subr[Callable[P, R]]: ...
+) -> Subr[P, R]: ...
 @overload
-def subr[**P, R](  # pyright: ignore[reportOverlappingOverload]
+def subr[**P, R](
     func: Callable[P, Generator[Any, Any, Any]], /, **kwargs: Unpack[SubrOpts]
-) -> Subr[_Invalid]: ...
+) -> Subr[[_Invalid], _Invalid]: ...
 @overload
 def subr[**P, R](
     func: Callable[P, FunctionRet[R]], /, **kwargs: Unpack[SubrOpts]
-) -> Subr[Callable[P, R]]: ...
+) -> Subr[P, R]: ...
 
 
 def subr[**P, R](  # pyright: ignore[reportInconsistentOverload]

@@ -24,6 +24,7 @@ from ._tracing import exit_program
 from ._tracing import label
 from ._tracing import mk_internal_label
 from ._tree_utils import copy_tree
+from ._utils import CallDescMixin
 
 register_exclusion(__file__)
 
@@ -42,7 +43,7 @@ F_co = TypeVar("F_co", covariant=True)
 
 
 @dataclass
-class StaticCoroFn(Generic[F_co]):
+class StaticCoroFn(Generic[F_co], CallDescMixin):
     _handler: F_co
 
     def __call__[**P, R](

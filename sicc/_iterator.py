@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import functools
 from dataclasses import dataclass
-from typing import Any
 from typing import Callable
-from typing import Concatenate
 from typing import Generator
 from typing import Iterable
 from typing import Iterator
-from typing import Self
 from typing import overload
 
 from ._api import Int
@@ -36,6 +33,7 @@ from ._subr import subr
 from ._tracing import label
 from ._tracing import mk_internal_label
 from ._tracing import trace_to_fragment
+from ._utils import CallDescMixin
 from ._utils import get_id
 
 
@@ -87,8 +85,8 @@ def inline_generator[**P, T](fn: Callable[P, Iterator[T]]) -> Callable[P, Iterat
 
 
 @dataclass(frozen=True)
-class GeneratorSubr[**P, Y, R]:
-    subr: tuple[Subr[Callable[P, R]]]  # tuple to satisfy pyright
+class GeneratorSubr[**P, Y, R](CallDescMixin):
+    subr: tuple[Subr[P, R]]  # tuple to satisfy pyright
 
     # jump here to advance iterator
     it_resume: Variable[Label]
@@ -98,22 +96,6 @@ class GeneratorSubr[**P, Y, R]:
 
     # value of next item, valid after iterator jumps to it_yield
     yield_value: State[Y]
-
-    @overload
-    def __get__(self, obj: None, objtype: type, /) -> Self: ...
-    @overload
-    def __get__[T, **P_, Y_, R_](
-        self: GeneratorSubr[Concatenate[T, P_], Y_, R_], obj: T, objtype: Any, /
-    ) -> Callable[P_, Generator[Y_, None, R_]]: ...
-
-    def __get__(self, obj: Any, objtype: Any, /):
-        if obj is None:
-            return self
-
-        def inner(*args: Any, **kwargs: Any) -> Any:
-            return self.__call__(obj, *args, **kwargs)  # pyright: ignore
-
-        return inner
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Generator[Y, None, R]:
         (subr,) = self.subr

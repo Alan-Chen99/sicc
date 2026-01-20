@@ -11,11 +11,15 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 from typing import Callable
+from typing import Concatenate
 from typing import Final
 from typing import Iterator
 from typing import Literal
 from typing import Protocol
+from typing import Self
 from typing import TypeGuard
+from typing import cast
+from typing import overload
 from weakref import WeakSet
 
 from ordered_set import OrderedSet
@@ -279,3 +283,24 @@ def normalize_function_args[Ar: tuple[Any, ...], Kw: dict[str, Any]](
     # print("res:", tuple(args_out), kwargs_out)
 
     return tuple(args_out), kwargs_out  # pyright: ignore[reportReturnType]
+
+
+################################################################################
+
+
+class CallDescMixin:
+    @overload
+    def __get__(self, obj: None, objtype: type, /) -> Self: ...
+    @overload
+    def __get__[T, **P, R](
+        self: Callable[Concatenate[T, P], R], obj: T, objtype: Any, /
+    ) -> Callable[P, R]: ...
+
+    def __get__[T, **P, R](self: Self | Callable[Concatenate[T, P], R], obj: T, objtype: Any, /):
+        if obj is None:
+            return self
+
+        def inner(*args: P.args, **kwargs: P.kwargs) -> R:
+            return cast(Callable[Concatenate[T, P], R], self)(obj, *args, **kwargs)
+
+        return inner
