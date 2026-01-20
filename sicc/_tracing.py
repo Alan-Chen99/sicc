@@ -21,13 +21,9 @@ from ._core import TracedProgram
 from ._core import Value
 from ._core import Var
 from ._core import VarT
-from ._core import VarTS
-from ._core import get_type
 from ._diagnostic import DebugInfo
-from ._diagnostic import add_debug_info
 from ._diagnostic import clear_debug_info
 from ._diagnostic import debug_info
-from ._diagnostic import describe_fn
 from ._diagnostic import register_exclusion
 from ._diagnostic import track_caller
 from ._instructions import Bundle
@@ -39,7 +35,6 @@ from ._utils import ByIdMixin
 from ._utils import Cell
 from ._utils import get_id
 from .config import verbose
-from .config import with_status
 
 register_exclusion(__file__)
 
@@ -277,39 +272,52 @@ def exit_program() -> None:
 @dataclass(eq=False)
 class RawSubr(ByIdMixin):
     """
-    non-recursive subroutine
+    a global piece of code that can be included
     """
 
     id: int
 
     frag: Fragment
-    start: Label
-
-    ra_mvar: MVar[Label]
-    arg_mvars: tuple[MVar, ...]
-    ret_mvars: tuple[MVar, ...]
-
     subr_deps: OrderedSet[RawSubr]
 
-    def call(self, *args: Value) -> tuple[Var, ...]:
-        SUBR_CALL_HOOK.value(self)
-        for d in self.subr_deps:
-            SUBR_CALL_HOOK(d)
+    def record_call(self) -> None:
+        # Ensure the program includes this subroutine and all of its dependencies,
+        # even if those dependencies were only referenced while tracing this RawSubr.
+        stack: list[RawSubr] = [self]
+        seen: set[RawSubr] = set()
+        while stack:
+            subr = stack.pop()
+            if subr in seen:
+                continue
+            seen.add(subr)
+            SUBR_CALL_HOOK(subr)
+            stack.extend(subr.subr_deps)
 
-        assert len(args) == len(self.arg_mvars)
+    # start: Label
 
-        l = mk_internal_label("call_ret")
+    # ra_mvar: MVar[Label]
+    # arg_mvars: tuple[MVar, ...]
+    # ret_mvars: tuple[MVar, ...]
 
-        with track_caller():
-            for arg, argvar in zip(args, self.arg_mvars):
-                argvar.write(arg)
+    # def call(self, *args: Value) -> tuple[Var, ...]:
+    #     SUBR_CALL_HOOK.value(self)
+    #     for d in self.subr_deps:
+    #         SUBR_CALL_HOOK(d)
 
-        self.ra_mvar.write(l)
-        with track_caller():
-            jump(self.start)
+    #     assert len(args) == len(self.arg_mvars)
 
-        label(l)
-        return tuple(x.read() for x in self.ret_mvars)
+    #     l = mk_internal_label("call_ret")
+
+    #     with track_caller():
+    #         for arg, argvar in zip(args, self.arg_mvars):
+    #             argvar.write(arg)
+
+    #     self.ra_mvar.write(l)
+    #     with track_caller():
+    #         jump(self.start)
+
+    #     label(l)
+    #     return tuple(x.read() for x in self.ret_mvars)
 
 
 SUBR_CALL_HOOK: Cell[Callable[[RawSubr], None]] = Cell()
@@ -330,40 +338,19 @@ def record_subrs() -> Iterator[Cell[OrderedSet[RawSubr]]]:
         yield subrs
 
 
-def trace_to_raw_subr(arg_types: VarTS, fn: Callable[[*tuple[Var, ...]], tuple[Value, ...]]):
-    ra_mvar = mk_mvar(Label)
-    arg_mvars = tuple(mk_mvar(x) for x in arg_types)
+@contextmanager
+def trace_to_raw_subr() -> Iterator[Cell[RawSubr]]:
+    ans: Cell[RawSubr] = Cell()
 
-    start = mk_internal_label(f"[{describe_fn(fn)}]", private=False)
+    with (
+        trace_to_fragment() as (_scope, res),
+        record_subrs() as subr_deps,
+    ):
+        yield ans
 
-    with with_status(describe_fn(fn)), trace_to_fragment() as (_scope, res):
-        with add_debug_info(DebugInfo(describe=f"<function {describe_fn(fn)}>")):
-            label(start)
-
-        # allow spilling ra into another reg at function start
-        ra_mvar_inner = mk_mvar(Label)
-        ra_mvar_inner.write(ra_mvar.read())
-
-        with add_debug_info(DebugInfo(describe=f"args of {describe_fn(fn)}")):
-            argvals = tuple(x.read() for x in arg_mvars)
-
-        with record_subrs() as subr_deps:
-            out_vars = fn(*argvals)
-
-        ret_mvars = tuple(mk_mvar(get_type(x)) for x in out_vars)
-        for mv, v in zip(ret_mvars, out_vars):
-            with add_debug_info(DebugInfo(describe=f"return value from {describe_fn(fn)}")):
-                mv.write(v)
-        with add_debug_info(DebugInfo(describe=f"return from {describe_fn(fn)}")):
-            jump(ra_mvar_inner.read())
-
-    return RawSubr(
+    ans.value = RawSubr(
         get_id(),
         frag=res.value,
-        start=start,
-        ra_mvar=ra_mvar,
-        arg_mvars=arg_mvars,
-        ret_mvars=ret_mvars,
         subr_deps=subr_deps.value,
     )
 

@@ -31,6 +31,8 @@ This file is for AI coding agents working in this repository.
 - Many tests write compiler output snapshots to `tests/outputs/*.out`.
 - These outputs are tracked for review, but **changes are manually verified** (there are **no additional automated checks/assertions** on the output text).
 - If output changes, treat the resulting diff in `tests/outputs/` as part of the review surface.
+  - Use "readable output" from `sicc tests/<file>.py -p <program>` to check programs rather than raw output written to files
+- Unless otherwise specified, the only forms of tests you write are programs that produces program output
 
 ## Conventions
 

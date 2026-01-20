@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import Iterable
+from typing import Mapping
+from typing import Sequence
 from typing import cast
 
 import optree.treespec
@@ -14,15 +16,13 @@ from rich import print as print  # autoflake: skip
 
 from ._api import UserValue
 from ._api import Variable
-from ._api import _get_type
+from ._api import VarRead
 from ._api import read_uservalue
 from ._core import Value
 from ._core import VarT
 from ._core import VarTS
-from ._core import can_cast_implicit_many
-from ._core import can_cast_implicit_many_or_err
+from ._core import can_cast_implicit
 from ._core import promote_types
-from ._utils import ReprAs
 from ._utils import cast_unchecked
 
 if TYPE_CHECKING:
@@ -40,77 +40,134 @@ else:
     optree_dataclass = dataclasses.dataclass
     field = dataclasses.field
 
+type PyTree[T] = T | Sequence[PyTree[T]] | Mapping[Any, PyTree[T]] | optree.PyTree[T]
+
+
+def tree_flatten[T](tree: PyTree[T]) -> tuple[list[T], pytree.PyTreeSpec]:
+    return pytree.flatten(cast(optree.PyTree[T], tree))
+
+
+@dataclass(frozen=True, kw_only=True)
+class ValSpec[T: VarT = VarT]:
+    type: type[T]
+    mutable: bool
+
+    def __repr__(self) -> str:
+        if not self.mutable:
+            return self.type.__name__
+        return f"{self.type.__name__}:mut"
+
+    @staticmethod
+    def from_uservalue[T1: VarT](v: UserValue[T1]) -> ValSpec[T1]:
+        if isinstance(v, VarT):
+            return ValSpec(type=type(v), mutable=False)
+        if not isinstance(v, VarRead):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise TypeError(  # pyright: ignore[reportUnreachable]
+                f"unsupported type: {type(v)} (value: {v})"
+            )
+        return ValSpec(type=v._get_type(), mutable=isinstance(v, Variable) and not v._read_only)
+
+    def can_cast_to(self, other: ValSpec[T]) -> bool:
+        if not can_cast_implicit(self.type, other.type):
+            return False
+        if not self.mutable and other.mutable:
+            return False
+        return True
+
+    def promote(self, other: ValSpec):
+        return ValSpec(type=promote_types(self.type, other.type), mutable=False)
+
 
 @dataclass
 class _OffsetProxy:
     offset: int
-    typ: type[VarT]
+    spec: ValSpec
 
     def __rich_repr__(self) -> rich.repr.Result:
         yield self.offset
-        yield ReprAs(self.typ.__qualname__)
+        yield self.spec
 
 
-@dataclass
+@dataclass(frozen=True)
 class TreeSpec[T = Any]:
     tree: pytree.PyTreeSpec
-    types: VarTS
+    leaves: list[ValSpec]
+
+    @property
+    def types(self) -> VarTS:
+        return tuple(x.type for x in self.leaves)
 
     def as_schema(self) -> T:
-        return self.unflatten_unchecked(self.types)
+        return self.tree.unflatten(self.leaves)  # pyright: ignore[reportReturnType]
 
     @staticmethod
     def from_schema[T1](val: T1) -> TreeSpec[T1]:
         leaves, tree = pytree.flatten(cast_unchecked(val))
 
-        def handle_leaf(leaf: Any) -> type[VarT]:
-            if not isinstance(leaf, type):
-                return _get_type(leaf)
-            if not issubclass(leaf, VarT):
-                raise TypeError(f"unsupported type: {leaf}")
-            return leaf
+        out: list[ValSpec] = []
+        for leaf in leaves:
+            if isinstance(leaf, ValSpec):
+                out.append(cast(ValSpec, leaf))
+            elif isinstance(leaf, type):
+                if not issubclass(leaf, VarT):
+                    raise TypeError(f"unsupported type: {leaf}")
+                out.append(ValSpec(type=leaf, mutable=False))
+            else:
+                out.append(ValSpec.from_uservalue(leaf))
 
-        return TreeSpec(tree, tuple(handle_leaf(l) for l in leaves))
+        return TreeSpec(tree, out)
 
     @staticmethod
-    def primitive[T1: VarT](typ: type[T1]) -> TreeSpec[UserValue[T1]]:
-        return TreeSpec(optree.treespec.leaf(), (typ,))
+    def primitive[T1: VarT](typ: type[T1], mutable: bool = False) -> TreeSpec[UserValue[T1]]:
+        assert issubclass(typ, VarT)
+        return TreeSpec(optree.treespec.leaf(), [ValSpec(type=typ, mutable=mutable)])
 
     @staticmethod
     def flatten[T1](val: T1) -> tuple[list[UserValue], TreeSpec[T1]]:
         leaves, tree = pytree.flatten(cast_unchecked(val))
-        return leaves, TreeSpec(tree, tuple(_get_type(x) for x in leaves))
+        return leaves, TreeSpec(tree, [ValSpec.from_uservalue(x) for x in leaves])
 
-    def can_cast_implicit_many_or_err(self, other: TreeSpec[T]) -> None:
-        if not can_cast_implicit_many(self.types, other.types):
+    def can_cast_to(self, other: TreeSpec[T]) -> bool:
+        if self.tree != other.tree:
+            return False
+        for x, y in zip(self.leaves, other.leaves):
+            if not x.can_cast_to(y):
+                return False
+        return True
+
+    def can_cast_to_or_error(self, other: TreeSpec[T]) -> None:
+        if not self.can_cast_to(other):
             raise TypeError(f"not possible to use {self} as {other}")
 
     def flatten_up_to(self, val: T) -> list[UserValue]:
         leaves, tree = TreeSpec.flatten(val)
-        tree.can_cast_implicit_many_or_err(self)
+        tree.can_cast_to_or_error(self)
         return leaves
 
     def unflatten_unchecked(self, leaves: Iterable[Any], /) -> T:
         return cast_unchecked(self.tree.unflatten(leaves))
 
-    def unflatten(self, leaves_: Iterable[UserValue], /) -> T:
-        leaves = list(leaves_)
-        can_cast_implicit_many_or_err(self.types, tuple(_get_type(x) for x in leaves))
-        return self.unflatten_unchecked(leaves)
+    def unflatten(self, leaves: Iterable[UserValue], /) -> T:
+        ans = self.unflatten_unchecked(leaves)
+        _, spec = TreeSpec.flatten(ans)
+        spec.can_cast_to_or_error(self)
+        return ans
 
     def _unflatten_vals_ro(self, leaves: Iterable[Value], /) -> T:
-        return self.unflatten([Variable._from_val_ro(x, typ) for x, typ in zip(leaves, self.types)])
+        return self.unflatten(
+            [Variable._from_val_ro(x, spec.type) for x, spec in zip(leaves, self.leaves)]
+        )
 
     def __repr__(self) -> str:
-        return repr(self.tree.unflatten(ReprAs(x.__name__) for x in self.types))
+        return repr(self.as_schema())
 
     def __len__(self) -> int:
-        return len(self.types)
+        return len(self.leaves)
 
     def promote_types(self, other: TreeSpec[T]) -> TreeSpec[T]:
         if self.tree != other.tree:
             raise TypeError(f"incompatible types: {self} and {other}")
-        out_types = tuple(promote_types(t1, t2) for t1, t2 in zip(self.types, other.types))
+        out_types = [ValSpec.promote(t1, t2) for t1, t2 in zip(self.leaves, other.leaves)]
         return TreeSpec(self.tree, out_types)
 
     @staticmethod
@@ -121,11 +178,11 @@ class TreeSpec[T = Any]:
         return x
 
     def static_project[R](self, field: Callable[[T], R], /) -> R:
-        proxy = self.unflatten_unchecked(None for _ in self.types)
+        proxy = self.unflatten_unchecked(None for _ in self.leaves)
         return field(proxy)
 
     def project[R](self, field: Callable[[T], R], /) -> tuple[list[int], TreeSpec[R]]:
-        proxy = self.unflatten_unchecked(_OffsetProxy(i, typ) for i, typ in enumerate(self.types))
+        proxy = self.unflatten_unchecked(_OffsetProxy(i, typ) for i, typ in enumerate(self.leaves))
         res = field(proxy)
 
         leaves, out_tree = pytree.flatten(cast_unchecked(res))
@@ -134,7 +191,7 @@ class TreeSpec[T = Any]:
                 raise TypeError(type(l), l)  # pyright: ignore[reportUnknownArgumentType]
         leaves = cast(list[_OffsetProxy], leaves)
 
-        return [x.offset for x in leaves], TreeSpec(out_tree, tuple(x.typ for x in leaves))
+        return [x.offset for x in leaves], TreeSpec(out_tree, [x.spec for x in leaves])
 
     def offset_of[R](self, field: Callable[[T], R], /) -> tuple[int, TreeSpec[R]]:
         idxs, subtree = self.project(field)

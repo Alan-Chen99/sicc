@@ -61,8 +61,10 @@ from ._iterator import range_ as range_
 from ._iterator import shared_generator as shared_generator
 
 # subroutines
+from ._subr import Arg as Arg
 from ._subr import ArgSpec as ArgSpec
 from ._subr import FunctionRet as FunctionRet
+from ._subr import Mutable as Mutable
 from ._subr import Return as Return
 from ._subr import inline_subr as inline_subr
 from ._subr import return_ as return_

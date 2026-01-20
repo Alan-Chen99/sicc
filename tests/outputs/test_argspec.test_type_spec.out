@@ -1,0 +1,10 @@
+move r0 1
+move r1 1
+move ra 4
+j ra
+# call1 (r0, r1)
+move r0 2.2
+move r1 2.2
+jal 3
+# call2 (r0, r1)
+# 9 lines total (not including this line)
