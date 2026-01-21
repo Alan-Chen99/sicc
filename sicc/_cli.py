@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Annotated
 from typing import Any
 from typing import Callable
+from typing import Iterable
 from typing import Never
 from typing import TypedDict
 from typing import Unpack
+from typing import cast
 from typing import overload
 
 import cappa
@@ -28,6 +30,7 @@ from ._diagnostic import show_pending_diagnostics
 from ._subr import FunctionRet
 from ._subr import inline_subr
 from ._tracing import trace_program
+from ._transpile import Transpiled
 from ._utils import load_module_from_file
 from .config import Config
 from .config import console_setup
@@ -43,6 +46,9 @@ class Program:
     fn: Callable[[], FunctionRet[None]]
     loop: bool = False
     header: str | None = None
+
+    def __post_init__(self) -> None:
+        self.__wrapped__ = self.fn
 
     def trace(self) -> TracedProgram:
         fn_ = inline_subr(self.fn)
@@ -124,7 +130,7 @@ class Cli:
     """program name, if there are multiple"""
 
     config: Annotated[Destructured[Config], Arg(hidden=True)] = field(default_factory=Config)
-    cmd: cappa.Subcommands[Asm | Trace | Ir | Optimize | None] = None
+    cmd: cappa.Subcommands[Asm | Trace | Ir | Optimize | Transpile | None] = None
 
     def call(self) -> Never:
         if self.cmd is None:
@@ -136,13 +142,23 @@ class Cli:
         mod = load_module_from_file(self.file, self.file.stem)
 
         def _get_program(x: Any) -> Program | None:
-            if isinstance(x, Program):
-                return x
-            if x_ := getattr(x, "_program", None):
-                return _get_program(x_)
+            for obj in _iter_wrapped(x):
+                if isinstance(obj, Program):
+                    return obj
+            return None
+
+        def _get_transpiled(x: Any) -> Transpiled[Any, Any] | None:
+            for obj in _iter_wrapped(x):
+                if isinstance(obj, Transpiled):
+                    return cast(Transpiled[Any, Any], obj)
             return None
 
         programs = {k: p for k, v in mod.__dict__.items() if (p := _get_program(v))}
+        transpiled = {k: t for k, v in mod.__dict__.items() if (t := _get_transpiled(v))}
+
+        if isinstance(self.cmd, Transpile):
+            self.cmd.call(transpiled, self.config)
+            exit(0)
 
         if self.name is None and len(programs) == 1:
             (prog,) = programs.values()
@@ -158,6 +174,14 @@ class Cli:
             exit(e.code)
 
         exit(0)
+
+
+def _iter_wrapped(obj: Any) -> Iterable[Any]:
+    seen: set[int] = set()
+    while obj is not None and id(obj) not in seen:
+        yield obj
+        seen.add(id(obj))
+        obj = getattr(obj, "__wrapped__", None)
 
 
 @dataclass
@@ -227,6 +251,20 @@ class Asm:
 
         if config.raw_output:
             config.raw_output.write_text(out_text.plain)
+
+
+@dataclass
+class Transpile:
+    """print transpiled source for @transpile functions"""
+
+    def call(self, transpiled: dict[str, Transpiled[Any, Any]], config: Config) -> None:
+        if not transpiled:
+            print("no transpiled functions found")
+            exit(2)
+
+        for name, fn in transpiled.items():
+            print(Rule(title=Text(f"Transpiled: {name}", "ic10.title")))
+            print(fn.pretty())
 
 
 def main():

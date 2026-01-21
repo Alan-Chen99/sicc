@@ -1,0 +1,15 @@
+move r0 0
+move r1 0
+move ra 5
+add r1 r0 r1
+j ra
+# v0: r1
+add r0 r0 1
+move r1 1
+jal 3
+# v1: r1
+add r0 r0 2
+move r1 2
+jal 3
+# v2: r1
+# 14 lines total (not including this line)

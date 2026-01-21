@@ -7,6 +7,10 @@ from . import functions as functions
 # high level
 from ._cli import Program as Program
 from ._cli import program as program
+from ._transpile import TranspileError as TranspileError
+from ._transpile import TranspileNotImplementedError as TranspileNotImplementedError
+from ._transpile import TranspileReservedPrefixError as TranspileReservedPrefixError
+from ._transpile import transpile as transpile
 from .config import print_ as print_
 
 # types

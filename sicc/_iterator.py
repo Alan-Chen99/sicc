@@ -37,6 +37,28 @@ from ._utils import CallDescMixin
 from ._utils import get_id
 
 
+def patch_for_loop[E](it: Iterable[E]) -> Iterator[E]:
+    """
+    conintue_() and break_() in `for x in patch_for_loop(it): ...` work correctly
+    """
+
+    id = get_id()
+
+    for_end = mk_internal_label("for_end", id)
+
+    for idx, item in enumerate(it):
+        for_cont = mk_internal_label(f"for_cont({idx})", id)
+        with (
+            CONTINUE_TO.bind(for_cont),
+            BREAK_TO.bind(for_end),
+            ELSE_HOOK.bind_clear(),
+        ):
+            yield item
+
+
+################################################################################
+
+
 def runtime_loop[E](it: Iterable[E]) -> Iterator[E]:
     id = get_id()
     it_yield = mk_internal_label("it_yield", id)

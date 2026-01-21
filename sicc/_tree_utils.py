@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import types
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import Iterable
+from typing import Literal
 from typing import Mapping
 from typing import Sequence
 from typing import cast
@@ -42,6 +44,83 @@ else:
     field = dataclasses.field
 
 type PyTree[T] = T | Sequence[PyTree[T]] | Mapping[Any, PyTree[T]] | optree.PyTree[T]
+
+type _BoundMethodCtx = (
+    tuple[Literal["unbound"], Any]
+    | tuple[Literal["func"], Any, Any]
+    | tuple[Literal["name"], str, Any]
+    | tuple[Literal["obj"], Any]
+)
+
+
+def _flatten_bound_method(obj: Any) -> tuple[tuple[Any, ...], _BoundMethodCtx]:
+    self_obj = getattr(obj, "__self__", None)
+    if self_obj is None:
+        return (), ("unbound", obj)
+
+    func = getattr(obj, "__func__", None)
+    if func is not None:
+        # `types.MethodType`: can be reconstructed via `types.MethodType(func, self_obj)`.
+        return (self_obj,), ("func", func, obj)
+
+    name = getattr(obj, "__name__", None)
+    if isinstance(name, str):
+        # `types.BuiltinMethodType` / `types.MethodWrapperType`: try `getattr(self_obj, name)`.
+        return (self_obj,), ("name", name, obj)
+
+    return (self_obj,), ("obj", obj)
+
+
+def _unflatten_bound_method(ctx: _BoundMethodCtx, children: tuple[Any, ...]) -> Any:
+    if len(children) == 0:
+        return ctx[1] if ctx[0] == "unbound" else ctx[-1]
+
+    if len(children) != 1:
+        return ctx[1] if ctx[0] == "unbound" else ctx[-1]
+
+    (self_obj,) = children
+
+    if ctx[0] == "func":
+        func = ctx[1]
+        fallback = ctx[2]
+        try:
+            return types.MethodType(func, self_obj)
+        except TypeError:
+            get = getattr(func, "__get__", None)
+            if get is not None:
+                try:
+                    return get(self_obj, type(self_obj))
+                except Exception:
+                    pass
+            return fallback
+
+    if ctx[0] == "name":
+        name = ctx[1]
+        fallback = ctx[2]
+        try:
+            return getattr(self_obj, name)
+        except Exception:
+            return fallback
+
+    return ctx[1] if ctx[0] in ("obj", "unbound") else ctx[-1]
+
+
+def _register_bound_method_nodes() -> None:
+    # Register Python's bound method objects as pytrees, so call-wrapping can treat
+    # the bound `self` as part of the input tree for alias / mutation checks.
+    #
+    # This registration is namespaced to this module via `pytree = reexport(...)`.
+    for cls in (types.MethodType, types.BuiltinMethodType, types.MethodWrapperType):
+        try:
+            cast(Any, pytree).register_node(
+                cls, _flatten_bound_method, _unflatten_bound_method, namespace=__name__
+            )
+        except ValueError:
+            # Already registered for this namespace.
+            pass
+
+
+_register_bound_method_nodes()
 
 
 def tree_flatten[T](tree: PyTree[T]) -> tuple[list[T], pytree.PyTreeSpec]:

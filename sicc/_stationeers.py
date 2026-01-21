@@ -358,6 +358,12 @@ class DeviceBase(Generic[DT_co, N_co]):
         __getattr__ = _getattr
         __setattr__ = _setattr
 
+    def __transpile_setattr__(self, name: str, val: UserValue) -> None:
+        setattr(self, name, val)
+
+    def __transpile_setitem__(self, logic_type: ValLogicTypeLike, val: UserValue) -> None:
+        self[logic_type] = val
+
     def tree_flatten(self) -> Any:
         return (self.device_type, self.name), (self.default_batchmode,), None
 

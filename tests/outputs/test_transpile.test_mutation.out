@@ -1,0 +1,15 @@
+sb 336213101 On 1
+sb 336213101 On 1
+# box.x: 5
+lb r0 336213101 ExportCount 0
+# arr1: [0, r0, 2]
+# a, b, c: 0 r0 2
+put db 0 0
+put db 1 0
+put db 2 0
+put db 1 7
+get r0 db 1
+# arr2: r0
+# y: -9999
+# x: (0, [0, 1, 2])
+# 14 lines total (not including this line)

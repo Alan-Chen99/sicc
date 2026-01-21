@@ -261,6 +261,9 @@ class Pointer[T = Any]:
     def __setitem__(self, idx: Int, val: Any, /) -> None:
         self._getitem_impl(idx).write(val)
 
+    def __transpile_setitem__(self: Any, idx: Int, val: Any, /) -> None:
+        self[idx] = val
+
     @inline_generator
     def iter_mut[E](self: Pointer[list[E]]) -> Generator[Pointer[E]]:
         elem_tree, length = self._check_list()

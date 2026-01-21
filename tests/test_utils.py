@@ -43,5 +43,7 @@ def wrap_test(prog: Program) -> Callable[[], None]:
     def inner():
         run_one_test(prog)
 
-    inner._program = prog  # pyright: ignore[reportFunctionMemberAccess]
+    # _cli.py reads this
+    inner.__wrapped__ = prog  # pyright: ignore[reportFunctionMemberAccess]
+
     return inner

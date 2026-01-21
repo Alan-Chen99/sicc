@@ -1,0 +1,6 @@
+lb r1 336213101 ImportCount 0
+lb r0 336213101 ExportCount 0
+add r1 r1 1
+add r0 r0 1
+# x: Data(x=r1, y=r0)
+# 5 lines total (not including this line)

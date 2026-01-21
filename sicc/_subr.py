@@ -271,6 +271,9 @@ def _normalize_arg(val: Any, mutable: bool) -> PyTree[_SubtreeSpec]:
     # Try to flatten as pytree - if it has children, process recursively
     # Use none_is_leaf=True to treat None as leaves
     leaves, tree = optree.tree_flatten(val, none_is_leaf=True, namespace="sicc._tree_utils")
+    if len(leaves) == 1 and leaves[0] is val:
+        # A non-pytree leaf (e.g. an int) would recurse forever; treat as runtime-resolved.
+        return _SubtreeSpec(_type=None, _mutable=mutable)
     if len(leaves) == 0:
         # Scalar or empty - treat as runtime resolved
         return _SubtreeSpec(_type=None, _mutable=mutable)
@@ -319,6 +322,9 @@ def _annotation_to_arg(annotation: Any) -> Arg:
                     arg_type = metadata.type
                 if metadata.mutable:
                     arg_mutable = True
+            elif arg_type is None:
+                # Allow pytree-shaped metadata (e.g. dataclass schemas containing `Arg` leaves).
+                arg_type = metadata
 
         # Get the actual type from annotation (including Variable extraction)
         inner_arg = _annotation_to_arg(base_type)
