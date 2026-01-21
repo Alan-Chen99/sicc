@@ -475,11 +475,15 @@ class MulF(AsmInstrBase):
     in_types = (float, float)
     out_types = (float,)
 
+    consteval_fn = operator.mul
+
 
 class MulI(AsmInstrBase):
     opcode = "mul"
     in_types = (int, int)
     out_types = (int,)
+
+    consteval_fn = operator.mul
 
 
 class DivF(AsmInstrBase):
@@ -487,11 +491,15 @@ class DivF(AsmInstrBase):
     in_types = (float, float)
     out_types = (float,)
 
+    consteval_fn = operator.truediv
+
 
 class Mod(AsmInstrBase):
     opcode = "mod"
     in_types = (int, int)
     out_types = (int,)
+
+    consteval_fn = operator.mod
 
 
 class OrB(AsmInstrBase):
@@ -499,11 +507,15 @@ class OrB(AsmInstrBase):
     in_types = (bool, bool)
     out_types = (bool,)
 
+    consteval_fn = operator.or_
+
 
 class OrI(AsmInstrBase):
     opcode = "or"
     in_types = (int, int)
     out_types = (int,)
+
+    consteval_fn = operator.or_
 
 
 class AndB(AsmInstrBase):
@@ -511,11 +523,15 @@ class AndB(AsmInstrBase):
     in_types = (bool, bool)
     out_types = (bool,)
 
+    consteval_fn = operator.and_
+
 
 class AndI(AsmInstrBase):
     opcode = "and"
     in_types = (int, int)
     out_types = (int,)
+
+    consteval_fn = operator.and_
 
 
 class XORB(AsmInstrBase):
@@ -523,11 +539,15 @@ class XORB(AsmInstrBase):
     in_types = (bool, bool)
     out_types = (bool,)
 
+    consteval_fn = operator.xor
+
 
 class XORI(AsmInstrBase):
     opcode = "xor"
     in_types = (int, int)
     out_types = (int,)
+
+    consteval_fn = operator.xor
 
 
 class RShiftUnsigned(AsmInstrBase):
@@ -541,19 +561,27 @@ class RShiftSigned(AsmInstrBase):
     in_types = (int, int)
     out_types = (int,)
 
+    consteval_fn = operator.rshift
+
 
 class LShift(AsmInstrBase):
     opcode = "sll"
     in_types = (int, int)
     out_types = (int,)
 
+    consteval_fn = operator.lshift
+
 
 class Min[T: VarT](AsmInstrBinopSameType[T]):
     opcode = "min"
 
+    consteval_fn = min
+
 
 class Max[T: VarT](AsmInstrBinopSameType[T]):
     opcode = "max"
+
+    consteval_fn = max
 
 
 ################################################################################
