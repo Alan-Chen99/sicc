@@ -156,7 +156,7 @@ def trace_to_subr[A, R](
             for v in arg_variables:
                 v._inner.write(v._inner.read())
 
-        arg_obj = arg_tree.unflatten(arg_variables)
+        arg_obj = arg_tree.unflatten(arg_variables, check_mut=True)
         ret_obj = inline_subr(fn)(arg_obj)
         out_values, ret_tree.value = TreeSpec.flatten(ret_obj)
         ret_tree.value = TreeSpec(
@@ -200,7 +200,7 @@ class TracedSubr[A, R]:
         self.raw_subr.record_call()
 
         # set args
-        values = self.arg_tree.flatten_up_to(arg)
+        values = self.arg_tree.flatten_up_to(arg, check_mut=True)
         for mv, v, spec in zip(self.arg_mvars, values, self.arg_tree.leaves):
             mv.write(read_uservalue(v))
             if spec.mutable:
@@ -215,7 +215,7 @@ class TracedSubr[A, R]:
         label(l)
 
         # return vars
-        ret_obj = self.ret_tree.unflatten(Variable._from_val_ro(x.read()) for x in self.ret_mvars)
+        ret_obj = self.ret_tree._unflatten_vals_ro(x.read() for x in self.ret_mvars)
 
         # writing back mutable args
         for mv, v, spec in zip(self.arg_mvars, values, self.arg_tree.leaves):

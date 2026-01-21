@@ -10,7 +10,6 @@ from typing import overload
 
 from ._api import Bool
 from ._api import UserValue
-from ._api import Variable
 from ._api import VarRead
 from ._api import jump
 from ._api import read_uservalue
@@ -136,7 +135,7 @@ def block_impl[T](_ret_typ: type[BlockRef[T] | T] | None = None) -> Iterator[Blo
     finally:
         label(end)
 
-    block_ref._out_value = out_tree.unflatten(Variable(x.type, _mvar=x) for x in out_mvars)
+    block_ref._out_value = out_tree._unflatten_mvars(out_mvars)
 
 
 ################################################################################

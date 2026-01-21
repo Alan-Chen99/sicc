@@ -7,7 +7,6 @@ from typing import Callable
 import rich.repr
 from rich.pretty import pretty_repr
 
-from ._api import Variable
 from ._api import read_uservalue
 from ._core import MVar
 from ._core import Scope
@@ -16,6 +15,7 @@ from ._diagnostic import track_caller
 from ._tracing import SCOPE_STACK
 from ._tracing import mk_mvar
 from ._tree_utils import TreeSpec
+from ._tree_utils import ValSpec
 from ._utils import Empty
 from ._utils import empty
 
@@ -69,10 +69,13 @@ class State[T = Any]:
         if self._tree is None:
             _leaves, tree = TreeSpec.flatten(v)
             assert self._vars is None
-            self._tree = tree
+            # lazy creation -> all leaves mutable
+            self._tree = TreeSpec(
+                tree.tree, [ValSpec(type=l.type, mutable=True) for l in tree.leaves]
+            )
             self._vars = [mk_mvar(t) for t in tree.types]
 
-        leaves = self._tree.flatten_up_to(v)
+        leaves = self._tree.flatten_up_to(v, check_mut=False)
         vars = [read_uservalue(x) for x in leaves]
 
         assert self._vars is not None
@@ -92,7 +95,7 @@ class State[T = Any]:
         assert self._tree is not None
         assert self._vars is not None
 
-        return self._tree.unflatten(Variable(x.type, _mvar=x) for x in self._vars)
+        return self._tree._unflatten_mvars(self._vars)
 
     def project[R](self, field: Callable[[T], R], /) -> State[R]:
         assert self._tree is not None

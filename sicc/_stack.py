@@ -111,7 +111,7 @@ class Pointer[T = Any]:
     def write(self, v: T | Any, /) -> None:
         pin = read_uservalue(self._device._pin())
         addr = read_uservalue(self._addr)
-        v_flat = [read_uservalue(x) for x in self._tree.flatten_up_to(v)]
+        v_flat = [read_uservalue(x) for x in self._tree.flatten_up_to(v, check_mut=False)]
 
         with must_use():
             instrs: list[BoundInstr[WriteStack]] = []
@@ -127,7 +127,7 @@ class Pointer[T = Any]:
         assert isinstance(self._addr, Variable) and not self._addr._read_only
 
         addr = read_uservalue(self._addr)
-        v_flat = [read_uservalue(x) for x in self._tree.flatten_up_to(v)]
+        v_flat = [read_uservalue(x) for x in self._tree.flatten_up_to(v, check_mut=False)]
 
         sp_cur = _mk_sp_var()
         SplitLifetime(int).bind((sp_cur,), addr).emit()
@@ -163,7 +163,7 @@ class Pointer[T = Any]:
             sp_cur = sp_next
 
         self._addr._inner.write(SplitLifetime(int).call(sp_cur))
-        return self._tree.unflatten([Variable._from_val_ro(x) for x in ans_vars])
+        return self._tree._unflatten_vals_ro(ans_vars)
 
     def _check_list[E](self: Pointer[list[E]]) -> tuple[TreeSpec[E], int]:
         schema = self._tree.as_schema()
@@ -347,7 +347,7 @@ def stack_var[T](init_or_typ: T | Any, /, device: Pin | None = None) -> Pointer[
     if all(isinstance(l, type) for l in leaves):
         return ans
     leaves = [undef(l) if isinstance(l, type) else l for l in leaves]
-    ans.write(tree.unflatten(leaves))
+    ans.write(tree.unflatten(leaves, check_mut=False))
     return ans
 
 

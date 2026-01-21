@@ -18,6 +18,7 @@ from ._api import UserValue
 from ._api import Variable
 from ._api import VarRead
 from ._api import read_uservalue
+from ._core import MVar
 from ._core import Value
 from ._core import VarT
 from ._core import VarTS
@@ -67,10 +68,10 @@ class ValSpec[T: VarT = VarT]:
             )
         return ValSpec(type=v._get_type(), mutable=isinstance(v, Variable) and not v._read_only)
 
-    def can_cast_to(self, other: ValSpec[T]) -> bool:
+    def can_cast_to(self, other: ValSpec[T], /, *, check_mut: bool) -> bool:
         if not can_cast_implicit(self.type, other.type):
             return False
-        if not self.mutable and other.mutable:
+        if check_mut and not self.mutable and other.mutable:
             return False
         return True
 
@@ -127,35 +128,46 @@ class TreeSpec[T = Any]:
         leaves, tree = pytree.flatten(cast_unchecked(val))
         return leaves, TreeSpec(tree, [ValSpec.from_uservalue(x) for x in leaves])
 
-    def can_cast_to(self, other: TreeSpec[T]) -> bool:
+    def can_cast_to(self, other: TreeSpec[T], /, *, check_mut: bool) -> bool:
         if self.tree != other.tree:
             return False
         for x, y in zip(self.leaves, other.leaves):
-            if not x.can_cast_to(y):
+            if not x.can_cast_to(y, check_mut=check_mut):
                 return False
         return True
 
-    def can_cast_to_or_error(self, other: TreeSpec[T]) -> None:
-        if not self.can_cast_to(other):
+    def can_cast_to_or_error(self, other: TreeSpec[T], /, *, check_mut: bool) -> None:
+        if not self.can_cast_to(other, check_mut=check_mut):
             raise TypeError(f"not possible to use {self} as {other}")
 
-    def flatten_up_to(self, val: T) -> list[UserValue]:
+    def flatten_up_to(self, val: T, /, *, check_mut: bool) -> list[UserValue]:
+        """flatten val and check that val can be cast to self wrt types, but allows all mutability"""
         leaves, tree = TreeSpec.flatten(val)
-        tree.can_cast_to_or_error(self)
+        tree.can_cast_to_or_error(self, check_mut=check_mut)
         return leaves
 
     def unflatten_unchecked(self, leaves: Iterable[Any], /) -> T:
         return cast_unchecked(self.tree.unflatten(leaves))
 
-    def unflatten(self, leaves: Iterable[UserValue], /) -> T:
+    def unflatten(self, leaves: Iterable[UserValue], /, *, check_mut: bool) -> T:
         ans = self.unflatten_unchecked(leaves)
         _, spec = TreeSpec.flatten(ans)
-        spec.can_cast_to_or_error(self)
+        spec.can_cast_to_or_error(self, check_mut=check_mut)
         return ans
 
     def _unflatten_vals_ro(self, leaves: Iterable[Value], /) -> T:
         return self.unflatten(
-            [Variable._from_val_ro(x, spec.type) for x, spec in zip(leaves, self.leaves)]
+            [Variable._from_val_ro(x, spec.type) for x, spec in zip(leaves, self.leaves)],
+            check_mut=False,
+        )
+
+    def _unflatten_mvars(self, leaves: Iterable[MVar], /) -> T:
+        return self.unflatten(
+            [
+                Variable(spec.type, _mvar=mv, _read_only=not spec.mutable)
+                for mv, spec in zip(leaves, self.leaves)
+            ],
+            check_mut=True,
         )
 
     def __repr__(self) -> str:
