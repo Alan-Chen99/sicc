@@ -1,26 +1,18 @@
 from __future__ import annotations
 
-# pyright: reportUnusedFunction=false, reportUnusedImport=false
-
-import abc
 import ast
 import inspect
-import types
-from abc import abstractmethod
 from collections.abc import Awaitable
 from collections.abc import Callable
-from collections.abc import Iterable
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
 from typing import Generator
-from typing import Never
 from typing import cast
 from typing import overload
 
-import optree
 from rich.console import RenderableType
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -29,7 +21,6 @@ from rich.text import Text
 from ._api import Bool
 from ._api import Variable
 from ._api import not_
-from ._api import read_uservalue
 from ._api import undef
 from ._control_flow import break_
 from ._control_flow import cond
@@ -39,26 +30,22 @@ from ._control_flow import if_
 from ._control_flow import while_
 from ._coroutine import static_coroutine
 from ._diagnostic import register_exclusion
-from ._iterator import runtime_loop
+from ._iterator import patch_for_loop
 from ._iterator import shared_generator
 from ._state import State
 from ._subr import return_
 from ._subr import subr
-from ._tracing import mk_internal_label
 from ._transpile_utils import FunctionDefNode
 from ._transpile_utils import resolve_function_scope
 from ._transpile_utils import resolve_scope_shadowed_names
 from ._transpile_utils import transpile_runtime
 from ._tree_utils import PyTree
 from ._tree_utils import TreeSpec
-from ._tree_utils import ValSpec
-from ._tree_utils import pytree
 from ._tree_utils import tree_flatten
 from ._utils import CallDescMixin
 from ._utils import Cell
 from ._utils import Empty
 from ._utils import empty
-from ._utils import get_id
 
 register_exclusion(__file__)
 
@@ -209,15 +196,11 @@ def _call(fn: Any, /, *args: Any, **kwargs: Any) -> Any:
 
 def _and(x: Bool, rhs: Callable[[], Bool]) -> Bool:
     """Short-circuiting boolean AND that matches Python's evaluation rules."""
-    if isinstance(x, bool):
-        return rhs() if x else x
     return cond(x, rhs, x)
 
 
 def _or(x: Bool, rhs: Callable[[], Bool]) -> Bool:
     """Short-circuiting boolean OR that matches Python's evaluation rules."""
-    if isinstance(x, bool):
-        return x if x else rhs()
     return cond(x, x, rhs)
 
 
@@ -237,14 +220,20 @@ def _embed_object(obj: Any) -> ast.expr:
 
     assert parts[0] == "sicc"
 
-    expr = ast.Name(id=_PREFIX, ctx=ast.Load())
+    expr = ast.Name(id=_SICC_IMPORT, ctx=ast.Load())
     for attr in parts[1:]:
         expr = ast.Attribute(value=expr, attr=attr, ctx=ast.Load())
 
     return expr
 
 
-def _embed_call[**P](fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> ast.Call:
+@overload
+def _embed_call[**P](fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> ast.Call: ...
+@overload
+def _embed_call[**P](fn: Callable[P, Any], *args: ast.expr) -> ast.Call: ...
+
+
+def _embed_call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> ast.Call:
     def _as_ast(val: Any) -> ast.expr:
         if isinstance(val, ast.AST):
             assert isinstance(val, ast.expr)
@@ -320,6 +309,8 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
             return self._generic_visit_sametype(node)
 
     #####
+    # local variables
+    #####
 
     def visit_Name(self, node: ast.Name) -> ast.AST:
         if node.id not in self._locals.value:
@@ -334,7 +325,7 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
         if not isinstance(node.ctx, (ast.Store, ast.Del)):
             return node
 
-        place = _embed_call(_attr, node.value, cast(Any, ast.Constant(value=node.attr)))
+        place = _embed_call(_attr, node.value, ast.Constant(value=node.attr))
         expr = ast.Attribute(value=place, attr="value", ctx=node.ctx)
         return ast.copy_location(expr, node)
 
@@ -349,6 +340,10 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
         expr = ast.Attribute(value=place, attr="value", ctx=node.ctx)
         return ast.copy_location(expr, node)
 
+    #####
+    # call
+    #####
+
     def visit_Call(self, node: ast.Call) -> ast.AST:
         node = self._generic_visit_sametype(node)
 
@@ -356,6 +351,142 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
             func=_embed_object(_call), args=[node.func, *node.args], keywords=node.keywords
         )
         return ast.copy_location(expr, node)
+
+    #####
+    # Control flow transformations
+    #####
+
+    def visit_If(self, node: ast.If) -> ast.AST:
+        """Transform `if x: ... else: ...` -> `with if_(x): body; with else_(): orelse`
+
+        The else_() must be called from within the if_() context manager.
+        """
+
+        node = self._generic_visit_sametype(node)
+
+        if_body = node.body
+
+        if node.orelse:
+            # Regular else block: with else_(): <else body>
+            else_with = ast.With(
+                items=[ast.withitem(context_expr=_embed_call(else_))],
+                body=node.orelse,
+            )
+            if_body.append(else_with)
+
+        # Create: with if_(test): <if_body including else>
+        if_with = ast.With(
+            items=[ast.withitem(context_expr=_embed_call(if_, node.test))],
+            body=if_body,
+        )
+
+        return ast.copy_location(if_with, node)
+
+    def visit_While(self, node: ast.While) -> ast.AST:
+        """Transform `while x:` -> `with while_(lambda: x):`"""
+        # Visit the test expression (don't visit yet - it goes in lambda)
+        # We need to visit the body first, then wrap test in lambda
+
+        node = self._generic_visit_sametype(node)
+
+        test_lambda = ast.Lambda(args=ast.arguments(), body=node.test)
+
+        # Create: with while_(lambda: test):
+        while_with = ast.With(
+            items=[
+                ast.withitem(context_expr=_embed_call(while_, test_lambda)),
+            ],
+            body=node.body,
+        )
+
+        if node.orelse:
+            raise _TranspileErrorWrapped(node, TranspileNotImplementedError, "while/else")
+
+        return ast.copy_location(while_with, node)
+
+    def visit_For(self, node: ast.For) -> ast.AST:
+        """Transform `for x in y:` -> `for x in patch_for_loop(y):`"""
+        if node.orelse:
+            raise _TranspileErrorWrapped(node, TranspileNotImplementedError, "for/else")
+
+        node = self._generic_visit_sametype(node)
+
+        new_for = ast.For(
+            target=node.target,
+            iter=_embed_call(patch_for_loop, node.iter),
+            body=node.body,
+            orelse=[],
+        )
+        return ast.copy_location(new_for, node)
+
+    def visit_Break(self, node: ast.Break) -> ast.AST:
+        """Transform `break` -> `break_()`"""
+        expr = ast.Expr(value=_embed_call(break_))
+        return ast.copy_location(expr, node)
+
+    def visit_Continue(self, node: ast.Continue) -> ast.AST:
+        """Transform `continue` -> `continue_()`"""
+        expr = ast.Expr(value=_embed_call(continue_))
+        return ast.copy_location(expr, node)
+
+    def visit_Return(self, node: ast.Return) -> ast.AST:
+        """Transform `return x` -> `return_(x)`"""
+        node = self._generic_visit_sametype(node)
+
+        if node.value is not None:
+            expr = ast.Expr(value=_embed_call(return_, node.value))
+        else:
+            expr = ast.Expr(value=_embed_call(return_))
+        return ast.copy_location(expr, node)
+
+    #####
+    # Expression transformations
+    #####
+
+    def visit_IfExp(self, node: ast.IfExp) -> ast.AST:
+        """Transform `x if y else z` -> `cond(y, lambda: x, lambda: z)`"""
+        # Visit the test
+        node = self._generic_visit_sametype(node)
+
+        # Create lambdas for body and orelse
+        body_lambda = ast.Lambda(args=ast.arguments(), body=node.body)
+        orelse_lambda = ast.Lambda(args=ast.arguments(), body=node.orelse)
+
+        expr = _embed_call(cond, node.test, body_lambda, orelse_lambda)
+        return ast.copy_location(expr, node)
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> ast.AST:
+        """Transform `not x` -> `_not(x)`"""
+        node = self._generic_visit_sametype(node)
+
+        if isinstance(node.op, ast.Not):
+            expr = _embed_call(_not, node.operand)
+            return ast.copy_location(expr, node)
+
+        return node
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
+        """Transform `x and y` -> `_and(x, lambda: y)` and `x or y` -> `_or(x, lambda: y)`"""
+        # BoolOp has a list of values for chained operators: a and b and c
+        # We need to reduce left-to-right: _and(_and(a, lambda: b), lambda: c)
+
+        node = self._generic_visit_sametype(node)
+
+        if isinstance(node.op, ast.And):
+            fn = _and
+        elif isinstance(node.op, ast.Or):
+            fn = _or
+        else:
+            return node
+
+        # Start with first value, then chain
+        result = node.values[0]
+        for val in node.values[1:]:
+            # Create lambda for right-hand side
+            rhs_lambda = ast.Lambda(args=ast.arguments(), body=val)
+            result = _embed_call(fn, result, rhs_lambda)
+
+        return ast.copy_location(result, node)
 
 
 def _assert_no_reserved_prefix(fn_node: FunctionDefNode) -> None:
@@ -414,7 +545,7 @@ def _transpile_ast_impl(fn_node: FunctionDefNode) -> FunctionDefNode:
     places = locals_ | params
 
     transformer = _TranspileBodyTransformer(places)
-    fn_node.body = [transformer._visit_sametype(x) for x in fn_node.body]
+    fn_node.body = [transformer.visit(x) for x in fn_node.body]
 
     init: list[ast.stmt] = [
         ast.Import(names=[ast.alias(name="sicc", asname=_SICC_IMPORT)]),

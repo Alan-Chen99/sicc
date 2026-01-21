@@ -1,0 +1,16 @@
+lb r0 336213101 ExportCount 0
+slt r1 100 r0
+ble r0 100 5
+sb 336213101 On 1
+lb r1 336213101 On 0
+blt r1 1 7
+# side effect and
+lb r0 336213101 ImportCount 0
+slt r1 100 r0
+blt 100 r0 12
+sb 336213101 On 1
+lb r1 336213101 On 0
+blt r1 1 14
+# side effect or
+# noop (jump here to exit)
+# 15 lines total (not including this line)

@@ -1,0 +1,30 @@
+lb r0 336213101 ExportCount 0
+blt 10 r0 3
+# not x is true
+slt r1 0 r0
+lb r2 336213101 ImportCount 0
+slt r2 0 r2
+move r3 r2
+blt 0 r0 9
+move r3 r1
+blt r3 1 11
+# both positive
+slt r3 100 r0
+blt 100 r0 14
+move r3 r2
+blt r3 1 16
+# at least one
+move r3 r2
+blt 0 r0 19
+move r3 r1
+lb r4 336213101 On 0
+ble 1 r3 22
+move r4 r3
+blt r4 1 24
+# chained and
+blt 0 r0 26
+move r2 r1
+ble 1 r2 28
+# not(and)
+# noop (jump here to exit)
+# 29 lines total (not including this line)

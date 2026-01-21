@@ -54,6 +54,9 @@ def patch_for_loop[E](it: Iterable[E]) -> Iterator[E]:
             ELSE_HOOK.bind_clear(),
         ):
             yield item
+        label(for_cont)
+
+    label(for_end)
 
 
 ################################################################################

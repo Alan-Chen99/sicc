@@ -1,0 +1,11 @@
+lb r0 336213101 ExportCount 0
+ble r0 10 4
+# true case
+j 5
+# false case
+lb r0 336213101 ImportCount 0
+move r1 1
+blt 0 r0 9
+move r1 2
+# ifexp: r1
+# 10 lines total (not including this line)

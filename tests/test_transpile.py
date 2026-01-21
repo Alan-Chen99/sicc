@@ -20,18 +20,6 @@ def test_transpile_error():
         _error()
 
 
-# @wrap_test
-# @program
-# @transpile
-# def test_if_ifexp():
-#     if d.ExportCount > 10:
-#         comment("true case")
-#     else:
-#         comment("false case")
-
-#     comment("ifexp:", 1 if d.ImportCount > 0 else 2)
-
-
 @wrap_test
 @program
 def test_transpile_in_func():
@@ -58,18 +46,101 @@ def later_function(x: Int) -> Int:
     return x + 1
 
 
-# @wrap_test
-# @program
-# @transpile
-# def test_for_break_continue():
-#     for i in range(5):
-#         if i == 2:
-#             continue
-#         comment("i:", i)
-#         if i == 3:
-#             break
+################################################################################
+# control flow and operators
 
-#     comment("done")
+
+@wrap_test
+@program
+@transpile
+def test_if_ifexp():
+    if d.ExportCount > 10:
+        comment("true case")
+    else:
+        comment("false case")
+
+    comment("ifexp:", 1 if d.ImportCount > 0 else 2)
+
+
+@wrap_test
+@program
+@transpile
+def test_for_break_continue():
+    for i in range(5):
+        if i == 2:
+            continue
+        comment("i:", i)
+        if i == 3:
+            break
+
+    comment("done")
+
+
+@wrap_test
+@program
+@transpile
+def test_bool_const():
+    for i in [True, False]:
+        for j in [True, False]:
+            comment(i, "and", j, "->", i and j)
+            comment(i, "or", j, "->", i or j)
+
+
+@wrap_test
+@program
+@transpile
+def test_bool_operators():
+    # Test not
+    x = d.ExportCount > 10
+    if not x:
+        comment("not x is true")
+
+    # Test and (short-circuit)
+    if d.ExportCount > 0 and d.ImportCount > 0:
+        comment("both positive")
+
+    # Test or (short-circuit)
+    if d.ExportCount > 100 or d.ImportCount > 0:
+        comment("at least one")
+
+    # Chained operators
+    if d.ExportCount > 0 and d.ImportCount > 0 and d.On:
+        comment("chained and")
+
+    if not (d.ExportCount > 0 and d.ImportCount > 0):
+        comment("not(and)")
+
+
+def _side_effect() -> Bool:
+    d.On = True
+    return d.On
+
+
+@wrap_test
+@program
+@transpile
+def test_bool_short_circuit():
+    if d.ExportCount > 100 and _side_effect():
+        comment("side effect and")
+
+    if d.ImportCount > 100 or _side_effect():
+        comment("side effect or")
+
+
+@wrap_test
+@program
+@transpile
+def test_while_loop():
+    i = 0
+    while i < 5:
+        comment("i:", i)
+        i += 1
+
+    comment("after while")
+
+
+################################################################################
+# mutation and locals
 
 
 @dataclass
@@ -106,9 +177,6 @@ def test_mutation():
     x = (0, [0, 1, 2])
     # x[1][1] += x[0]
     comment("x:", x)
-
-
-################################################################################
 
 
 @dataclass

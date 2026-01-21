@@ -4,7 +4,6 @@ import abc
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-from typing import Never
 from typing import Protocol
 from typing import Self
 from typing import Sequence
@@ -122,7 +121,9 @@ class VarRead[T: VarT](abc.ABC):
     def __check_co(self) -> VarRead[VarT]:  # pyright: ignore[reportUnusedFunction]
         return self
 
-    def __bool__(self) -> Never:
+    # def __bool__(self) -> Never:
+    # This should really return Never, but that raises too many false positives in @transpile
+    def __bool__(self) -> bool:
         err = TypeError("not possible to convert a runtime value to a compile-time bool.")
         err.add_note("use tilde operator '~' to invert a boolean")
         raise err
