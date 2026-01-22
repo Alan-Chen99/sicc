@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import ast
 import inspect
-from collections.abc import Awaitable
 from collections.abc import Callable
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
-from typing import Generator
 from typing import cast
 from typing import overload
 
@@ -326,7 +324,7 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
 
         assert isinstance(node.ctx, (ast.Load, ast.Store, ast.Del))
         expr = ast.Attribute(value=ast.Name(id=node.id, ctx=ast.Load()), attr="value", ctx=node.ctx)
-        return ast.copy_location(expr, node)
+        return expr  # no copy_location: have diagnostic show the containing statement
 
     def visit_Attribute(self, node: ast.Attribute) -> ast.AST:
         node = self._generic_visit_sametype(node)
@@ -335,7 +333,7 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
 
         place = _embed_call(_attr, node.value, ast.Constant(value=node.attr))
         expr = ast.Attribute(value=place, attr="value", ctx=node.ctx)
-        return ast.copy_location(expr, node)
+        return expr  # no copy_location: have diagnostic show the containing statement
 
     def visit_Subscript(self, node: ast.Subscript) -> ast.AST:
         node = self._generic_visit_sametype(node)
@@ -346,7 +344,7 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
             value=_embed_call(_subs, node.value), slice=node.slice, ctx=ast.Load()
         )
         expr = ast.Attribute(value=place, attr="value", ctx=node.ctx)
-        return ast.copy_location(expr, node)
+        return expr  # no copy_location: have diagnostic show the containing statement
 
     #####
     # call
@@ -383,8 +381,9 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
             if_body.append(else_with)
 
         # Create: with if_(test): <if_body including else>
+        if_call = ast.copy_location(_embed_call(if_, node.test), node.test)
         if_with = ast.With(
-            items=[ast.withitem(context_expr=_embed_call(if_, node.test))],
+            items=[ast.withitem(context_expr=if_call)],
             body=if_body,
         )
 
@@ -614,16 +613,6 @@ class Transpiled[**P, R](CallDescMixin):
             title=Text(f"Transpiled: {self.orig.__qualname__}", "ic10.title"),
             title_align="left",
         )
-
-
-@overload
-def transpile[**P, R](fn: Callable[P, Awaitable[R]]) -> Transpiled[P, Awaitable[R]]: ...
-@overload
-def transpile[**P, Y, R](
-    fn: Callable[P, Generator[Y, None, R]],
-) -> Transpiled[P, Generator[Y, None, R]]: ...
-@overload
-def transpile[**P, R](fn: Callable[P, R]) -> Transpiled[P, R]: ...
 
 
 def transpile[**P, R](fn: Callable[P, R]) -> Transpiled[P, R]:

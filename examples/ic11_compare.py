@@ -16,22 +16,23 @@ TargetTemp2 = 297
 
 
 @program
+@transpile
 def main():
-    with loop():
+    while True:
         yield_()
 
         control_temp(pa1, valve1, TargetTemp1)
         control_temp(pa2, valve2, TargetTemp2)
 
 
-@subr
+@transpile
 def control_temp(pa: Pin, valve: Pin, targetTemp: Int):
     needCooling = pa.Temperature > targetTemp
     delta = abs(targetTemp - pa.Temperature)
-    power = Variable(10)
+    power = 10
 
-    with if_(delta > 5):
-        power.value = 100
+    if delta > 5:
+        power = 100
 
     valve.On = needCooling
     valve.Setting = power

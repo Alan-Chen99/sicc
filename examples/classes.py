@@ -14,13 +14,13 @@ class Group:
     y: VolumePump
 
     # methods work too
-    @subr
+    @transpile
     def do_something(self, arg: Float) -> tuple[Float, Float]:
         self.y.Setting = arg
         return self.x.TotalMoles, self.x.TotalMoles + arg
 
 
-@subr
+@transpile
 def do_other(g: Group, arg: Float) -> Float:
     a, b = g.do_something(arg)
     return g.do_something(a + b)[0]

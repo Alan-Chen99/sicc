@@ -25,13 +25,11 @@ from rich import print as print  # autoflake: skip
 
 from ._api import Variable
 from ._api import read_uservalue
-from ._api import undef
 from ._control_flow import BlockRef
 from ._control_flow import block
 from ._control_flow import clear_control_flow_hooks
 from ._core import Label
 from ._core import MVar
-from ._core import Undef
 from ._core import VarT
 from ._core import get_type
 from ._diagnostic import DebugInfo
@@ -199,13 +197,15 @@ class TracedSubr[A, R]:
     def call(self, arg: A) -> R:
         self.raw_subr.record_call()
 
+        # note: compiler cannot handle undef effectively yet
+
         # set args
         values = self.arg_tree.flatten_up_to(arg, check_mut=True)
         for mv, v, spec in zip(self.arg_mvars, values, self.arg_tree.leaves):
             mv.write(read_uservalue(v))
-            if spec.mutable:
-                assert isinstance(v, Variable)
-                v.value = undef()  # otherwise compiler may fail to prove that mv and v may alias
+            # if spec.mutable:
+            #     assert isinstance(v, Variable)
+            #     v.value = undef()  # otherwise compiler may fail to prove that mv and v may alias
 
         # call
         l = mk_internal_label("call_ret")
@@ -223,11 +223,11 @@ class TracedSubr[A, R]:
                 assert isinstance(v, Variable)
                 v._inner.write(mv.read())
 
-        # clear mvars
-        for mv in self.arg_mvars:
-            mv.write(Undef(mv.type))
-        for mv in self.ret_mvars:
-            mv.write(Undef(mv.type))
+        # # clear mvars
+        # for mv in self.arg_mvars:
+        #     mv.write(Undef(mv.type))
+        # for mv in self.ret_mvars:
+        #     mv.write(Undef(mv.type))
 
         return ret_obj
 

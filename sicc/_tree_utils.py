@@ -28,10 +28,18 @@ from ._core import can_cast_implicit
 from ._core import promote_types
 from ._utils import cast_unchecked
 
-if TYPE_CHECKING:
-    from dataclasses import dataclass as _optree_dataclass
 
-    optree_dataclass = _optree_dataclass
+def _dataclass_impl(cls: type[Any] | None = None, /, **kwargs: Any):
+    kwargs.setdefault("frozen", True)
+    if cls is None:
+        return dataclasses.dataclass(**kwargs)
+    return dataclasses.dataclass(cls, **kwargs)
+
+
+if TYPE_CHECKING:
+    from dataclasses import dataclass as optree_dataclass_typing
+
+    optree_dataclass = optree_dataclass_typing
 
     from optree import dataclasses as dataclasses
     from optree import pytree as pytree
@@ -40,7 +48,7 @@ if TYPE_CHECKING:
 else:
     pytree = reexport(namespace=__name__)
     dataclasses = pytree.dataclasses
-    optree_dataclass = dataclasses.dataclass
+    optree_dataclass = _dataclass_impl
     field = dataclasses.field
 
 type PyTree[T] = T | Sequence[PyTree[T]] | Mapping[Any, PyTree[T]] | optree.PyTree[T]
@@ -217,7 +225,7 @@ class TreeSpec[T = Any]:
 
     def can_cast_to_or_error(self, other: TreeSpec[T], /, *, check_mut: bool) -> None:
         if not self.can_cast_to(other, check_mut=check_mut):
-            raise TypeError(f"not possible to use {self} as {other}")
+            raise TypeError(f"expected {other}, got {self}")
 
     def flatten_up_to(self, val: T, /, *, check_mut: bool) -> list[UserValue]:
         """flatten val and check that val can be cast to self wrt types, but allows all mutability"""

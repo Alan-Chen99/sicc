@@ -304,3 +304,14 @@ class CallDescMixin:
             return cast(Callable[Concatenate[T, P], R], self)(obj, *args, **kwargs)
 
         return inner
+
+
+################################################################################
+
+
+def transpile_setattr_default(self: Any, name: str, val: Any, /):
+    setattr(self, name, val)
+
+
+def transpile_setitem_default(self: Any, key: str, val: Any, /):
+    self[key] = val

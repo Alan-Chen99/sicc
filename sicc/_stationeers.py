@@ -42,6 +42,8 @@ from ._tree_utils import pytree
 from ._utils import ReprAs
 from ._utils import cast_unchecked
 from ._utils import crc32
+from ._utils import transpile_setattr_default
+from ._utils import transpile_setitem_default
 
 register_exclusion(__file__)
 
@@ -252,7 +254,7 @@ def _valid_logic_attr(name: str, parent: object) -> bool:
     return False
 
 
-@optree_dataclass(eq=False, repr=False)
+@optree_dataclass(eq=False, repr=False, frozen=False)
 class Pin:
     _idx: Int | LiteralPin
 
@@ -291,6 +293,9 @@ class Pin:
             self[name] = val
         else:
             super().__setattr__(name, val)
+
+    __transpile_setattr__ = transpile_setattr_default
+    __transpile_setitem__ = transpile_setitem_default
 
 
 _did_register_optree: set[type[DeviceBase[Any, Any]]] = set()
@@ -358,11 +363,8 @@ class DeviceBase(Generic[DT_co, N_co]):
         __getattr__ = _getattr
         __setattr__ = _setattr
 
-    def __transpile_setattr__(self, name: str, val: UserValue) -> None:
-        setattr(self, name, val)
-
-    def __transpile_setitem__(self, logic_type: ValLogicTypeLike, val: UserValue) -> None:
-        self[logic_type] = val
+    __transpile_setattr__ = transpile_setattr_default
+    __transpile_setitem__ = transpile_setitem_default
 
     def tree_flatten(self) -> Any:
         return (self.device_type, self.name), (self.default_batchmode,), None

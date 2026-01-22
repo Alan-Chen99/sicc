@@ -4,17 +4,18 @@ from sicc.devices import *
 d = Autolathe()
 
 
-@subr
+@transpile
 def inner(x: Int) -> Int:
     return x + d.ImportCount
 
 
-@subr
+@transpile
 def outer(x: Int) -> Int:
     return inner(inner(inner(x)))
 
 
 @program
+@transpile
 def main():
     x = inner(0)
     for _ in range(5):

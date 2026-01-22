@@ -45,6 +45,7 @@ from ._tree_utils import field as optree_field  # pyright: ignore[reportUnknownV
 from ._tree_utils import optree_dataclass
 from ._utils import cast_unchecked
 from ._utils import get_id
+from ._utils import transpile_setitem_default
 
 
 class PointerProto[T_co](Protocol):
@@ -261,8 +262,7 @@ class Pointer[T = Any]:
     def __setitem__(self, idx: Int, val: Any, /) -> None:
         self._getitem_impl(idx).write(val)
 
-    def __transpile_setitem__(self: Any, idx: Int, val: Any, /) -> None:
-        self[idx] = val
+    __transpile_setitem__ = transpile_setitem_default
 
     @inline_generator
     def iter_mut[E](self: Pointer[list[E]]) -> Generator[Pointer[E]]:

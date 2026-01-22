@@ -46,15 +46,16 @@ def patch_for_loop[E](it: Iterable[E]) -> Iterator[E]:
 
     for_end = mk_internal_label("for_end", id)
 
-    for idx, item in enumerate(it):
-        for_cont = mk_internal_label(f"for_cont({idx})", id)
-        with (
-            CONTINUE_TO.bind(for_cont),
-            BREAK_TO.bind(for_end),
-            ELSE_HOOK.bind_clear(),
-        ):
-            yield item
-        label(for_cont)
+    with track_caller():
+        for idx, item in enumerate(it):
+            for_cont = mk_internal_label(f"for_cont({idx})", id)
+            with (
+                CONTINUE_TO.bind(for_cont),
+                BREAK_TO.bind(for_end),
+                ELSE_HOOK.bind_clear(),
+            ):
+                yield item
+            label(for_cont)
 
     label(for_end)
 
