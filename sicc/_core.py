@@ -15,6 +15,7 @@ from typing import Final
 from typing import Generic
 from typing import Iterable
 from typing import Iterator
+from typing import Literal
 from typing import Protocol
 from typing import Self
 from typing import Sequence
@@ -244,18 +245,18 @@ class ConstEval[T: VarT](VirtualConst[T]):
         return ConstEval.create(int, operator.sub, x, y)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class PinType(AsRaw):
-    name: str
+    _name: Literal["db"]
 
     def __repr__(self) -> str:
-        return self.name
+        return self._name
 
     def as_raw(self, ctx: AsRawCtx) -> RawText:
-        raise NotImplementedError()
+        assert False
 
 
-db_internal = PinType("db")
+db_internal = PinType(_name="db")
 
 
 @dataclass(frozen=True, eq=False)
@@ -601,7 +602,7 @@ def format_val[T: VarT](v: Value[T], typ: type[T]) -> Text:
 
     if typ == PinType:
         if isinstance(v, PinType):
-            return Text(v.name, "ic10.pin")
+            return Text(v._name, "ic10.pin")
         ans = Text(f"d", "ic10.pin")
         ans += FORMAT_VAL_FN(v)
         return ans
@@ -1434,7 +1435,7 @@ def format_raw_val(x: Value, ctx: AsRawCtx, typ: type[VarT], debug: DebugInfo) -
         elif isinstance(x, Var):
             return RawText(Text(f"d{x.reg.allocated.value}", "ic10.pin"))
         elif isinstance(x, PinType):
-            return RawText(Text(x.name, "ic10.pin"))
+            return RawText(Text(x._name, "ic10.pin"))
         else:
             raise TypeError(x)
 

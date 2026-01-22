@@ -61,7 +61,7 @@ def _mk_sp_var() -> Var[int]:
 
 @optree_dataclass(kw_only=True)
 class Pointer[T = Any]:
-    _device: Pin = Pin.db()
+    _device: Pin = optree_field(default_factory=Pin.db)
     _addr: Int
     _tree: TreeSpec[T] = optree_field(pytree_node=False)
 
@@ -70,7 +70,7 @@ class Pointer[T = Any]:
     def __rich_repr__(self) -> rich.repr.Result:
         from ._stationeers import LiteralPin
 
-        if isinstance((idx := self._device._idx), LiteralPin) and idx == LiteralPin("db"):
+        if isinstance((idx := self._device._pin), LiteralPin) and idx == LiteralPin._db():
             pass
         else:
             yield self._device
@@ -88,7 +88,7 @@ class Pointer[T = Any]:
         return Pointer(_device=self._device, _addr=addr, _tree=self._tree)
 
     def read(self) -> T:
-        pin = read_uservalue(self._device._pin())
+        pin = read_uservalue(self._device._pin_value())
         addr = read_uservalue(self._addr)
 
         with must_use():
@@ -110,7 +110,7 @@ class Pointer[T = Any]:
     def write(self, v: T, /) -> None: ...
 
     def write(self, v: T | Any, /) -> None:
-        pin = read_uservalue(self._device._pin())
+        pin = read_uservalue(self._device._pin_value())
         addr = read_uservalue(self._addr)
         v_flat = [read_uservalue(x) for x in self._tree.flatten_up_to(v, check_mut=False)]
 
@@ -123,7 +123,7 @@ class Pointer[T = Any]:
             StackOpChain.from_parts(*instrs).emit()
 
     def _push(self, v: T, /) -> None:
-        pin = read_uservalue(self._device._pin())
+        pin = read_uservalue(self._device._pin_value())
         assert pin == db_internal
         assert isinstance(self._addr, Variable) and not self._addr._read_only
 
@@ -144,7 +144,7 @@ class Pointer[T = Any]:
         self._addr._inner.write(SplitLifetime(int).call(sp_cur))
 
     def _pop(self) -> T:
-        pin = read_uservalue(self._device._pin())
+        pin = read_uservalue(self._device._pin_value())
         assert pin == db_internal
         assert isinstance(self._addr, Variable) and not self._addr._read_only
 
