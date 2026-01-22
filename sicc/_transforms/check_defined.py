@@ -57,7 +57,7 @@ def check_mvars_defined(ctx: TransformCtx) -> None:
     index = get_index.call_cached(ctx, AlwaysUnpack())
 
     for v in index.mvars.values():
-        res = compute_mvar_lifetime(ctx, v.v, AlwaysUnpack())
+        res = compute_mvar_lifetime.call_cached(ctx, v.v, AlwaysUnpack())
 
         undef_uses = [
             use for use in v.uses if res.reachable[use].external_path and not use.isinst(AsmBlock)

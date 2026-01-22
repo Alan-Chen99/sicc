@@ -98,7 +98,7 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
     mvar_lifetimes: dict[MVar, MvarLifetimeRes] = {}
 
     for mv in index.mvars.values():
-        res = compute_mvar_lifetime(ctx, mv.v, AlwaysUnpack())
+        res = compute_mvar_lifetime.call_cached(ctx, mv.v, AlwaysUnpack())
         mvar_lifetimes[mv.v] = res
         lifetimes[mv.v] = OrderedSet(handle_one(mv, set(res.reachable)))
 

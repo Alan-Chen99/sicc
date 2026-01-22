@@ -24,6 +24,7 @@ from .basic import get_index
 from .control_flow import CfgNode
 from .control_flow import build_control_flow_graph
 from .control_flow import external
+from .utils import CachedFn
 from .utils import LoopingTransform
 from .utils import Transform
 from .utils import TransformCtx
@@ -68,6 +69,7 @@ class MvarLifetimeRes:
             yield
 
 
+@CachedFn
 def compute_mvar_lifetime(
     ctx: TransformCtx, v_: MVar, unpack: UnpackPolicy = NeverUnpack()
 ) -> MvarLifetimeRes:
@@ -138,7 +140,7 @@ def elim_mvars_read_writes(ctx: TransformCtx, unpack: UnpackPolicy = AlwaysUnpac
     index = get_index.call_cached(ctx, unpack)
 
     for v in index.mvars.values():
-        res = compute_mvar_lifetime(ctx, v.v, unpack)
+        res = compute_mvar_lifetime.call_cached(ctx, v.v, unpack)
         reachable = res.reachable
 
         ########################################

@@ -27,6 +27,7 @@ from .forward_full_block import forward_remove_full_block
 from .fuse_blocks import fuse_blocks_all
 from .fuse_blocks import fuse_blocks_trivial_jumps
 from .fuse_blocks import remove_trivial_blocks
+from .jump_threading import thread_branch_edges
 from .link_bundles import pack_call
 from .link_bundles import pack_cond_call
 from .lower import lower_instrs
@@ -69,6 +70,7 @@ GLOBAL_FRAG_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
     # uses mvar analysis
     elim_mvars_read_writes,
     forward_remove_full_block,
+    thread_branch_edges,
 ]
 
 FINAL_OPTS: list[Callable[[Fragment], bool | None]] = GLOBAL_FRAG_OPTS + [

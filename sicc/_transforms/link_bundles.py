@@ -86,7 +86,7 @@ def _try_pack_call_one(
     mv = write_instr.instr.s
     if not _is_suitable_as_ra(ctx, mv):
         return False
-    res = compute_mvar_lifetime(ctx, mv, AlwaysUnpack())
+    res = compute_mvar_lifetime.call_cached(ctx, mv, AlwaysUnpack())
 
     if (info := res.reachable.get(jump_instr)) and info.possible_defs == [write_instr]:
         # valid to write label to mv before instr
@@ -168,7 +168,7 @@ def _try_predbranch_one(
         mv = write_instr.instr.s
         if not _is_suitable_as_ra(ctx, mv):
             return False
-        res = compute_mvar_lifetime(ctx, mv, AlwaysUnpack())
+        res = compute_mvar_lifetime.call_cached(ctx, mv, AlwaysUnpack())
 
         if (info := res.reachable.get(branch)) and info.possible_defs == [write_instr]:
             # valid to write label to mv before instr

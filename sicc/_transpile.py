@@ -196,12 +196,20 @@ def _call(fn: Any, /, *args: Any, **kwargs: Any) -> Any:
 
 def _and(x: Bool, rhs: Callable[[], Bool]) -> Bool:
     """Short-circuiting boolean AND that matches Python's evaluation rules."""
-    return cond(x, rhs, x)
+    x = Variable(x)
+    ans = Variable(False)
+    with if_(x):
+        ans.value = rhs()
+    return ans.value
 
 
 def _or(x: Bool, rhs: Callable[[], Bool]) -> Bool:
     """Short-circuiting boolean OR that matches Python's evaluation rules."""
-    return cond(x, x, rhs)
+    x = Variable(x)
+    ans = Variable(True)
+    with if_(not_(x)):
+        ans.value = rhs()
+    return ans.value
 
 
 def _not(x: Bool) -> Bool:

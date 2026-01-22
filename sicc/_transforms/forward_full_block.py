@@ -76,7 +76,7 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
             # TODO
             return False
 
-        lifetime = compute_mvar_lifetime(ctx, mv, AlwaysUnpack())
+        lifetime = compute_mvar_lifetime.call_cached(ctx, mv, AlwaysUnpack())
         if (lt := lifetime.reachable.get(pred_block.end)) and len(lt.possible_defs) > 0:
             return False
 
