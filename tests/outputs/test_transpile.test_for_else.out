@@ -1,0 +1,9 @@
+beq 0 1 7
+# i: 0
+beq 1 1 7
+# i: 1
+beq 2 1 7
+# i: 2
+# for else
+# after for
+# 8 lines total (not including this line)

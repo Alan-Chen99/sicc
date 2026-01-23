@@ -33,6 +33,8 @@ from ._iterator import shared_generator
 from ._state import State
 from ._subr import return_
 from ._subr import subr
+from ._tracing import label
+from ._tracing import mk_internal_label
 from ._transpile_utils import FunctionDefNode
 from ._transpile_utils import resolve_function_scope
 from ._transpile_utils import resolve_scope_shadowed_names
@@ -237,6 +239,8 @@ def _embed_object(obj: Any) -> ast.expr:
 def _embed_call[**P](fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> ast.Call: ...
 @overload
 def _embed_call[**P](fn: Callable[P, Any], *args: ast.expr) -> ast.Call: ...
+@overload
+def _embed_call[**P](fn: Callable[P, Any], *args: ast.expr, **kwargs: ast.expr) -> ast.Call: ...
 
 
 def _embed_call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> ast.Call:
@@ -266,6 +270,13 @@ class _TranspileErrorWrapped(Exception):
 class _TranspileBodyTransformer(ast.NodeTransformer):
     def __init__(self, locals_: set[str]) -> None:
         self._locals: Cell[set[str]] = Cell(locals_)
+        self._tmp_id: int = 0
+
+    def _tmp(self, name: str) -> str:
+        """Create a unique internal name guaranteed not to collide with user code."""
+        ans = f"{_PREFIX}_{name}_{self._tmp_id}"
+        self._tmp_id += 1
+        return ans
 
     def _visit_sametype[N: ast.AST](self, node: N) -> N:
         typ = type(node)
@@ -398,25 +409,56 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
 
         test_lambda = ast.Lambda(args=ast.arguments(), body=node.test)
 
+        if_body = node.body
+
+        if node.orelse:
+            else_with = ast.With(
+                items=[ast.withitem(context_expr=_embed_call(else_))],
+                body=node.orelse,
+            )
+            if_body.append(else_with)
+
         # Create: with while_(lambda: test):
         while_with = ast.With(
             items=[
                 ast.withitem(context_expr=_embed_call(while_, test_lambda)),
             ],
-            body=node.body,
+            body=if_body,
         )
-
-        if node.orelse:
-            raise _TranspileErrorWrapped(node, TranspileNotImplementedError, "while/else")
 
         return ast.copy_location(while_with, node)
 
-    def visit_For(self, node: ast.For) -> ast.AST:
+    def visit_For(self, node: ast.For) -> ast.AST | list[ast.stmt]:
         """Transform `for x in y:` -> `for x in patch_for_loop(y):`"""
-        if node.orelse:
-            raise _TranspileErrorWrapped(node, TranspileNotImplementedError, "for/else")
-
         node = self._generic_visit_sametype(node)
+
+        if node.orelse:
+            end_name = self._tmp("for_end")
+            end_label = ast.Name(id=end_name, ctx=ast.Load())
+
+            init_end = ast.Assign(
+                targets=[ast.Name(id=end_name, ctx=ast.Store())],
+                value=_embed_call(mk_internal_label, "for_end"),
+            )
+
+            new_for = ast.For(
+                target=node.target,
+                iter=_embed_call(
+                    patch_for_loop,
+                    node.iter,
+                    break_to=end_label,
+                    emit_break_label=ast.Constant(value=False),
+                ),
+                body=node.body,
+                orelse=node.orelse,
+            )
+
+            emit_end = ast.Expr(value=_embed_call(label, end_label))
+
+            init_end = ast.copy_location(init_end, node)
+            new_for = ast.copy_location(new_for, node)
+            emit_end = ast.copy_location(emit_end, node)
+            return [init_end, new_for, emit_end]
 
         new_for = ast.For(
             target=node.target,
@@ -552,7 +594,17 @@ def _transpile_ast_impl(fn_node: FunctionDefNode) -> FunctionDefNode:
     places = locals_ | params
 
     transformer = _TranspileBodyTransformer(places)
-    fn_node.body = [transformer.visit(x) for x in fn_node.body]
+    new_body: list[ast.stmt] = []
+    for stmt in fn_node.body:
+        out = transformer.visit(stmt)
+        if out is None:
+            continue
+        if isinstance(out, list):
+            new_body.extend(cast(list[ast.stmt], out))
+            continue
+        assert isinstance(out, ast.stmt)
+        new_body.append(out)
+    fn_node.body = new_body
 
     init: list[ast.stmt] = [
         ast.Import(names=[ast.alias(name="sicc", asname=_SICC_IMPORT)]),
@@ -649,8 +701,8 @@ def transpile[**P, R](fn: Callable[P, R]) -> Transpiled[P, R]:
     **control flow**
     `if x: ... else: ...` -> `with if_(x): ... with else_(): ...`
     `x if y else z` -> `cond(y, lambda: x, lambda: z)`
-    `while x` -> `with while_(lambda: x)`
-    `for x in y` -> `for x in patch_for_loop(y)`
+    `while x` -> `with while_(lambda: x): ... with else_(): ...`
+    `for x in y` -> `for x in patch_for_loop(y, ...)`
     `break` -> `break_`
     `continue` -> `continue_`
     `return` -> `return_`
@@ -664,8 +716,6 @@ def transpile[**P, R](fn: Callable[P, R]) -> Transpiled[P, R]:
     **planned (raises TranspileNotImplementedError currently)**
     `match` -> as expected
     `:=` -> as expected
-    `for/else` -> as expected
-    `while/else` -> as expected
     `global` -> `_Place` object stored in global scope
 
     **all other contstructs**

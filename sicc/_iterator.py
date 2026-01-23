@@ -37,14 +37,19 @@ from ._utils import CallDescMixin
 from ._utils import get_id
 
 
-def patch_for_loop[E](it: Iterable[E]) -> Iterator[E]:
+def patch_for_loop[E](
+    it: Iterable[E], *, break_to: Label | None = None, emit_break_label: bool = True
+) -> Iterator[E]:
     """
-    conintue_() and break_() in `for x in patch_for_loop(it): ...` work correctly
+    continue_() and break_() in `for x in patch_for_loop(it): ...` work correctly
     """
 
     id = get_id()
 
-    for_end = mk_internal_label("for_end", id)
+    if not emit_break_label and break_to is None:
+        raise TypeError("patch_for_loop(..., emit_break_label=False) requires break_to=")
+
+    for_end = break_to if break_to is not None else mk_internal_label("for_end", id)
 
     with track_caller():
         for idx, item in enumerate(it):
@@ -57,7 +62,8 @@ def patch_for_loop[E](it: Iterable[E]) -> Iterator[E]:
                 yield item
             label(for_cont)
 
-    label(for_end)
+    if emit_break_label:
+        label(for_end)
 
 
 ################################################################################

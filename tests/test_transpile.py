@@ -139,6 +139,54 @@ def test_while_loop():
     comment("after while")
 
 
+@wrap_test
+@program
+@transpile
+def test_for_else():
+    for i in range(3):
+        if i == 1:
+            break
+        comment("i:", i)
+    else:
+        comment("for else")
+
+    comment("after for")
+
+
+@wrap_test
+@program
+@transpile
+def test_while_else():
+    i = 0
+    while i < 3:
+        if i == 1:
+            break
+        comment("i:", i)
+        i += 1
+    else:
+        comment("while else")
+
+    comment("after while")
+
+
+@wrap_test
+@program
+@transpile
+def test_for_else_nested():
+    for i in range(2):
+        comment("outer:", i)
+        for j in range(2):
+            comment("inner:", i, j)
+            if j == 0:
+                break
+        else:
+            comment("inner else")
+    else:
+        comment("outer else")
+
+    comment("after nested")
+
+
 ################################################################################
 # mutation and locals
 

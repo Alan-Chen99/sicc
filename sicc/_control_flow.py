@@ -173,8 +173,37 @@ def break_():
 def else_() -> AbstractContextManager[None]:
     hook = ELSE_HOOK.get()
     if hook is None:
-        raise RuntimeError("not during 'if_'")
+        raise RuntimeError("not during a supported control-flow construct")
     return hook()
+
+
+@contextmanager
+def with_trace_else(else_start: Label, else_end_jump: Label) -> Iterator[None]:
+    """
+    Bind else_() to trace a fragment starting at `else_start`, and ensure `else_start` is always
+    defined by injecting an empty else branch if else_() is never called.
+    """
+
+    traced_else = Cell(False)
+
+    @contextmanager
+    def else_hook() -> Iterator[None]:
+        if traced_else.value:
+            raise RuntimeError("already traced a else branch")
+        traced_else.value = True
+
+        with trace_to_fragment(emit=True):
+            label(else_start)
+            yield
+            jump(else_end_jump)
+
+    with ELSE_HOOK.bind(else_hook):
+        yield
+
+    if not traced_else.value:
+        with trace_to_fragment(emit=True):
+            label(else_start)
+            jump(else_end_jump)
 
 
 ################################################################################
@@ -192,31 +221,13 @@ def if_(cond_: Bool, /) -> Iterator[None]:
     with track_caller():
         branch(cond, true_branch, false_branch)
 
-    traced_else = Cell(False)
-
-    @contextmanager
-    def else_hook() -> Iterator[None]:
-        if traced_else.value:
-            raise RuntimeError("already traced a else branch")
-        traced_else.value = True
-
-        with trace_to_fragment(emit=True):
-            label(false_branch)
-            yield
-            jump(if_end)
-
     with (
         trace_to_fragment(emit=True),
-        ELSE_HOOK.bind(else_hook),
+        with_trace_else(false_branch, if_end),
     ):
         label(true_branch)
         yield
         jump(if_end)
-
-    if not traced_else.value:
-        with track_caller():
-            label(false_branch)
-            jump(if_end)
 
     with track_caller():
         label(if_end)
@@ -227,6 +238,7 @@ def while_(cond_fn: Callable[[], Bool]) -> Iterator[None]:
     id = get_id()
     while_cond = mk_internal_label("while_cond", id)
     while_body = mk_internal_label("while_body", id)
+    while_else = mk_internal_label("while_else", id)
     while_end = mk_internal_label("while_end", id)
 
     with trace_to_fragment(emit=True):
@@ -234,13 +246,13 @@ def while_(cond_fn: Callable[[], Bool]) -> Iterator[None]:
             label(while_cond)
         cond = read_uservalue(cond_fn())
         with track_caller():
-            branch(cond, while_body, while_end)
+            branch(cond, while_body, while_else)
 
     with (
         trace_to_fragment(emit=True),
         CONTINUE_TO.bind(while_cond),
         BREAK_TO.bind(while_end),
-        ELSE_HOOK.bind_clear(),
+        with_trace_else(while_else, while_end),
     ):
         label(while_body)
         yield
