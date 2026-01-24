@@ -1,3 +1,4 @@
+# v: 1
 sb 336213101 On 1
 sb 336213101 On 1
 # box.x: 5
@@ -12,4 +13,4 @@ get r0 db 1
 # arr2: r0
 # y: -9999
 # x: (0, [0, 1, 2])
-# 14 lines total (not including this line)
+# 15 lines total (not including this line)

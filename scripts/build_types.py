@@ -40,6 +40,7 @@ field_types: dict[str, str] = {
     "RequiredPower": "int",
     #
     "Color": "_Color",
+    "RecipeHash": "str",
     #
     **{
         (name + suf): "float" if name != "Combustion" else "bool"

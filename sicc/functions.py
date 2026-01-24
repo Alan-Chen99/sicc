@@ -19,11 +19,16 @@ from ._api import less_than_or_eq as less_than_or_eq
 
 # math
 from ._api import abs_ as abs_
+from ._api import ceil as ceil
 from ._api import clamp as clamp
+from ._api import floor as floor
 from ._api import max_ as max_
 from ._api import min_ as min_
+from ._api import round_ as round_
+from ._api import trunc as trunc
 
 # other
 from ._api import black_box as black_box
 from ._api import transmute as transmute
 from ._api import unreachable_checked as unreachable_checked
+from ._api import unreachable_unchecked as unreachable_unchecked

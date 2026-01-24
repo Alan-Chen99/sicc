@@ -9,9 +9,9 @@ d = Autolathe()
 def fn1() -> FunctionRet[tuple[Float, Float, Bool]]:
     comment("fn1")
     with if_(d.On):
-        yield Return((5.0, True, True))
+        return_((5.0, True, True))
 
-    yield Return((True, 5.0, d.On))
+    return_((True, 5.0, d.On))
 
 
 @subr

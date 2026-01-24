@@ -1,5 +1,3 @@
-from rich import print as print
-
 from sicc import *
 from sicc.devices import *
 from test_utils import wrap_test

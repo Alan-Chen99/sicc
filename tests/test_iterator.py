@@ -1,5 +1,3 @@
-from rich import print as print
-
 from sicc import *
 from sicc._iterator import runtime_loop
 from sicc.devices import *

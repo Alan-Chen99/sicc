@@ -8,23 +8,24 @@ from typing import Callable
 from typing import Coroutine
 from typing import Generator
 from typing import Generic
+from typing import Never
 from typing import TypeVar
 
 from ._api import ValLabelLike
 from ._api import Variable
 from ._api import jump
 from ._api import unreachable_checked
-from ._control_flow import if_
 from ._core import Label
 from ._diagnostic import register_exclusion
 from ._diagnostic import track_caller
 from ._state import State
+from ._subr import FunctionRet
 from ._subr import subr
-from ._tracing import exit_program
 from ._tracing import label
 from ._tracing import mk_internal_label
+from ._tracing import trace_to_fragment
 from ._tree_utils import copy_tree
-from ._utils import CallDescMixin
+from ._utils import allow_curry
 
 register_exclusion(__file__)
 
@@ -43,7 +44,7 @@ F_co = TypeVar("F_co", covariant=True)
 
 
 @dataclass
-class StaticCoroFn(Generic[F_co], CallDescMixin):
+class StaticCoroFn(Generic[F_co]):
     _handler: F_co
 
     def __call__[**P, R](
@@ -84,21 +85,17 @@ class StaticTask:
         self.state.value = global_resume_to.value
 
 
-def create_static_task[R](
-    coro: Awaitable[R], on_return: Callable[[R], None] | None = None
-) -> StaticTask:
-    # @functools.wraps(create_static_task)
-    async def inner() -> R:
+def create_static_task(coro: Awaitable[FunctionRet[Never]], /) -> StaticTask:
+
+    # @functools.wraps(coro)
+    async def inner():
         return await coro
 
     task_start = mk_internal_label("task_start")
 
-    with if_(False):
+    with trace_to_fragment(emit=True):
         label(task_start)
-        ans = _static_coroutine(inner, _inline=True)._handler()
-        exit_program()
-        if on_return is not None:
-            on_return(ans)
+        _static_coroutine(inner, inline=True)._handler()
         unreachable_checked()
 
     return StaticTask(State(task_start))
@@ -112,8 +109,11 @@ def _suspend():
     label(suspend_cont)
 
 
-def static_coroutine[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Coroutine[Any, Any, R]]:
-    fn_wrapped = _static_coroutine(fn)
+@allow_curry
+def static_coroutine[**P, R](
+    fn: Callable[P, Awaitable[R]], /, *, inline: bool = False
+) -> Callable[P, Coroutine[Any, Any, R]]:
+    fn_wrapped = _static_coroutine(fn, inline=inline)
 
     async def inner(*args: P.args, **kwargs: P.kwargs) -> R:
         return await fn_wrapped(*args, **kwargs)
@@ -122,9 +122,10 @@ def static_coroutine[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Corou
 
 
 def _static_coroutine[**P, R](
-    fn: Callable[P, Awaitable[R]], *, _inline: bool = False
+    fn: Callable[P, Awaitable[R]], *, inline: bool = False
 ) -> StaticCoroFn[Callable[P, R]]:
-    # @subr
+
+    @subr(inline=inline)
     @functools.wraps(fn)
     def inner(*args: P.args, **kwargs: P.kwargs) -> R:
         g = fn(*args, **kwargs).__await__()
@@ -142,4 +143,4 @@ def _static_coroutine[**P, R](
         except StopIteration as e:
             return e.value
 
-    return StaticCoroFn(inner if _inline else subr(inner))
+    return StaticCoroFn(inner)

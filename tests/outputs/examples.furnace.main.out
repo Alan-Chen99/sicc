@@ -1,0 +1,105 @@
+put db 0 -1301215609
+put db 1 1100.1
+put db 2 900.2
+put db 3 -404336834
+put db 4 1100.1
+put db 5 700.2
+put db 6 -290196476
+put db 7 1100.1
+put db 8 1000.2
+put db 9 -929742000
+put db 10 1100.1
+put db 11 700.2
+put db 12 226410516
+put db 13 1100.1
+put db 14 700.2
+put db 15 2134647745
+put db 16 1100.1
+put db 17 500.2
+put db 18 -1406385572
+put db 19 1100.1
+put db 20 900.2
+put db 21 -654790771
+put db 22 1100.1
+put db 23 1000.2
+put db 24 502280180
+put db 25 1000.02
+put db 26 700.2
+put db 27 -82508479
+put db 28 1100.1
+put db 29 400.05
+put db 30 -297990285
+put db 31 19000.189999999999
+put db 32 1300.14
+put db 33 1058547521
+put db 34 21000.299999999999
+put db 35 1100.2
+put db 36 412924554
+put db 37 31000.389999999999
+put db 38 1100.2
+put db 39 1579842814
+put db 40 26000.290000000001
+put db 41 975.0975
+put db 42 -787796599
+put db 43 23750.237499999999
+put db 44 700.2
+put db 45 -1897868623
+put db 46 11000.190000000001
+put db 47 1900.21
+put db 48 156348098
+put db 49 51000.510000000002
+put db 50 500.07
+move r0 0
+move r1 0
+j 79
+# === Applying furnace settings ===
+floor r2 r3
+sub r3 r3 r2
+mul r3 r3 100000
+round r3 r3
+floor sp r4
+sub r4 r4 sp
+mul r4 r4 10000
+round r4 r4
+l r5 d0 Temperature
+div r5 r5 100
+round r5 r5
+mul r5 r5 100
+l r6 d0 Pressure
+div r6 r6 500
+round r6 r6
+mul r6 r6 500
+max sp r5 sp
+min sp sp r4
+max r2 r6 r2
+min r2 r2 r3
+div r3 sp 10000
+add r2 r3 r2
+s d3 Setting r2
+yield
+# === Main loop start ===
+l r2 d1 Setting
+s d0 On r2
+s d2 Mode 17
+l r2 d2 Setting
+max r2 r2 1
+min r2 r2 17
+sub r3 r2 1
+mul r3 r3 3
+add sp r3 3
+pop r4
+pop r3
+pop sp
+s db Setting sp
+l r5 d0 RecipeHash
+seq sp r5 sp
+s d0 Open sp
+move sp r0
+move r0 r2
+add r1 r1 1
+beq r2 sp 101
+move r1 0
+ble 6 r1 54
+yield
+j 79
+# 104 lines total (not including this line)

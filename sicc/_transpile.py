@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import ast
 import inspect
-from collections.abc import Callable
-from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from dataclasses import field
 from typing import Any
+from typing import Callable
+from typing import Iterable
+from typing import Iterator
 from typing import cast
 from typing import overload
 
@@ -20,15 +20,20 @@ from ._api import Bool
 from ._api import Variable
 from ._api import not_
 from ._api import undef
+from ._control_flow import BREAK_TO
+from ._control_flow import CONTINUE_TO
+from ._control_flow import ELSE_HOOK
 from ._control_flow import break_
 from ._control_flow import cond
 from ._control_flow import continue_
 from ._control_flow import else_
 from ._control_flow import if_
 from ._control_flow import while_
-from ._coroutine import static_coroutine
+from ._core import Label
+from ._diagnostic import DebugInfo
+from ._diagnostic import add_debug_info
 from ._diagnostic import register_exclusion
-from ._iterator import patch_for_loop
+from ._diagnostic import track_caller
 from ._iterator import shared_generator
 from ._state import State
 from ._subr import return_
@@ -42,10 +47,13 @@ from ._transpile_utils import transpile_runtime
 from ._tree_utils import PyTree
 from ._tree_utils import TreeSpec
 from ._tree_utils import tree_flatten
+from ._tree_utils import tree_write
 from ._utils import CallDescMixin
 from ._utils import Cell
 from ._utils import Empty
+from ._utils import allow_curry
 from ._utils import empty
+from ._utils import get_id
 
 register_exclusion(__file__)
 
@@ -78,7 +86,7 @@ class _Place:
     - locals never alias each other (assignment copies values into local storage)
     """
 
-    state: State[Any] = field(default_factory=State)
+    state: State[Any]
 
     def _err_if_unbound(self):
         if not self.state._did_init():
@@ -117,7 +125,7 @@ class _AttrProxy:
         if (setfn := getattr(self._obj, "__transpile_setattr__", None)) is not None:
             setfn(self._name, val)
             return
-        _write_place(self.value, val)
+        tree_write(self.value, val)
 
 
 def _attr(obj: Any, name: str) -> _AttrProxy:
@@ -138,7 +146,7 @@ class _ItemProxy:
         if (setitem := getattr(self._obj, "__transpile_setitem__", None)) is not None:
             setitem(self._key, val)
             return
-        _write_place(self.value, val)
+        tree_write(self.value, val)
 
 
 @dataclass
@@ -156,22 +164,11 @@ def _subs(obj: Any) -> _SubsProxy:
     return _SubsProxy(obj)
 
 
-def _init_place(init_value: Any | Empty = empty) -> _Place:
-    if init_value is not empty:
-        return _Place(State.from_ref_mut(init_value))
-    return _Place()
-
-
-def _write_place[T](dst: T, src: T) -> None:
-    dst_leaves, dst_tree = TreeSpec.flatten(dst)
-    src_leaves = dst_tree.flatten_up_to(src, check_mut=False)
-
-    if any(not x.mutable for x in dst_tree.leaves):
-        raise TypeError(f"cannot write to {dst_tree} because it is not mutable")
-
-    for v, x in zip(dst_leaves, src_leaves):
-        assert isinstance(v, Variable)
-        v.value = x
+def _init_place(name: str, init_value: Any | Empty = empty) -> _Place:
+    with add_debug_info(DebugInfo(describe=f"transpiled variable [ic10.label]{name}[/ic10.label]")):
+        if init_value is not empty:
+            return _Place(State._from_ref_mut(init_value))
+        return _Place(State())
 
 
 def _call(fn: Any, /, *args: Any, **kwargs: Any) -> Any:
@@ -194,8 +191,33 @@ def _call(fn: Any, /, *args: Any, **kwargs: Any) -> Any:
     return res
 
 
+def _patch_for_loop[E](it: Iterable[E], *, break_to: Label) -> Iterator[E]:
+    """
+    make continue, break, else work
+    note that only transpile support for..else; tracing does not.
+    """
+    id = get_id()
+
+    for idx, item in enumerate(it):
+        with track_caller():
+            for_cont = mk_internal_label(f"for_cont({idx})", id)
+
+        with (
+            CONTINUE_TO.bind(for_cont),
+            BREAK_TO.bind(break_to),
+            ELSE_HOOK.bind_clear(),
+        ):
+            yield item
+
+        with track_caller():
+            label(for_cont)
+
+
 def _and(x: Bool, rhs: Callable[[], Bool]) -> Bool:
     """Short-circuiting boolean AND that matches Python's evaluation rules."""
+    if isinstance(x, bool):
+        return x and rhs()
+
     x = Variable(x)
     ans = Variable(False)
     with if_(x):
@@ -205,6 +227,9 @@ def _and(x: Bool, rhs: Callable[[], Bool]) -> Bool:
 
 def _or(x: Bool, rhs: Callable[[], Bool]) -> Bool:
     """Short-circuiting boolean OR that matches Python's evaluation rules."""
+    if isinstance(x, bool):
+        return x or rhs()
+
     x = Variable(x)
     ans = Variable(True)
     with if_(not_(x)):
@@ -213,6 +238,9 @@ def _or(x: Bool, rhs: Callable[[], Bool]) -> Bool:
 
 
 def _not(x: Bool) -> Bool:
+    if isinstance(x, bool):
+        return not x
+
     # not_ is not function so does not work with _embed_object
     return not_(x)
 
@@ -357,6 +385,23 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
         expr = ast.Attribute(value=place, attr="value", ctx=node.ctx)
         return expr  # no copy_location: have diagnostic show the containing statement
 
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> ast.AST:
+        """Convert annotated assignment to regular assignment.
+
+        Python doesn't allow `AnnAssign` where target is an `Attribute` (e.g., `x.value: T = ...`),
+        but the transpiler transforms local `Name` targets to `Attribute` targets.
+        Since type annotations are not needed at runtime, we convert to a regular `Assign`.
+        """
+        node = self._generic_visit_sametype(node)
+
+        if node.value is None:
+            # Annotation-only statements like `x: int` become no-ops after transformation
+            # since we already initialize places in the function prologue.
+            return ast.Pass()
+
+        assign = ast.Assign(targets=[node.target], value=node.value)
+        return ast.copy_location(assign, node)
+
     #####
     # call
     #####
@@ -429,44 +474,29 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
         return ast.copy_location(while_with, node)
 
     def visit_For(self, node: ast.For) -> ast.AST | list[ast.stmt]:
-        """Transform `for x in y:` -> `for x in patch_for_loop(y):`"""
+        """Transform `for x in y:` -> `for x in _patch_for_loop(y):`"""
         node = self._generic_visit_sametype(node)
 
-        if node.orelse:
-            end_name = self._tmp("for_end")
-            end_label = ast.Name(id=end_name, ctx=ast.Load())
+        end_name = self._tmp("for_end")
+        end_label = ast.Name(id=end_name, ctx=ast.Load())
 
-            init_end = ast.Assign(
-                targets=[ast.Name(id=end_name, ctx=ast.Store())],
-                value=_embed_call(mk_internal_label, "for_end"),
-            )
-
-            new_for = ast.For(
-                target=node.target,
-                iter=_embed_call(
-                    patch_for_loop,
-                    node.iter,
-                    break_to=end_label,
-                    emit_break_label=ast.Constant(value=False),
-                ),
-                body=node.body,
-                orelse=node.orelse,
-            )
-
-            emit_end = ast.Expr(value=_embed_call(label, end_label))
-
-            init_end = ast.copy_location(init_end, node)
-            new_for = ast.copy_location(new_for, node)
-            emit_end = ast.copy_location(emit_end, node)
-            return [init_end, new_for, emit_end]
+        init_end = ast.Assign(
+            targets=[ast.Name(id=end_name, ctx=ast.Store())],
+            value=_embed_call(mk_internal_label, "for_end"),
+        )
 
         new_for = ast.For(
             target=node.target,
-            iter=_embed_call(patch_for_loop, node.iter),
+            iter=_embed_call(_patch_for_loop, node.iter, break_to=end_label),
             body=node.body,
-            orelse=[],
         )
-        return ast.copy_location(new_for, node)
+
+        emit_end = ast.Expr(value=_embed_call(label, end_label))
+
+        init_end = ast.copy_location(init_end, node)
+        new_for = ast.copy_location(new_for, node)
+        emit_end = ast.copy_location(emit_end, node)
+        return [init_end, new_for] + node.orelse + [emit_end]
 
     def visit_Break(self, node: ast.Break) -> ast.AST:
         """Transform `break` -> `break_()`"""
@@ -611,18 +641,26 @@ def _transpile_ast_impl(fn_node: FunctionDefNode) -> FunctionDefNode:
         *[
             ast.Assign(
                 targets=[ast.Name(id=name, ctx=ast.Store())],
-                value=_embed_call(_init_place, ast.Name(id=name, ctx=ast.Load())),
+                value=_embed_call(
+                    _init_place, ast.Constant(name), ast.Name(id=name, ctx=ast.Load())
+                ),
             )
             for name in sorted(params)
         ],
         *[
             ast.Assign(
                 targets=[ast.Name(id=name, ctx=ast.Store())],
-                value=_embed_call(_init_place),
+                value=_embed_call(_init_place, ast.Constant(name)),
             )
             for name in sorted(locals_)
         ],
     ]
+
+    for st in init:
+        ast.copy_location(st, fn_node)
+        # FIXME: without this it doesnt display correctly
+        st.end_lineno = st.lineno
+        st.end_col_offset = st.col_offset
 
     insert_at = 0
     if (
@@ -667,7 +705,8 @@ class Transpiled[**P, R](CallDescMixin):
         )
 
 
-def transpile[**P, R](fn: Callable[P, R]) -> Transpiled[P, R]:
+@allow_curry
+def transpile[**P, R](fn: Callable[P, R], /, *, wrap: bool = True, inline: bool = False):
     """
     transform a function to be one suitable for tracing. designed to be transparent.
 
@@ -693,16 +732,11 @@ def transpile[**P, R](fn: Callable[P, R]) -> Transpiled[P, R]:
     (2) vars in inner scope like args or local vars of inner def, including those shadowing locals of `fn`
     `nonlocal` stays; inner references are recognized as refereing the outer one and therefore rewritten.
 
-    **return wrapping**
-    `def` wrapped with `subr`
-    `async def` wrapped with `static_coroutine`
-    generator functions wrapped with `shared_generator`
-
     **control flow**
     `if x: ... else: ...` -> `with if_(x): ... with else_(): ...`
     `x if y else z` -> `cond(y, lambda: x, lambda: z)`
     `while x` -> `with while_(lambda: x): ... with else_(): ...`
-    `for x in y` -> `for x in patch_for_loop(y, ...)`
+    `for x in y` -> `for x in _patch_for_loop(y, ...)`
     `break` -> `break_`
     `continue` -> `continue_`
     `return` -> `return_`
@@ -728,22 +762,22 @@ def transpile[**P, R](fn: Callable[P, R]) -> Transpiled[P, R]:
     backtrace pointing at the original source location when executed.
     """
 
-    transpiled_fn, source_original, source_wrapper = transpile_runtime(fn, transform=_transpile_ast)
+    transpiled_fn, orig_src, transpiled_str = transpile_runtime(fn, transform=_transpile_ast)
 
     wrap_fn: Any
 
     if inspect.iscoroutinefunction(fn):
-        wrap_fn = static_coroutine
+        raise NotImplementedError()
     elif inspect.isgeneratorfunction(fn):
-        wrap_fn = shared_generator
+        wrap_fn = shared_generator(inline=inline)
     else:
-        wrap_fn = subr
+        wrap_fn = subr(inline=inline)
 
     ans = Transpiled[P, R](
         orig=fn,  # pyright: ignore[reportArgumentType]
         transpiled=wrap_fn(transpiled_fn),
-        orig_str=source_original,
-        transpiled_str=source_wrapper,
+        orig_str=orig_src,
+        transpiled_str=transpiled_str,
     )
 
     # transpile happen at import time where things are not properly setup

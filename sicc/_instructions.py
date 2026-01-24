@@ -601,6 +601,30 @@ class AbsF(AsmInstrBase):
     out_types = (float,)
 
 
+class Floor(AsmInstrBase):
+    opcode = "floor"
+    in_types = (float,)
+    out_types = (float,)
+
+
+class Round(AsmInstrBase):
+    opcode = "round"
+    in_types = (float,)
+    out_types = (float,)
+
+
+class Ceil(AsmInstrBase):
+    opcode = "ceil"
+    in_types = (float,)
+    out_types = (float,)
+
+
+class Trunc(AsmInstrBase):
+    opcode = "trunc"
+    in_types = (float,)
+    out_types = (float,)
+
+
 ################################################################################
 # OTHER, PURE
 ################################################################################

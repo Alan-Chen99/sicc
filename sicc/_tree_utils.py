@@ -26,11 +26,15 @@ from ._core import VarT
 from ._core import VarTS
 from ._core import can_cast_implicit
 from ._core import promote_types
+from ._diagnostic import Warnings
+from ._diagnostic import debug_info
+from ._diagnostic import track_caller
 from ._utils import cast_unchecked
 
 
 def _dataclass_impl(cls: type[Any] | None = None, /, **kwargs: Any):
     kwargs.setdefault("frozen", True)
+    kwargs.setdefault("eq", False)
     if cls is None:
         return dataclasses.dataclass(**kwargs)
     return dataclasses.dataclass(cls, **kwargs)
@@ -142,7 +146,7 @@ class ValSpec[T: VarT = VarT]:
 
     def __repr__(self) -> str:
         if not self.mutable:
-            return self.type.__name__
+            return f"{self.type.__name__}:const"
         return f"{self.type.__name__}:mut"
 
     @staticmethod
@@ -308,3 +312,29 @@ class TreeSpec[T = Any]:
 def copy_tree[T](v: T) -> T:
     vals, tree = TreeSpec.flatten(v)
     return tree._unflatten_vals_ro(read_uservalue(x) for x in vals)
+
+
+def tree_write[T](dst: T, src: T) -> None:
+    dst_leaves, dst_tree = TreeSpec.flatten(dst)
+    src_leaves, src_tree = TreeSpec.flatten(src)
+
+    # FIXME: check duplicated same thing in dst
+
+    if not (
+        src_tree.can_cast_to(dst_tree, check_mut=False) and all(x.mutable for x in dst_tree.leaves)
+    ):
+        e = debug_info().error(
+            f"not possible to write {src} to {dst}",
+            Warnings.TypeError,
+        )
+
+        for leaf in dst_leaves:
+            if isinstance(leaf, Variable) and leaf._read_only:
+                e.note(f"Write destination {leaf} created here is read-only", leaf._debug)
+
+        e.throw()
+
+    with track_caller():
+        for v, x in zip(dst_leaves, src_leaves):
+            assert isinstance(v, Variable)
+            v.value = x

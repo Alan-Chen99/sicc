@@ -33,7 +33,10 @@ from ._core import get_type
 from ._core import get_types
 from ._core import nan
 from ._core import promote_types
+from ._diagnostic import DebugInfo
 from ._diagnostic import Warnings
+from ._diagnostic import add_debug_info
+from ._diagnostic import debug_info
 from ._diagnostic import must_use
 from ._diagnostic import register_exclusion
 from ._diagnostic import suppress_warnings
@@ -49,9 +52,11 @@ from ._instructions import AndB
 from ._instructions import AndI
 from ._instructions import AsmBlock
 from ._instructions import BlackBox
+from ._instructions import Ceil
 from ._instructions import DivF
 from ._instructions import EffectExternal
 from ._instructions import EffectPhantomLoc
+from ._instructions import Floor
 from ._instructions import Jump
 from ._instructions import LShift
 from ._instructions import Max
@@ -68,12 +73,14 @@ from ._instructions import PredLT
 from ._instructions import PredNEq
 from ._instructions import RawInstr
 from ._instructions import RemoveLabelProvenance
+from ._instructions import Round
 from ._instructions import RShiftSigned
 from ._instructions import RShiftUnsigned
 from ._instructions import SplitLifetime
 from ._instructions import SubF
 from ._instructions import SubI
 from ._instructions import Transmute
+from ._instructions import Trunc
 from ._instructions import UnreachableChecked
 from ._instructions import branch as _branch
 from ._tracing import ensure_label
@@ -232,6 +239,7 @@ class Variable[T: VarT](VarRead[T]):
 
     _inner: MVar[T]
     _read_only: bool
+    _debug: DebugInfo
 
     @overload
     def __init__(self, typ: type[T], /, **kwargs: Unpack[VariableOpts]) -> None: ...
@@ -248,6 +256,8 @@ class Variable[T: VarT](VarRead[T]):
         /,
         **kwargs: Unpack[VariableOpts],
     ) -> None:
+        self._debug = debug_info()
+
         read_only = kwargs.get("_read_only", False)
         mvar = kwargs.get("_mvar", None)
         scoped = kwargs.get("_scoped", False)
@@ -275,7 +285,8 @@ class Variable[T: VarT](VarRead[T]):
             self._inner.write(x_val)
 
     def __repr__(self) -> str:
-        return repr(self._inner)
+        mut_spec = "const" if self._read_only else "mut"
+        return f"{self._inner!r}:{self._get_type().__name__}:{mut_spec}"
 
     @staticmethod
     def _from_val_ro[T1: VarT](v: Value[T1], typ: type[T1] | None = None) -> VarRead[T1]:
@@ -293,7 +304,12 @@ class Variable[T: VarT](VarRead[T]):
 
     @property
     def value(self) -> VarRead[T]:
-        return Variable(self, _read_only=True)
+        with add_debug_info(
+            DebugInfo(
+                describe=rf"read only view of \[{self._debug.describe or self}] created with Variable.value"
+            )
+        ):
+            return Variable(self, _read_only=True)
 
     @value.setter
     def value(self, v: UserValue[T]) -> None:
@@ -447,6 +463,10 @@ def clamp[T: float](
 
 
 abs_ = Function(AbsI(), AbsF())
+floor = Function(Floor())
+round_ = Function(Round())
+ceil = Function(Ceil())
+trunc = Function(Trunc())
 
 ##
 
@@ -478,6 +498,16 @@ def not_equal[T: VarT](x: UserValue[T], y: UserValue[T]) -> VarRead[bool]:
 def unreachable_checked() -> None:
     with suppress_warnings(Warnings.Unused):
         Function(UnreachableChecked()).call()
+
+
+def unreachable_unchecked() -> None:
+    """
+    tells the compiler to assume that execution will not reach this point.
+
+    This effects statements **before** `unreachable_unchecked()`:
+    if you have `d.On = 1; unreachable_unchecked()`, compiler assumes that `d.On = 1` will never be reached
+    """
+    jump(undef(Label))
 
 
 def black_box[T: VarT](v: UserValue[T]) -> VarRead[T]:

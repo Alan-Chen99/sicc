@@ -13,12 +13,16 @@ from ._api import Variable
 from ._api import read_uservalue
 from ._core import MVar
 from ._core import Scope
+from ._diagnostic import DebugInfo
+from ._diagnostic import add_debug_info
+from ._diagnostic import debug_info
 from ._diagnostic import register_exclusion
 from ._diagnostic import track_caller
 from ._tracing import SCOPE_STACK
 from ._tracing import mk_mvar
 from ._tree_utils import TreeSpec
 from ._tree_utils import ValSpec
+from ._tree_utils import tree_write
 from ._utils import Empty
 from ._utils import empty
 from .config import verbose
@@ -29,6 +33,7 @@ register_exclusion(__file__)
 @dataclass
 class State[T = Any]:
     _scope: Scope | None
+    _debug: DebugInfo
     _tree: TreeSpec[T] | None = None
     _mvars: list[MVar] | None = None
 
@@ -41,6 +46,7 @@ class State[T = Any]:
         _global: bool = False,
         # _scope: Scope | None = None,
     ):
+        self._debug = debug_info()
         assert (_tree is None) == (_mvars is None)
 
         if _global:
@@ -89,12 +95,22 @@ class State[T = Any]:
 
     def read(self, *, _log: str = "read") -> T:
         self._log(_log)
+
+        if self._tree is None:
+            e = debug_info().error("reading State that is never initialized")
+            e.note(
+                "at least one assignment to state must be staged before reading for sicc to infer type of State"
+            )
+            e.note("Created here", self._debug)
+            e.throw()
+
         assert self._tree is not None
         assert self._mvars is not None
 
         with track_caller():
             vars_ = [x.read() for x in self._mvars]
-        return self._tree._unflatten_vals_ro(vars_)
+        with add_debug_info(self._debug):
+            return self._tree._unflatten_vals_ro(vars_)
 
     def write(self, v: T, *, _log: str = "write"):
         self._log(_log)
@@ -108,17 +124,7 @@ class State[T = Any]:
             )
             self._mvars = [mk_mvar(t) for t in tree.types]
 
-        assert self._mvars is not None
-
-        if any(not x.mutable for x in self._tree.leaves):
-            raise TypeError(f"cannot write to {self._tree} because it is not mutable")
-
-        leaves = self._tree.flatten_up_to(v, check_mut=False)
-        vars = [read_uservalue(x) for x in leaves]
-
-        with track_caller():
-            for mv, arg in zip(self._mvars, vars):
-                mv.write(arg)
+        tree_write(self.ref_mut(), v)
 
     @property
     def value(self) -> T:
@@ -134,17 +140,22 @@ class State[T = Any]:
         assert self._tree is not None
         assert self._mvars is not None
 
-        return self._tree._unflatten_mvars(self._mvars)
+        with add_debug_info(self._debug):
+            return self._tree._unflatten_mvars(self._mvars)
 
     @staticmethod
-    def from_ref_mut[T1](val: T1, /) -> State[T1]:
+    def _from_ref_mut[T1](val: T1, /) -> State[T1]:
         leaves, tree = TreeSpec.flatten(val)
 
         mvars: list[MVar] = []
-        for l in leaves:
-            if not isinstance(l, Variable):
-                raise TypeError(val)
-            mvars.append(l._inner)
+        for x, spec in zip(leaves, tree.leaves):
+            if not isinstance(x, Variable):
+                assert not spec.mutable
+                mv = mk_mvar(spec.type)
+                mv.write(read_uservalue(x))
+                mvars.append(mv)
+            else:
+                mvars.append(x._inner)
 
         return State(_tree=tree, _mvars=mvars)
 

@@ -5,6 +5,7 @@ import pytest
 
 from sicc import *
 from sicc.devices import *
+from test_utils import compiler_raises
 from test_utils import wrap_test
 
 d = Autolathe()
@@ -200,6 +201,18 @@ class _Box:
 @program
 @transpile
 def test_mutation():
+    v = 0
+    # v transpile to _Place, but this becomes
+    # assert isinstance(v.value, Variable)
+    # so _Place is impossible to observe
+    assert isinstance(v, Variable)
+    assert not v._read_only
+    v = 1
+    comment("v:", v)
+
+    with compiler_raises(Warnings.TypeError):
+        v.value = 1  # pyright: ignore[reportAttributeAccessIssue]
+
     d.On = True
     d[d.On.logic_type] = True
 
@@ -265,7 +278,7 @@ def fn_mut_args(d1: D1_T, d2: Mutable[Data]):
 
     d1.y += d1.x * 10
 
-    with pytest.raises(TypeError):
+    with compiler_raises(Warnings.TypeError):
         d1.x += d1.y
 
     d3 = d1

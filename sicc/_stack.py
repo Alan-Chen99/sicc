@@ -188,6 +188,9 @@ class Pointer[T = Any]:
             _tree=elem_tree,
         )
 
+    def __len__(self: Pointer[list[Any]]) -> int:
+        return self.static_project(lambda x: len(x))
+
     # @property
     # def value(self) -> T:
     #     return self.read()

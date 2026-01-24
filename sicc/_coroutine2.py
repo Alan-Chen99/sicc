@@ -318,7 +318,7 @@ class Task:
             _coro_cont(self.buffer._addr)
 
 
-@optree_dataclass(frozen=True, kw_only=True)
+@optree_dataclass(kw_only=True)
 class CoroBuffer:
     _buffer: list[Any]
     # _wrapped: _RawCoro[[], None] = field(pytree_node=False)

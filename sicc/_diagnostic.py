@@ -67,15 +67,7 @@ class Warnings(Enum):
     InternalError = "InternalError"
     Unspecified = "Unspecified"
     Unused = "Unused"
-
-
-class SuppressExit(Exception):
-    """
-    exception indicating that caller should exit with code without showing a backtrace
-    """
-
-    def __init__(self, code: int):
-        self.code = code
+    TypeError = "TypeError"
 
 
 def get_location(depth: int = 0) -> Frame:
@@ -147,6 +139,9 @@ def frame_short_desc(frame: Frame) -> str:
     (start_line, start_column), (end_line, end_column) = frame.last_instruction
     if start_line == end_line:
         code_lines = linecache.getlines(frame.filename)
+        # Handle case where source is not available (e.g., -c input, exec'd code)
+        if not code_lines or start_line > len(code_lines):
+            return Path(frame.filename).name + ":" + str(start_line)
         return (
             Path(frame.filename).name
             + ":"
@@ -411,7 +406,8 @@ class Report:
     def fatal(self) -> Never:
         show_pending_diagnostics()
         self.show()
-        raise SuppressExit(1) from None
+        assert False
+        # raise SuppressExit(1) from None
 
     def __rich__(self) -> RenderableType:
         def gen():
@@ -436,8 +432,9 @@ class Report:
 
 
 class CompilerError(Exception):
-    def __init__(self, report: Report):
+    def __init__(self, report: Report, add_transform_ctx: bool = True):
         self.report = report
+        self.add_transform_ctx = add_transform_ctx
 
 
 @contextmanager
@@ -446,13 +443,16 @@ def catch_ex_and_exit(f: Fragment | None = None) -> Iterator[None]:
         yield
     except Exception as e:
         if isinstance(e, CompilerError):
+            if not e.add_transform_ctx:
+                raise e
             report = e.report
         else:
             report = Report.from_ex(e)
         if verbose.value >= 1:
             if f is not None:
                 report.add(f.__rich__(title=f"While handling fragment:"))
-        report.fatal()
+
+        raise CompilerError(report, add_transform_ctx=False) from None
 
 
 def debug_info(depth: int = 1) -> DebugInfo:

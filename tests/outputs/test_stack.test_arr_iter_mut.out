@@ -12,7 +12,7 @@ move sp 3
 pop r0
 pop r1
 pop r2
-# value: Pointer(sp, Data(x=int, y=(int, float))) Data(x=r2, y=(r1, r0))
+# value: Pointer(Pin(db), sp, Data(x=int:const, y=(int:const, float:const))) Data(x=r2, y=(r1, r0))
 push r1
 push r2
 push r2

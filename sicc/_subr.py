@@ -4,20 +4,14 @@ import dataclasses
 import functools
 import inspect
 from dataclasses import dataclass
-from types import GeneratorType
 from typing import Annotated
 from typing import Any
 from typing import Callable
-from typing import Generator
-from typing import Generic
-from typing import TypedDict
 from typing import TypeVar
-from typing import Unpack
 from typing import cast
 from typing import get_args
 from typing import get_origin
 from typing import get_type_hints
-from typing import overload
 
 import optree
 import rich.repr
@@ -38,7 +32,6 @@ from ._diagnostic import describe_fn
 from ._diagnostic import register_exclusion
 from ._diagnostic import track_caller
 from ._instructions import jump
-from ._instructions import unreachable_checked
 from ._tracing import RawSubr
 from ._tracing import label
 from ._tracing import mk_internal_label
@@ -51,6 +44,7 @@ from ._tree_utils import pytree
 from ._tree_utils import tree_flatten
 from ._utils import CallDescMixin
 from ._utils import Cell
+from ._utils import allow_curry
 from ._utils import normalize_function_args
 from .config import with_status
 
@@ -61,23 +55,15 @@ register_exclusion(__file__)
 ################################################################################
 
 
-R_co = TypeVar("R_co", covariant=True, default=Any)
+# a dummy type annotation
+class _Function[R]:
+    pass
 
 
-@dataclass
-class Return(Generic[R_co]):
-    """
-    experimental, not recommended to use
-    """
+# annotation for return type of subr
+# if annotated, static type checkers understand the return type at callsite
+type FunctionRet[R = Any] = R | _Function[R] | None
 
-    value: R_co
-
-    def __init__(self, val: R_co = None, /):
-        self.value = val
-
-
-# `Return` have limited usefulness but placeholds yield-based syntax
-type FunctionRet[R] = Generator[Return[R], None, None] | R | None
 _RETURN_HOOK: Cell[Callable[[Any], None]] = Cell()
 
 
@@ -93,27 +79,12 @@ def inline_subr[**P, R](fn: Callable[P, FunctionRet[R]]) -> Callable[P, R]:
             _RETURN_HOOK.bind(b.break_),
         ):
             ans = fn(*args, **kwargs)
+            assert not isinstance(ans, _Function)
 
-            if isinstance(ans, GeneratorType):
-                ans = cast(Generator[Return[R]], ans)
-                try:
-                    while True:
-                        item = next(ans)
-                        if not isinstance(
-                            item, Return
-                        ):  # pyright: ignore[reportUnnecessaryIsInstance]
-                            raise TypeError()
-                        b.break_(item.value)
-                except StopIteration as e:
-                    if e.value is not None:
-                        raise TypeError("Generator-based subr should not also return") from None
-                unreachable_checked(
-                    f"Generator-based subr {ans.__qualname__} is required to return at the end"
-                )
-            else:
-                ans = cast(R, ans)
-                if ans is not None or len(b._break_paths) == 0:
-                    b.break_(ans)
+            if ans is not None:
+                b.break_(ans)
+            elif len(b._break_paths) == 0:
+                b.break_(None)  # pyright: ignore[reportArgumentType]
 
         return b.value
 
@@ -451,90 +422,49 @@ class ArgSpec[T = Any]:
 F_co = TypeVar("F_co", covariant=True)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Subr[**P, R](CallDescMixin):
-    fn: Callable[P, FunctionRet[R]]
-    arg_spec: ArgSpec
+    _fn: Callable[P, FunctionRet[R]]
+    _arg_spec: ArgSpec
+    _inline: bool
 
     _subr: TracedSubr[Any, Any] | None = None
 
     def __repr__(self):
-        return repr(self.fn)
+        return repr(self._fn)
 
     def __post_init__(self):
-        self.__qualname__ = self.fn.__qualname__
-        self.__wrapped__ = self.fn
+        self.__qualname__ = self._fn.__qualname__
+        self.__wrapped__ = self._fn
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
-        args, kwargs = normalize_function_args(self.fn, args, kwargs)
+        if self._inline:
+            return inline_subr(self._fn)(*args, **kwargs)
 
-        @functools.wraps(self.fn)
+        args, kwargs = normalize_function_args(self._fn, args, kwargs)
+
+        @functools.wraps(self._fn)
         def inner(args_kwargs: tuple[tuple[Any, ...], dict[str, Any]]) -> FunctionRet[R]:
             args, kwargs = args_kwargs
-            return self.fn(*args, **kwargs)
+            return self._fn(*args, **kwargs)
 
         if self._subr is None:
-            arg_tree = self.arg_spec.resolve((args, kwargs))
+            arg_tree = self._arg_spec.resolve((args, kwargs))
             self._subr = trace_to_subr(inner, arg_tree)
 
         return self._subr.call((args, kwargs))
 
 
-class _Invalid:
-    pass
-
-
-@dataclass
-class SubrFactory:
-    inline_always: bool = False
-    arg_spec: ArgSpec | None = None
-
-    @overload
-    def __call__[**P, R](self, func: Callable[P, Generator[Return[R]]], /) -> Subr[P, R]: ...
-    @overload
-    def __call__[**P, R](
-        self, func: Callable[P, Generator[Any, Any, Any]], /
-    ) -> Subr[[_Invalid], _Invalid]: ...
-    @overload
-    def __call__[**P, R](self, func: Callable[P, FunctionRet[R]]) -> Subr[P, R]: ...
-
-    def __call__[**P, R](  # pyright: ignore[reportInconsistentOverload]
-        self, func: Callable[P, FunctionRet[R]], /
-    ) -> Subr[P, R]:
-        if self.inline_always:
-            raise NotImplementedError()
-        if self.arg_spec:
-            arg_spec = self.arg_spec
-        else:
-            arg_spec = ArgSpec.from_args(get_argspec_from_annotations(func))
-        return Subr(func, arg_spec)
-
-
-class SubrOpts(TypedDict, total=False):
-    inline_always: bool
-    arg_spec: ArgSpec | None
-
-
-@overload
-def subr(**kwargs: Unpack[SubrOpts]) -> SubrFactory: ...
-@overload
+@allow_curry
 def subr[**P, R](
-    func: Callable[P, Generator[Return[R]]], /, **kwargs: Unpack[SubrOpts]
-) -> Subr[P, R]: ...
-@overload
-def subr[**P, R](
-    func: Callable[P, Generator[Any, Any, Any]], /, **kwargs: Unpack[SubrOpts]
-) -> Subr[[_Invalid], _Invalid]: ...
-@overload
-def subr[**P, R](
-    func: Callable[P, FunctionRet[R]], /, **kwargs: Unpack[SubrOpts]
-) -> Subr[P, R]: ...
+    fn: Callable[P, FunctionRet[R]],
+    /,
+    *,
+    inline: bool = False,
+    arg_spec: ArgSpec | None = None,
+) -> Subr[P, R]:
 
+    if arg_spec is None:
+        arg_spec = ArgSpec.from_args(get_argspec_from_annotations(fn))
 
-def subr[**P, R](  # pyright: ignore[reportInconsistentOverload]
-    func: Callable[P, FunctionRet[R]] | None = None, /, **kwargs: Unpack[SubrOpts]
-):
-    config = SubrFactory(**kwargs)
-    if func is None:
-        return config
-    return config(func)
+    return Subr(_fn=fn, _arg_spec=arg_spec, _inline=inline)

@@ -12,34 +12,24 @@ class Data:
 
 
 @subr
-def func_with_ret(x: Int):
+def func_with_ret_py(x: Int) -> FunctionRet[Data]:
     return Data(x + 1, x - 1)
 
 
 @subr
-def func_with_yield(x: Int):
+def func_with_return_(x: Int) -> FunctionRet[Data]:
     with if_(x > 0):
-        yield Return(Data(1, x))
-    yield Return(Data(x, 1))
-
-
-@subr
-def func_with_yield_nested(x: Int) -> FunctionRet[Data]:
-    def tmp(x: Int):
-        yield Return(Data(x, x))
-
-    with if_(x > 0):
-        yield from tmp(x)
-    yield Return(Data(x, 1))
+        return_(Data(1, x))
+    return_(Data(x, 1))
 
 
 @wrap_test
 @program
 def test_subr():
-    for f in [func_with_ret, func_with_yield, func_with_yield_nested]:
+    for f in [func_with_ret_py, func_with_return_]:
         for v in [d.ImportCount, d.ExportCount]:
             ans: Data = f(v)
-            comment(f"{f.fn.__qualname__}, {v.logic_type}:", ans)
+            comment(f"{f.__qualname__}, {v.logic_type}:", ans)
 
 
 @subr
@@ -62,7 +52,7 @@ def test_cond_call():
 @wrap_test
 @program
 @subr
-def test_subr_in_subr():
+def test_subr_in_subr() -> FunctionRet[None]:
 
     @subr
     def outer(x: Int):
@@ -74,7 +64,7 @@ def test_subr_in_subr():
         return inner(inner(x))
 
     with if_(outer(d.ImportCount.transmute(int)) > 0):
-        yield Return()
+        return_()
 
     d.On = False
-    yield Return()
+    return_()

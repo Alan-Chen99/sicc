@@ -1,12 +1,17 @@
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable
+from typing import Iterator
 
+import pytest
 from rich import print as print
 from rich.rule import Rule
 from rich.text import Text
 
 from sicc import Program
 from sicc import show_pending_diagnostics
+from sicc._diagnostic import CompilerError
+from sicc._diagnostic import Warnings
 from sicc._diagnostic import describe_fn
 from sicc.config import with_rich_spinner
 from sicc.config import with_status
@@ -47,3 +52,11 @@ def wrap_test(prog: Program) -> Callable[[], None]:
     inner.__wrapped__ = prog  # pyright: ignore[reportFunctionMemberAccess]
 
     return inner
+
+
+@contextmanager
+def compiler_raises(warning: Warnings) -> Iterator[None]:
+    with pytest.raises(CompilerError) as exc_info:
+        yield
+
+    assert exc_info.value.report.typ == warning

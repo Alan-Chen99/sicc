@@ -397,11 +397,8 @@ class Pin(DeviceBase[None, None]):
         d0.Setting = 100  # uses 's' instruction
     """
 
-    def __init__(self, idx: Int | Literal["db"]) -> None:
-        if isinstance(idx, str) and idx == "db":
-            pin = LiteralPin._db()
-        else:
-            pin = idx
+    def __init__(self, idx: PinSpec) -> None:
+        pin = _parse_pin(idx)
         super().__init__(_device_type=None, _name=None, _pin=pin)
 
     @staticmethod
@@ -412,6 +409,35 @@ class Pin(DeviceBase[None, None]):
 
         def __getattr__(self, name: str) -> VarRead[Any]: ...
         def __setattr__(self, name: str, val: UserValue) -> None: ...
+
+
+PinSpec = Pin | Int | Literal["db"]
+
+
+def _parse_pin(pin: PinSpec | None) -> Int | LiteralPin | None:
+    """Normalize a user-facing pin spec to the internal representation.
+
+    Returns:
+        - None: for "no pin" (batch-mode device access)
+        - LiteralPin("db"): for databank pin
+        - Int/UserValue[int]: for numeric pin indices
+
+    Notes:
+        We intentionally do *not* return PinType here. PinType is the scalar runtime
+        value used by instructions; LiteralPin exists to keep "db" as a distinct
+        pytree leafless node.
+    """
+
+    if pin is None:
+        return None
+    if isinstance(pin, Pin):
+        # Pin stores pin spec in its _pin field already.
+        return pin._pin
+    if isinstance(pin, str):
+        assert pin == "db"
+        return LiteralPin._db()
+    # int / Variable[int] / other Int-like UserValue
+    return pin
 
 
 ################################################################################
@@ -565,7 +591,7 @@ def mk_field_ro[T: VarT](
 ################################################################################
 
 
-@optree_dataclass(eq=False)
+@optree_dataclass
 class _SlotProxy:
     device: DeviceBase
 
@@ -573,7 +599,7 @@ class _SlotProxy:
         return Slot(self.device, idx)
 
 
-@optree_dataclass(eq=False)
+@optree_dataclass
 class Slot:
     device: DeviceBase
     idx: Int
@@ -711,15 +737,14 @@ class DeviceTyped(DeviceBase[str]):
         name: Str | None = None,
         *,
         default_batchmode: BatchMode = BatchMode.AVG,
-        pin: Int | Literal["db"] | None = None,
+        pin: PinSpec | None = None,
     ):
         device_type = self._device_type_from_cls_name()
         assert crc32(device_type) == self._hash
 
-        if isinstance(pin, str) and pin == "db":
-            pin_ = LiteralPin._db()
-        else:
-            pin_ = pin
+        pin_ = _parse_pin(pin)
+        if pin_ is not None:
+            assert name is None
 
         super().__init__(
             _device_type=device_type,
@@ -757,7 +782,7 @@ class DeviceTyped(DeviceBase[str]):
 
     def exist(self) -> VarRead[bool]:
         # >=1 devices with this PrefabHash
-        return self.PrefabHash.sum != 0
+        return self.PrefabHash.sum.transmute(int) != 0
 
     def is_unique(self) -> VarRead[bool]:
         # ==1 devices with this PrefabHash

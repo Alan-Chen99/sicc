@@ -315,3 +315,45 @@ def transpile_setattr_default(self: Any, name: str, val: Any, /):
 
 def transpile_setitem_default(self: Any, key: str, val: Any, /):
     self[key] = val
+
+
+################################################################################
+
+
+class _AllowCurry[Impl_co: Callable[..., Any]]:
+    fn: Final[Impl_co]
+
+    def __init__(self, fn: Impl_co) -> None:
+        self.fn = fn
+
+    # direct call
+    @overload
+    def __call__[**P, R](
+        self: _AllowCurry[Callable[P, R]], *args: P.args, **kwargs: P.kwargs
+    ) -> R: ...
+
+    # curried call
+    @overload
+    def __call__[T, **P, R](
+        self: _AllowCurry[Callable[Concatenate[T, P], R]], *args: P.args, **kwargs: P.kwargs
+    ) -> Callable[[T], R]: ...
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        sig = inspect.signature(self.fn)
+        try:
+            _ = sig.bind(*args, **kwargs)
+            return self.fn(*args, **kwargs)
+        except TypeError:
+            pass
+
+        # check sig is compatible
+        _ = sig.bind(None, *args, **kwargs)
+
+        def inner(val: Any, /):
+            return self.fn(val, *args, **kwargs)
+
+        return inner
+
+
+def allow_curry[Fn: Callable[..., Any]](fn: Fn) -> _AllowCurry[Fn]:
+    return _AllowCurry(fn)

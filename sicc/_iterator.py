@@ -34,39 +34,8 @@ from ._tracing import label
 from ._tracing import mk_internal_label
 from ._tracing import trace_to_fragment
 from ._utils import CallDescMixin
+from ._utils import allow_curry
 from ._utils import get_id
-
-
-def patch_for_loop[E](
-    it: Iterable[E], *, break_to: Label | None = None, emit_break_label: bool = True
-) -> Iterator[E]:
-    """
-    continue_() and break_() in `for x in patch_for_loop(it): ...` work correctly
-    """
-
-    id = get_id()
-
-    if not emit_break_label and break_to is None:
-        raise TypeError("patch_for_loop(..., emit_break_label=False) requires break_to=")
-
-    for_end = break_to if break_to is not None else mk_internal_label("for_end", id)
-
-    with track_caller():
-        for idx, item in enumerate(it):
-            for_cont = mk_internal_label(f"for_cont({idx})", id)
-            with (
-                CONTINUE_TO.bind(for_cont),
-                BREAK_TO.bind(for_end),
-                ELSE_HOOK.bind_clear(),
-            ):
-                yield item
-            label(for_cont)
-
-    if emit_break_label:
-        label(for_end)
-
-
-################################################################################
 
 
 def runtime_loop[E](it: Iterable[E]) -> Iterator[E]:
@@ -157,19 +126,22 @@ class GeneratorSubr[**P, Y, R](CallDescMixin):
             ):
                 yield value
 
-            with add_debug_info(DebugInfo(describe=f"continuing {describe_fn(subr.fn)}")):
+            with add_debug_info(DebugInfo(describe=f"continuing {describe_fn(subr._fn)}")):
                 jump(self.it_resume)
 
         return ans
 
 
-def shared_generator[**P, Y, R](fn: Callable[P, Generator[Y, None, R]]) -> GeneratorSubr[P, Y, R]:
+@allow_curry
+def shared_generator[**P, Y, R](
+    fn: Callable[P, Generator[Y, None, R]], /, *, inline: bool = False
+) -> GeneratorSubr[P, Y, R]:
     it_resume = Variable(Label)
     it_yield = Variable(Label)
 
     yield_value: State[Y] = State()
 
-    @subr
+    @subr(inline=inline)
     @functools.wraps(fn)
     def inner(*args: P.args, **kwargs: P.kwargs) -> R:
         id = get_id()
@@ -182,6 +154,7 @@ def shared_generator[**P, Y, R](fn: Callable[P, Generator[Y, None, R]]) -> Gener
                 resume_to = mk_internal_label(f"it_resume({idx})", id)
                 idx += 1
 
+                # possibly raise StopIteration after tracing reach end of python function
                 val = next(it)
 
                 with add_debug_info(DebugInfo(describe=f"yielding from {describe_fn(fn)}")):

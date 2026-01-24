@@ -23,7 +23,7 @@ from rich.text import Text
 from ._comment import comment
 from ._control_flow import loop
 from ._core import TracedProgram
-from ._diagnostic import SuppressExit
+from ._diagnostic import CompilerError
 from ._diagnostic import describe_fn
 from ._diagnostic import register_exclusion
 from ._diagnostic import show_pending_diagnostics
@@ -114,8 +114,8 @@ class CliTied:
 
         try:
             self.cmd.call(prog, self.config)
-        except SuppressExit as e:
-            exit(e.code)
+        except CompilerError:
+            exit(1)
 
         exit(0)
 
@@ -170,8 +170,8 @@ class Cli:
 
         try:
             self.cmd.call(prog, self.config)
-        except SuppressExit as e:
-            exit(e.code)
+        except CompilerError:
+            exit(1)
 
         exit(0)
 

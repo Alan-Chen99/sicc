@@ -28,7 +28,7 @@ def test_loop():
 def test_range():
     for i in range_(12):
         with if_(i == 5):
-            yield Return()
+            return_()
             continue_()
         yield_()
 
@@ -37,4 +37,4 @@ def test_range():
             break_()
         yield_()
 
-    yield Return()
+    return_()

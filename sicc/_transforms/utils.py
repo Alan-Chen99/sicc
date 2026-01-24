@@ -14,7 +14,6 @@ from rich.pretty import pretty_repr
 from .._core import Fragment
 from .._diagnostic import CompilerError
 from .._diagnostic import Report
-from .._diagnostic import SuppressExit
 from .._diagnostic import register_exclusion
 from .._tracing import internal_transform
 from .._utils import Cell
@@ -79,16 +78,16 @@ class Transform[**P, R]:
                     # validate result
                     try:
                         get_index(frag)
-                    except SuppressExit:
+                    except CompilerError as e:
                         raise
                     except Exception as e:
                         raise RuntimeError(f"Transform {self.fn} returned invalid fragment") from e
 
                 return ans
-            except SuppressExit:
-                raise
             except Exception as e:
                 if isinstance(e, CompilerError):
+                    if not e.add_transform_ctx:
+                        raise e
                     report = e.report
                 else:
                     report = Report.from_ex(e)
@@ -102,7 +101,8 @@ class Transform[**P, R]:
                         report.add(
                             frag.__rich__(title=f"Fragment after {self.fn}"),
                         )
-                report.fatal()
+
+                raise CompilerError(report, add_transform_ctx=False) from None
 
 
 class CachedFn[**P, R](Transform[P, R]):
