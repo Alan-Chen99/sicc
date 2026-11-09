@@ -20,13 +20,13 @@ class _BaseGas:
     RatioLiquidNitrousOxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidOxygen: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidPollutant: _FieldDesc[float] = _mk_field_ro(float)
-    RatioLiquidVolatiles: _FieldDesc[float] = _mk_field_ro(float)
+    RatioLiquidMethane: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrogen: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrousOxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioOxygen: _FieldDesc[float] = _mk_field_ro(float)
     RatioPollutant: _FieldDesc[float] = _mk_field_ro(float)
     RatioSteam: _FieldDesc[float] = _mk_field_ro(float)
-    RatioVolatiles: _FieldDesc[float] = _mk_field_ro(float)
+    RatioMethane: _FieldDesc[float] = _mk_field_ro(float)
     RatioWater: _FieldDesc[float] = _mk_field_ro(float)
     Temperature: _FieldDesc[float] = _mk_field_ro(float)
     TotalMoles: _FieldDesc[float] = _mk_field_ro(float)
@@ -47,13 +47,13 @@ class _BaseGas:
             RatioLiquidNitrousOxide=self.RatioLiquidNitrousOxide,
             RatioLiquidOxygen=self.RatioLiquidOxygen,
             RatioLiquidPollutant=self.RatioLiquidPollutant,
-            RatioLiquidVolatiles=self.RatioLiquidVolatiles,
+            RatioLiquidMethane=self.RatioLiquidMethane,
             RatioNitrogen=self.RatioNitrogen,
             RatioNitrousOxide=self.RatioNitrousOxide,
             RatioOxygen=self.RatioOxygen,
             RatioPollutant=self.RatioPollutant,
             RatioSteam=self.RatioSteam,
-            RatioVolatiles=self.RatioVolatiles,
+            RatioMethane=self.RatioMethane,
             RatioWater=self.RatioWater,
         )
 
@@ -67,13 +67,13 @@ class _BaseGasInput:
     RatioLiquidNitrousOxideInput: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidOxygenInput: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidPollutantInput: _FieldDesc[float] = _mk_field_ro(float)
-    RatioLiquidVolatilesInput: _FieldDesc[float] = _mk_field_ro(float)
+    RatioLiquidMethaneInput: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrogenInput: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrousOxideInput: _FieldDesc[float] = _mk_field_ro(float)
     RatioOxygenInput: _FieldDesc[float] = _mk_field_ro(float)
     RatioPollutantInput: _FieldDesc[float] = _mk_field_ro(float)
     RatioSteamInput: _FieldDesc[float] = _mk_field_ro(float)
-    RatioVolatilesInput: _FieldDesc[float] = _mk_field_ro(float)
+    RatioMethaneInput: _FieldDesc[float] = _mk_field_ro(float)
     RatioWaterInput: _FieldDesc[float] = _mk_field_ro(float)
     TemperatureInput: _FieldDesc[float] = _mk_field_ro(float)
     TotalMolesInput: _FieldDesc[float] = _mk_field_ro(float)
@@ -94,13 +94,13 @@ class _BaseGasInput:
             RatioLiquidNitrousOxide=self.RatioLiquidNitrousOxideInput,
             RatioLiquidOxygen=self.RatioLiquidOxygenInput,
             RatioLiquidPollutant=self.RatioLiquidPollutantInput,
-            RatioLiquidVolatiles=self.RatioLiquidVolatilesInput,
+            RatioLiquidMethane=self.RatioLiquidMethaneInput,
             RatioNitrogen=self.RatioNitrogenInput,
             RatioNitrousOxide=self.RatioNitrousOxideInput,
             RatioOxygen=self.RatioOxygenInput,
             RatioPollutant=self.RatioPollutantInput,
             RatioSteam=self.RatioSteamInput,
-            RatioVolatiles=self.RatioVolatilesInput,
+            RatioMethane=self.RatioMethaneInput,
             RatioWater=self.RatioWaterInput,
         )
 
@@ -114,13 +114,13 @@ class _BaseGasInput2:
     RatioLiquidNitrousOxideInput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidOxygenInput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidPollutantInput2: _FieldDesc[float] = _mk_field_ro(float)
-    RatioLiquidVolatilesInput2: _FieldDesc[float] = _mk_field_ro(float)
+    RatioLiquidMethaneInput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrogenInput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrousOxideInput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioOxygenInput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioPollutantInput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioSteamInput2: _FieldDesc[float] = _mk_field_ro(float)
-    RatioVolatilesInput2: _FieldDesc[float] = _mk_field_ro(float)
+    RatioMethaneInput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioWaterInput2: _FieldDesc[float] = _mk_field_ro(float)
     TemperatureInput2: _FieldDesc[float] = _mk_field_ro(float)
     TotalMolesInput2: _FieldDesc[float] = _mk_field_ro(float)
@@ -141,13 +141,13 @@ class _BaseGasInput2:
             RatioLiquidNitrousOxide=self.RatioLiquidNitrousOxideInput2,
             RatioLiquidOxygen=self.RatioLiquidOxygenInput2,
             RatioLiquidPollutant=self.RatioLiquidPollutantInput2,
-            RatioLiquidVolatiles=self.RatioLiquidVolatilesInput2,
+            RatioLiquidMethane=self.RatioLiquidMethaneInput2,
             RatioNitrogen=self.RatioNitrogenInput2,
             RatioNitrousOxide=self.RatioNitrousOxideInput2,
             RatioOxygen=self.RatioOxygenInput2,
             RatioPollutant=self.RatioPollutantInput2,
             RatioSteam=self.RatioSteamInput2,
-            RatioVolatiles=self.RatioVolatilesInput2,
+            RatioMethane=self.RatioMethaneInput2,
             RatioWater=self.RatioWaterInput2,
         )
 
@@ -161,13 +161,13 @@ class _BaseGasOutput:
     RatioLiquidNitrousOxideOutput: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidOxygenOutput: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidPollutantOutput: _FieldDesc[float] = _mk_field_ro(float)
-    RatioLiquidVolatilesOutput: _FieldDesc[float] = _mk_field_ro(float)
+    RatioLiquidMethaneOutput: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrogenOutput: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrousOxideOutput: _FieldDesc[float] = _mk_field_ro(float)
     RatioOxygenOutput: _FieldDesc[float] = _mk_field_ro(float)
     RatioPollutantOutput: _FieldDesc[float] = _mk_field_ro(float)
     RatioSteamOutput: _FieldDesc[float] = _mk_field_ro(float)
-    RatioVolatilesOutput: _FieldDesc[float] = _mk_field_ro(float)
+    RatioMethaneOutput: _FieldDesc[float] = _mk_field_ro(float)
     RatioWaterOutput: _FieldDesc[float] = _mk_field_ro(float)
     TemperatureOutput: _FieldDesc[float] = _mk_field_ro(float)
     TotalMolesOutput: _FieldDesc[float] = _mk_field_ro(float)
@@ -188,13 +188,13 @@ class _BaseGasOutput:
             RatioLiquidNitrousOxide=self.RatioLiquidNitrousOxideOutput,
             RatioLiquidOxygen=self.RatioLiquidOxygenOutput,
             RatioLiquidPollutant=self.RatioLiquidPollutantOutput,
-            RatioLiquidVolatiles=self.RatioLiquidVolatilesOutput,
+            RatioLiquidMethane=self.RatioLiquidMethaneOutput,
             RatioNitrogen=self.RatioNitrogenOutput,
             RatioNitrousOxide=self.RatioNitrousOxideOutput,
             RatioOxygen=self.RatioOxygenOutput,
             RatioPollutant=self.RatioPollutantOutput,
             RatioSteam=self.RatioSteamOutput,
-            RatioVolatiles=self.RatioVolatilesOutput,
+            RatioMethane=self.RatioMethaneOutput,
             RatioWater=self.RatioWaterOutput,
         )
 
@@ -208,13 +208,13 @@ class _BaseGasOutput2:
     RatioLiquidNitrousOxideOutput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidOxygenOutput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidPollutantOutput2: _FieldDesc[float] = _mk_field_ro(float)
-    RatioLiquidVolatilesOutput2: _FieldDesc[float] = _mk_field_ro(float)
+    RatioLiquidMethaneOutput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrogenOutput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrousOxideOutput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioOxygenOutput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioPollutantOutput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioSteamOutput2: _FieldDesc[float] = _mk_field_ro(float)
-    RatioVolatilesOutput2: _FieldDesc[float] = _mk_field_ro(float)
+    RatioMethaneOutput2: _FieldDesc[float] = _mk_field_ro(float)
     RatioWaterOutput2: _FieldDesc[float] = _mk_field_ro(float)
     TemperatureOutput2: _FieldDesc[float] = _mk_field_ro(float)
     TotalMolesOutput2: _FieldDesc[float] = _mk_field_ro(float)
@@ -235,13 +235,13 @@ class _BaseGasOutput2:
             RatioLiquidNitrousOxide=self.RatioLiquidNitrousOxideOutput2,
             RatioLiquidOxygen=self.RatioLiquidOxygenOutput2,
             RatioLiquidPollutant=self.RatioLiquidPollutantOutput2,
-            RatioLiquidVolatiles=self.RatioLiquidVolatilesOutput2,
+            RatioLiquidMethane=self.RatioLiquidMethaneOutput2,
             RatioNitrogen=self.RatioNitrogenOutput2,
             RatioNitrousOxide=self.RatioNitrousOxideOutput2,
             RatioOxygen=self.RatioOxygenOutput2,
             RatioPollutant=self.RatioPollutantOutput2,
             RatioSteam=self.RatioSteamOutput2,
-            RatioVolatiles=self.RatioVolatilesOutput2,
+            RatioMethane=self.RatioMethaneOutput2,
             RatioWater=self.RatioWaterOutput2,
         )
 
@@ -1275,13 +1275,13 @@ class GasSensor(
     RatioLiquidNitrousOxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidOxygen: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidPollutant: _FieldDesc[float] = _mk_field_ro(float)
-    RatioLiquidVolatiles: _FieldDesc[float] = _mk_field_ro(float)
+    RatioLiquidMethane: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrogen: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrousOxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioOxygen: _FieldDesc[float] = _mk_field_ro(float)
     RatioPollutant: _FieldDesc[float] = _mk_field_ro(float)
     RatioSteam: _FieldDesc[float] = _mk_field_ro(float)
-    RatioVolatiles: _FieldDesc[float] = _mk_field_ro(float)
+    RatioMethane: _FieldDesc[float] = _mk_field_ro(float)
     RatioWater: _FieldDesc[float] = _mk_field_ro(float)
     Temperature: _FieldDesc[float] = _mk_field_ro(float)
 
@@ -1297,7 +1297,7 @@ class GasTankStorage(
     RatioNitrousOxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioOxygen: _FieldDesc[float] = _mk_field_ro(float)
     RatioPollutant: _FieldDesc[float] = _mk_field_ro(float)
-    RatioVolatiles: _FieldDesc[float] = _mk_field_ro(float)
+    RatioMethane: _FieldDesc[float] = _mk_field_ro(float)
     RatioWater: _FieldDesc[float] = _mk_field_ro(float)
     Temperature: _FieldDesc[float] = _mk_field_ro(float)
 
@@ -1871,7 +1871,7 @@ class LiquidTankStorage(
     RatioNitrousOxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioOxygen: _FieldDesc[float] = _mk_field_ro(float)
     RatioPollutant: _FieldDesc[float] = _mk_field_ro(float)
-    RatioVolatiles: _FieldDesc[float] = _mk_field_ro(float)
+    RatioMethane: _FieldDesc[float] = _mk_field_ro(float)
     RatioWater: _FieldDesc[float] = _mk_field_ro(float)
     Temperature: _FieldDesc[float] = _mk_field_ro(float)
 
@@ -2504,13 +2504,13 @@ class RocketAvionics(
     RatioLiquidNitrousOxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidOxygen: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidPollutant: _FieldDesc[float] = _mk_field_ro(float)
-    RatioLiquidVolatiles: _FieldDesc[float] = _mk_field_ro(float)
+    RatioLiquidMethane: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrogen: _FieldDesc[float] = _mk_field_ro(float)
     RatioNitrousOxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioOxygen: _FieldDesc[float] = _mk_field_ro(float)
     RatioPollutant: _FieldDesc[float] = _mk_field_ro(float)
     RatioSteam: _FieldDesc[float] = _mk_field_ro(float)
-    RatioVolatiles: _FieldDesc[float] = _mk_field_ro(float)
+    RatioMethane: _FieldDesc[float] = _mk_field_ro(float)
     RatioWater: _FieldDesc[float] = _mk_field_ro(float)
     ReEntryAltitude: _FieldDesc = _mk_field_ro()
     Reagents: _FieldDesc = _mk_field_ro()

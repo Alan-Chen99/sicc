@@ -809,13 +809,13 @@ class GasPort:
     RatioLiquidNitrousOxide: DeviceLogicTypeRead[float]
     RatioLiquidOxygen: DeviceLogicTypeRead[float]
     RatioLiquidPollutant: DeviceLogicTypeRead[float]
-    RatioLiquidVolatiles: DeviceLogicTypeRead[float]
+    RatioLiquidMethane: DeviceLogicTypeRead[float]
     RatioNitrogen: DeviceLogicTypeRead[float]
     RatioNitrousOxide: DeviceLogicTypeRead[float]
     RatioOxygen: DeviceLogicTypeRead[float]
     RatioPollutant: DeviceLogicTypeRead[float]
     RatioSteam: DeviceLogicTypeRead[float]
-    RatioVolatiles: DeviceLogicTypeRead[float]
+    RatioMethane: DeviceLogicTypeRead[float]
     RatioWater: DeviceLogicTypeRead[float]
 
     def __rich_repr__(self) -> rich.repr.Result:
