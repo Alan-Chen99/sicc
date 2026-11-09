@@ -357,3 +357,7 @@ class _AllowCurry[Impl_co: Callable[..., Any]]:
 
 def allow_curry[Fn: Callable[..., Any]](fn: Fn) -> _AllowCurry[Fn]:
     return _AllowCurry(fn)
+
+
+def identity[T](x: T) -> T:
+    return x

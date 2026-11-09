@@ -25,6 +25,8 @@ from ._tracing import label
 from ._tracing import mk_internal_label
 from ._tracing import trace_to_fragment
 from ._tree_utils import copy_tree
+from ._tree_utils import field as optree_field  # pyright: ignore[reportUnknownVariableType]
+from ._tree_utils import optree_dataclass
 from ._utils import allow_curry
 
 register_exclusion(__file__)
@@ -70,9 +72,9 @@ global_suspend_to: Variable[Label] = Variable(Label)
 global_resume_to: Variable[Label] = Variable(Label)
 
 
-@dataclass
+@optree_dataclass
 class StaticTask:
-    state: State[ValLabelLike]
+    state: State[ValLabelLike] = optree_field(pytree_node=False)
 
     def step(self) -> None:
         suspend_to = mk_internal_label("suspend_to")

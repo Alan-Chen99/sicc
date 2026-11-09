@@ -54,6 +54,7 @@ from ._utils import Empty
 from ._utils import allow_curry
 from ._utils import empty
 from ._utils import get_id
+from ._utils import identity
 
 register_exclusion(__file__)
 
@@ -285,7 +286,7 @@ def _embed_call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> ast.Call:
     )
 
 
-@dataclass(frozen=True)
+@dataclass
 class _TranspileErrorWrapped(Exception):
     node: ast.AST
     err_type: type[TranspileError]
@@ -767,7 +768,8 @@ def transpile[**P, R](fn: Callable[P, R], /, *, wrap: bool = True, inline: bool 
     wrap_fn: Any
 
     if inspect.iscoroutinefunction(fn):
-        raise NotImplementedError()
+        # raise NotImplementedError()
+        wrap_fn = identity
     elif inspect.isgeneratorfunction(fn):
         wrap_fn = shared_generator(inline=inline)
     else:
