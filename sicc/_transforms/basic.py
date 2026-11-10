@@ -1,3 +1,4 @@
+import functools
 from dataclasses import dataclass
 from dataclasses import field
 from weakref import WeakSet
@@ -110,9 +111,21 @@ class Index:
     labels: dict[Label, LabelInfo]
 
     effects: dict[EffectBase, EffectInfo]
-    effect_conflicts: "nx.Graph[EffectBase]"
 
     instrs: dict[BoundInstr, InstrInfo]
+
+    @functools.cached_property
+    def effect_conflicts(self) -> "nx.Graph[EffectBase]":
+        # lazy: quadratic in the number of effects, and most indexes never use it
+        effect_list = list(self.effects)
+        effect_conflicts: "nx.Graph[EffectBase]" = nx.Graph(nodes=effect_list)
+        effect_conflicts.add_edges_from(  # pyright: ignore[reportUnknownMemberType]
+            (x, y)
+            for i, x in enumerate(effect_list)
+            for y in effect_list[i:]
+            if not known_distinct(x, y)
+        )
+        return effect_conflicts
 
     def instrs_unpacked(self) -> list[BoundInstr]:
         return [i.i for i in self.instrs.values() if i.children is None]
@@ -132,17 +145,25 @@ def get_index(ctx: TransformCtx, unpack: UnpackPolicy = NeverUnpack()) -> Index:
     res_effects: dict[EffectBase, EffectInfo] = {}
     res_instrs: dict[BoundInstr, InstrInfo] = {}
 
+    # infos are built only on a miss: setdefault would build one, with its sets, on every call
+
     def get_var(v: Var) -> VarInfo:
         assert isinstance(v, Var)
-        return res_vars.setdefault(v, VarInfo(v))
+        if (info := res_vars.get(v)) is None:
+            info = res_vars[v] = VarInfo(v)
+        return info
 
     def get_label(v: Label) -> LabelInfo:
         assert isinstance(v, Label)
-        return res_labels.setdefault(v, LabelInfo(v))
+        if (info := res_labels.get(v)) is None:
+            info = res_labels[v] = LabelInfo(v)
+        return info
 
     def get_effect(loc: EffectBase) -> EffectInfo:
         assert isinstance(loc, EffectBase)
-        return res_effects.setdefault(loc, EffectInfo(loc))
+        if (info := res_effects.get(loc)) is None:
+            info = res_effects[loc] = EffectInfo(loc)
+        return info
 
     def handle_instr(instr: BoundInstr, parent: BoundInstr | None) -> None:
 
@@ -229,15 +250,7 @@ def get_index(ctx: TransformCtx, unpack: UnpackPolicy = NeverUnpack()) -> Index:
             if len(l.defs) == 0:
                 l.v.debug.error(f"private label {l} never defined").throw()
 
-    effect_list = list(res_effects)
-    effect_conflicts: "nx.Graph[EffectBase]" = nx.Graph(nodes=effect_list)
-
-    for i, x in enumerate(effect_list):
-        for y in effect_list[i:]:
-            if not known_distinct(x, y):
-                effect_conflicts.add_edge(x, y)
-
-    return Index(res_vars, res_mvars, res_labels, res_effects, effect_conflicts, res_instrs)
+    return Index(res_vars, res_mvars, res_labels, res_effects, res_instrs)
 
 
 @Transform
