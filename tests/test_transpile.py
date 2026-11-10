@@ -90,6 +90,18 @@ def test_bool_const():
 @wrap_test
 @program
 @transpile
+def test_ifexp_const():
+    # on a python bool, only the chosen branch is traced, so the branches may differ in type
+    yes: Static[bool] = True
+    no: Static[bool] = False
+    comment("yes:", *((1, 2) if yes else ("one",)))
+    comment("no:", *((1, 2) if no else ("one",)))
+    comment("yes:", d.ImportCount if yes else 2.5)
+
+
+@wrap_test
+@program
+@transpile
 def test_bool_operators():
     # Test not
     x = d.ExportCount > 10

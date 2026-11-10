@@ -265,6 +265,13 @@ def _or(x: Bool, rhs: Callable[[], Bool]) -> Bool:
     return ans.value
 
 
+def _ifexp[T](test: Bool, body: Callable[[], T], orelse: Callable[[], T]) -> T:
+    """`body() if test else orelse()`; a python bool `test` picks the branch at trace time."""
+    if isinstance(test, bool):
+        return body() if test else orelse()
+    return cond(test, body, orelse)
+
+
 def _not(x: Bool) -> Bool:
     if isinstance(x, bool):
         return not x
@@ -831,7 +838,7 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
     #####
 
     def visit_IfExp(self, node: ast.IfExp) -> ast.AST:
-        """Transform `x if y else z` -> `cond(y, lambda: x, lambda: z)`"""
+        """Transform `x if y else z` -> `_ifexp(y, lambda: x, lambda: z)`"""
         node = self._generic_visit_sametype(node)
         if self._helper.value:
             return node
@@ -840,7 +847,7 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
         body_lambda = ast.Lambda(args=ast.arguments(), body=node.body)
         orelse_lambda = ast.Lambda(args=ast.arguments(), body=node.orelse)
 
-        expr = _embed_call(cond, node.test, body_lambda, orelse_lambda)
+        expr = _embed_call(_ifexp, node.test, body_lambda, orelse_lambda)
         return ast.copy_location(expr, node)
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> ast.AST:
@@ -1165,7 +1172,7 @@ def transpile[**P, R](fn: Callable[P, R], /, *, wrap: bool = True, inline: bool 
 
     **control flow**
     `if x: ... else: ...` -> `with if_(x): ... with else_(): ...`
-    `x if y else z` -> `cond(y, lambda: x, lambda: z)`
+    `x if y else z` -> `_ifexp(y, lambda: x, lambda: z)` (on a python bool, at trace time)
     `while x` -> `with while_(lambda: x): ... with else_(): ...`
     `for x in y` -> `for x in _patch_for_loop(y, ...)`
     `break` -> `break_`
