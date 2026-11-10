@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Any
 from typing import Callable
 from typing import Concatenate
+from weakref import WeakKeyDictionary
 
 from ordered_set import OrderedSet
 from rich import print as print  # autoflake: skip
@@ -33,6 +34,19 @@ class TransformCtx:
 
 
 frag_is_global: Cell[bool] = Cell(False)
+
+#: analysis cache of the last transform on each fragment, with the fragment state it describes.
+#: reused by the next transform only while that state is unchanged.
+_ANALYSIS_CACHE: WeakKeyDictionary[Fragment, tuple[object, dict[Any, Any]]] = WeakKeyDictionary()
+
+
+def _analysis_state(frag: Fragment) -> object:
+    """everything cached analyses read from outside their arguments"""
+    return (
+        frag_is_global.value,
+        tuple(frag.scope.private_labels),
+        tuple(tuple(b.contents) for b in frag.blocks.values()),
+    )
 
 
 class Transform[**P, R]:
@@ -64,11 +78,23 @@ class Transform[**P, R]:
         else:
             before = None
 
+        state = _analysis_state(frag)
+        prev = _ANALYSIS_CACHE.get(frag)
+        cache = prev[1] if prev is not None and prev[0] == state else {}
+
         with internal_transform(frag), with_status(self.fn.__qualname__):
             try:
                 logging.debug(f"running {self.fn.__qualname__}")
-                ctx = TransformCtx(frag, {})
+                ctx = TransformCtx(frag, cache)
                 ans = self.fn(ctx, *args, **kwargs)
+
+                if _analysis_state(frag) == state:
+                    if isinstance(self, CachedFn):
+                        # direct calls always run; the result still serves later lookups
+                        cache[self.cache_key(*args, **kwargs)] = ans
+                    _ANALYSIS_CACHE[frag] = (state, cache)
+                else:
+                    _ANALYSIS_CACHE.pop(frag, None)
 
                 if isinstance(self, CachedFn):
                     return ans
@@ -82,7 +108,6 @@ class Transform[**P, R]:
                             frag.__rich__(title=f"Fragment after {self.fn}"),
                         )
 
-                    # TODO: potentially reuse result of this call
                     # validate result
                     try:
                         get_index(frag)
@@ -114,12 +139,14 @@ class Transform[**P, R]:
 
 
 class CachedFn[**P, R](Transform[P, R]):
-    def call_cached(self, ctx: TransformCtx, /, *args: P.args, **kwargs: P.kwargs) -> R:
-        # TODO: make this cache default arguments friendly
-
-        bound = self.sig.bind_partial(*args, **kwargs)
+    def cache_key(self, *args: P.args, **kwargs: P.kwargs) -> tuple[Any, ...]:
+        # None stands in for ctx, so positional, keyword and defaulted forms of a call agree
+        bound = self.sig.bind_partial(None, *args, **kwargs)
         bound.apply_defaults()
-        cache_key = (self, *sorted(bound.arguments.items()))
+        return (self, *sorted(bound.arguments.items()))
+
+    def call_cached(self, ctx: TransformCtx, /, *args: P.args, **kwargs: P.kwargs) -> R:
+        cache_key = self.cache_key(*args, **kwargs)
 
         # guarded: pretty_repr of the key is costly and this runs for every analysis lookup
         debug = logging.root.isEnabledFor(logging.DEBUG)
