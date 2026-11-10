@@ -91,9 +91,11 @@ class Transform[**P, R]:
                 if _analysis_state(frag) == state:
                     if isinstance(self, CachedFn):
                         # direct calls always run; the result still serves later lookups
-                        cache[self.cache_key(*args, **kwargs)] = ans
+                        cache[self._cache_key(*args, **kwargs)] = ans
                     _ANALYSIS_CACHE[frag] = (state, cache)
                 else:
+                    # in place: an enclosing transform on the same fragment may share this dict
+                    cache.clear()
                     _ANALYSIS_CACHE.pop(frag, None)
 
                 if isinstance(self, CachedFn):
@@ -139,14 +141,14 @@ class Transform[**P, R]:
 
 
 class CachedFn[**P, R](Transform[P, R]):
-    def cache_key(self, *args: P.args, **kwargs: P.kwargs) -> tuple[Any, ...]:
+    def _cache_key(self, *args: P.args, **kwargs: P.kwargs) -> tuple[Any, ...]:
         # None stands in for ctx, so positional, keyword and defaulted forms of a call agree
         bound = self.sig.bind_partial(None, *args, **kwargs)
         bound.apply_defaults()
         return (self, *sorted(bound.arguments.items()))
 
     def call_cached(self, ctx: TransformCtx, /, *args: P.args, **kwargs: P.kwargs) -> R:
-        cache_key = self.cache_key(*args, **kwargs)
+        cache_key = self._cache_key(*args, **kwargs)
 
         # guarded: pretty_repr of the key is costly and this runs for every analysis lookup
         debug = logging.root.isEnabledFor(logging.DEBUG)
