@@ -8,7 +8,7 @@ lbn r5 321604921 2147338600 Open 0
 clrd r1
 putd r1 0 257
 lbn r4 321604921 246144565 Open 0
-bne r3 0 77
+bne r3 0 75
 move r2 4
 select r4 r4 1770757 1770758
 putd r1 4 r4
@@ -19,52 +19,50 @@ getd r5 r1 1
 sra r5 r5 8
 sbn -815193061 1266255753 Setting r5
 getd r5 r1 2
-sra sp r5 24
-and sp sp 255
-sbn -815193061 1102875731 Setting sp
-sra sp r5 16
-and sp sp 255
-sbn -815193061 283567959 Setting sp
+sra r6 r5 24
+and r6 r6 255
+sbn -815193061 1102875731 Setting r6
+sra r6 r5 16
+and r6 r6 255
+sbn -815193061 283567959 Setting r6
 sra r5 r5 8
 and r5 r5 255
 sbn -815193061 -1853400982 Setting r5
 getd r5 r1 3
-sra sp r5 8
-and sp sp 65535
-sbn -815193061 1820037069 Setting sp
+sra r6 r5 8
+and r6 r6 65535
+sbn -815193061 1820037069 Setting r6
 sra r5 r5 24
 and r5 r5 65535
 sbn -815193061 1307562851 Setting r5
 move r5 r2
-move sp 1
-pop r6
+move r7 1000000000
 move r8 -1
-ble 31 r5 50
+ble 31 r5 49
 add r5 r5 1
 getd r8 r1 r5
-and r7 r8 255
+and r6 r8 255
 sra r8 r8 16
-beq r7 7 50
-beq r7 8 50
-beq r7 10 50
-bne r7 12 40
-sbn -851746783 r6 Setting r8
-add sp sp 2
-bne sp 21 39
+beq r6 7 49
+beq r6 8 49
+beq r6 10 49
+bne r6 12 39
+sbn -851746783 r7 Setting r8
+add r7 r7 1
+bne r7 1000000020 39
 move r5 r2
-move sp 21
-pop r6
+move r7 1000001000
 move r8 -1
-ble 31 r5 64
+ble 31 r5 62
 add r5 r5 1
 getd r8 r1 r5
-and r7 r8 255
+and r6 r8 255
 sra r8 r8 16
-beq r7 9 64
-bne r7 11 56
-sbn -851746783 r6 Setting r8
-add sp sp 2
-bne sp 32 55
+beq r6 9 62
+bne r6 11 54
+sbn -851746783 r7 Setting r8
+add r7 r7 1
+bne r7 1000001011 54
 beq r3 0 3
 lbn r3 -815193061 594962675 Setting 0
 bne r3 0 3
@@ -77,10 +75,10 @@ move r0 r4
 j 3
 move r2 5
 select r5 r5 17 13
-sll sp r3 8
-or r5 sp r5
+sll r6 r3 8
+or r5 r6 r5
 putd r1 4 r5
 select r4 r4 1705477 1705478
 putd r1 5 r4
 j 14
-# 85 lines total (not including this line)
+# 83 lines total (not including this line)

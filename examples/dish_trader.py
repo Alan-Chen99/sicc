@@ -4,7 +4,8 @@ Medium Satellite Dish.
 
 Based on the scripts of https://stationeers-wiki.com/Satellite_Tracking, sections
 "Shuttle Cargoes Looking Glasses" and "Shuttle Cargoes Auto Filtration/Interrogation and Call
-Down". The wiki page describes the devices to build and label.
+Down". The wiki page describes the devices to build and label, except that the Logic Memories
+take the names in ITEM_MEMORIES and GAS_MEMORIES below.
 
 sicc has no builtin for the device stack instructions `clrd`, `putd` and `getd`; this example
 emits them with `asm` and `asm_fn`. sicc assumes a raw instruction may read and write any
@@ -19,10 +20,8 @@ the results back:
 - each cargo entry goes to the next unused Logic Memory of its kind, items and gases
   separately, for a Console with a Hash Display to show. Memories left over are set to -1.
 
-The programs, all for the same IC10 chip (`sicc examples/dish_trader.py -p <program>`):
+The programs (`sicc examples/dish_trader.py -p <program>`):
 
-- init: writes the Logic Memory names into the chip's own stack. Flash and run it once, then
-  flash looking_glass or filtration onto the chip; the stack is part of the chip and is kept.
 - looking_glass: the display.
 - filtration: the display, filtered by SLM_ITEM_FILTER. With a filter set, only matching cargo
   is shown, and the signal ID of a trader with matching cargo is written to LED_LOCKED_SIGID,
@@ -39,10 +38,27 @@ from sicc.devices import *
 
 DISH_M = SatelliteDish("Medium Satellite Dish 1")
 
-# Logic Memories that receive the cargo, one per Console. Cargo entries beyond these are not
-# shown. Changing these lists requires running init again.
-ITEM_MEMORIES = [f"SLMP{i}" for i in range(1, 21)]
-GAS_MEMORIES = [f"SLMG{i}" for i in range(1, 12)]
+# Logic Memories that receive the cargo, one per Console, labelled with these names. Cargo
+# entries beyond these are not shown. The programs write to the n-th memory (from 0) by the name
+# hash ITEM_HASH + n or GAS_HASH + n, so they compute each name hash instead of reading a table
+# of names. crc_rev(prefix, hash) finds each name: the prefix, then 6 letters and digits that give
+# the name that hash. Finding a name takes about 0.2 s, so the names are listed here rather than
+# found at each compile; `sicc crc-rev SLMP21_ 1000000020` would name another item memory.
+ITEM_HASH = 1_000_000_000
+ITEM_MEMORIES = [
+    "SLMP1_cF5saO", "SLMP2_h6mrT5", "SLMP3_3cn8Dy", "SLMP4_GkV2jz", "SLMP5_QA601h",
+    "SLMP6_X0zc5W", "SLMP7_PWnvdB", "SLMP8_UMFmcA", "SLMP9_sxmyKl", "SLMP10_GZJSzt",
+    "SLMP11_fiXLkI", "SLMP12_JcGgKY", "SLMP13_4RdMQl", "SLMP14_Qkvdxm", "SLMP15_s5B5GH",
+    "SLMP16_mlbJuG", "SLMP17_FHlZ9o", "SLMP18_u8wXEH", "SLMP19_nRLpJB", "SLMP20_SQSZrP",
+]  # fmt: skip
+GAS_HASH = 1_000_001_000
+GAS_MEMORIES = [
+    "SLMG1_UhOxBi", "SLMG2_5ScSpt", "SLMG3_sU2un5", "SLMG4_ngVvsD", "SLMG5_yMwE3O",
+    "SLMG6_N0mAD8", "SLMG7_g4xq1u", "SLMG8_TDcsMR", "SLMG9_WeH96W", "SLMG10_mvjGIL",
+    "SLMG11_lJKact",
+]  # fmt: skip
+assert [crc32(name) - ITEM_HASH for name in ITEM_MEMORIES] == list(range(len(ITEM_MEMORIES)))
+assert [crc32(name) - GAS_HASH for name in GAS_MEMORIES] == list(range(len(GAS_MEMORIES)))
 
 # Open: list what the trader buys; closed: what it sells.
 SELL_BUY_SWITCH = LogicSwitch2("TRADER_SELL_BUY_SWITCH")
@@ -83,8 +99,6 @@ GAS_DATA = (
 )
 # The dish's stack has 32 addresses.
 STACK_END = 32
-# The address of the Logic Memory names in this chip's stack, written by init and read by run().
-MEMORIES_ADDR = 0
 
 
 # The dish stack instructions, emitted as raw asm. `dish` is the dish's ReferenceId.
@@ -122,13 +136,6 @@ def read_filter(with_filter: bool) -> tuple[Int, Bool]:
 
 @transpile(inline=True)
 def run(with_filter: Static[bool]):
-    # Logic Memory names, written by init. undef(str) declares a string without writing one,
-    # and types the pointer by what is read from it (`[str] * n` would type it as a list of
-    # `type[str]`).
-    memories: Static[Pointer[tuple[list[VarRead[str]], list[VarRead[str]]]]] = stack_var(
-        ([undef(str)] * len(ITEM_MEMORIES), [undef(str)] * len(GAS_MEMORIES)),
-        addr=MEMORIES_ADDR,
-    )
     # The signal ID written to LED_LOCKED_SIGID last.
     last_locked = 0.0
     # The dish stack address read last.
@@ -150,13 +157,13 @@ def run(with_filter: Static[bool]):
         return -1
 
     @transpile(inline=True)
-    def show_cargo(names: Static[Pointer[list[VarRead[str]]]], ops: Static[tuple[int, ...]]):
-        """Show the cargo entries with an opcode in `ops` on the Logic Memories `names`, in
-        order; -1 on those left over."""
+    def show_cargo(first_hash: Static[int], count: Static[int], ops: Static[tuple[int, ...]]):
+        """Show the cargo entries with an opcode in `ops` on the `count` Logic Memories whose
+        name hashes start at `first_hash`, in order; -1 on those left over."""
         nonlocal addr
         addr = request_at
-        for name in names:
-            LogicMemory(name).Setting = next_cargo(ops)
+        for name in range_(first_hash, first_hash + count):
+            LogicMemory(name.transmute(str)).Setting = next_cargo(ops)
 
     while True:
         dish = DISH_M.ReferenceId
@@ -192,20 +199,14 @@ def run(with_filter: Static[bool]):
         LED_WATT_TO_RESOLVE.Setting = (signal_data >> 8) & 0xFFFF
         LED_LIFETIME.Setting = (signal_data >> 24) & 0xFFFF
 
-        show_cargo(memories[0], ITEM_DATA)
-        show_cargo(memories[1], GAS_DATA)
+        show_cargo(ITEM_HASH, len(ITEM_MEMORIES), ITEM_DATA)
+        show_cargo(GAS_HASH, len(GAS_MEMORIES), GAS_DATA)
 
         if filt != 0 and LED_LOCKED_SIGID.Setting == 0 and signal != last_locked:
             # The dish lists only matching cargo, so any entry after the request is a match.
             if getd(dish, request_at + 1) != 0:
                 LED_LOCKED_SIGID.Setting = signal
                 last_locked = signal
-
-
-@program
-def init():
-    """Write the Logic Memory names to this chip's stack, at the addresses run() reads."""
-    stack_var((ITEM_MEMORIES, GAS_MEMORIES), addr=MEMORIES_ADDR)
 
 
 @program
