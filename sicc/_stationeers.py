@@ -365,12 +365,12 @@ class DeviceBase(Generic[DT_co, N_co]):
         )
         return ans
 
-    def as_base(self) -> DeviceBase:
-        return DeviceBase(
-            _device_type=self.device_type,
-            _name=self.name,
-            _default_batchmode=self.default_batchmode,
-            _pin=self._pin,
+    def as_base(self) -> Device:
+        assert self._pin is None
+        assert self.device_type is not None
+        return Device(
+            name=self.name,
+            device_type=self.device_type,
         )
 
     def as_base_keep_type(self) -> Self:
