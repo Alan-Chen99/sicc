@@ -1,0 +1,103 @@
+j 4
+yield
+lbn r7 -815193061 594962675 Setting 0
+beq r7 r6 ra
+sbn 439026183 -1637724277 Vertical 60
+sbn 439026183 -1637724277 BestContactFilter -1
+sbn 439026183 -1637724277 Setting 500
+sbn 439026183 -1637724277 On 1
+yield
+lbn r6 -815193061 594962675 Setting 0
+beq r6 0 81
+sbn 439026183 -1637724277 BestContactFilter r6
+sbn 439026183 -1637724277 On 1
+jal 1
+lbn r7 439026183 -1637724277 SignalID 0
+beq r7 -1 13
+lbn r4 439026183 -1637724277 Horizontal 0
+jal 1
+lbn r7 439026183 -1637724277 SignalID 0
+bne r7 -1 86
+move r0 r4
+sbn 439026183 -1637724277 Horizontal r4
+jal 1
+lbn r7 439026183 -1637724277 Idle 0
+beq r7 0 22
+lbn r5 439026183 -1637724277 Horizontal 0
+jal 1
+lbn r7 439026183 -1637724277 SignalID 0
+bne r7 -1 91
+move ra 360
+blt r5 r0 32
+move ra 0
+add r7 r0 r5
+add r7 r7 ra
+div r7 r7 2
+mod r7 r7 360
+sbn 439026183 -1637724277 Horizontal r7
+sbn 439026183 -1637724277 On 1
+sbn 439026183 -1637724277 Horizontal r7
+jal 1
+lbn r7 439026183 -1637724277 Idle 0
+beq r7 0 39
+lbn r1 439026183 -1637724277 Vertical 0
+jal 1
+lbn r7 439026183 -1637724277 SignalID 0
+beq r7 -1 48
+lbn r1 439026183 -1637724277 Vertical 0
+blt r1 89.9 96
+move r3 r1
+sbn 439026183 -1637724277 Vertical r1
+jal 1
+lbn r7 439026183 -1637724277 Idle 0
+beq r7 0 50
+lbn r2 439026183 -1637724277 Vertical 0
+jal 1
+lbn r7 439026183 -1637724277 SignalID 0
+beq r7 -1 59
+lbn r2 439026183 -1637724277 Vertical 0
+blt 0.1 r2 99
+add r7 r2 r3
+div r7 r7 2
+sbn 439026183 -1637724277 Vertical r7
+sbn 439026183 -1637724277 Vertical r7
+jal 1
+lbn r7 439026183 -1637724277 Idle 0
+beq r7 0 63
+jal 1
+lbn r7 439026183 -1637724277 SignalID 0
+beq r7 -1 79
+jal 1
+lbn r7 439026183 -1637724277 Idle 0
+beq r7 0 69
+sbn 439026183 -1637724277 BestContactFilter r6
+sbn 439026183 -1637724277 Setting 50000
+sbn 439026183 -1637724277 Activate 1
+lbn r7 439026183 -1637724277 InterrogationProgress 0
+blt r7 1 66
+sleep 2
+sbn -693235651 966797163 SoundAlert 37
+sbn -815193061 594962675 Setting 0
+j 4
+lbn r6 439026183 -1637724277 Horizontal 0
+add r6 r6 2
+mod r6 r6 360
+sbn 439026183 -1637724277 Horizontal r6
+j 8
+lbn r4 439026183 -1637724277 Horizontal 0
+add r7 r4 -5
+mod r7 r7 360
+sbn 439026183 -1637724277 Horizontal r7
+j 17
+lbn r5 439026183 -1637724277 Horizontal 0
+add r7 r5 5
+mod r7 r7 360
+sbn 439026183 -1637724277 Horizontal r7
+j 26
+add r7 r1 5
+sbn 439026183 -1637724277 Vertical r7
+j 43
+add r7 r2 -5
+sbn 439026183 -1637724277 Vertical r7
+j 54
+# 102 lines total (not including this line)

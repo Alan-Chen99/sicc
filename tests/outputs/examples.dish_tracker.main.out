@@ -1,0 +1,64 @@
+s d1 On 0
+move r3 0
+move r0 0
+move r2 80
+move r1 20
+add r0 r0 r1
+mod r9 r0 360
+bne r9 0 13
+sub r1 0 r1
+move r9 50
+beq r2 80 12
+move r9 80
+move r2 r9
+s d0 Vertical r2
+s d0 Horizontal r0
+jal 59
+l r9 d0 SignalID
+ble r9 0 5
+beq r9 r3 5
+s d1 On 1
+l r7 d0 Horizontal
+l r8 d0 Vertical
+move r4 -1
+move r6 1
+l r5 d0 SignalStrength
+sub r9 1 r5
+mul r9 r9 30
+mul r9 r9 r4
+add r8 r8 r9
+max r8 r8 0
+min r8 r8 90
+s d0 Vertical r8
+jal 59
+l r9 d0 SignalStrength
+blt r5 r9 36
+sub r4 0 r4
+move r5 r9
+sub r9 1 r9
+mul r9 r9 30
+mul r9 r9 r6
+add r7 r7 r9
+mod r7 r7 360
+s d0 Horizontal r7
+jal 59
+l r9 d0 SignalStrength
+blt r5 r9 47
+sub r6 0 r6
+s d1 Setting r9
+l r9 d1 On
+beq r9 0 54
+l ra d0 SignalStrength
+blt ra 0.96 54
+yield
+j 48
+bne r9 0 24
+l r3 d0 SignalID
+s d0 Vertical r2
+s d0 Horizontal r0
+move ra 5
+yield
+l r9 d0 Idle
+bne r9 0 ra
+j 59
+# 63 lines total (not including this line)

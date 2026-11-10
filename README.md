@@ -34,6 +34,7 @@ See [examples/explained.py](examples/explained.py) for how this works.
   - static typing and autocomplete (with pyright only)
 - embed raw asm code
   - in development
+  - [example](examples/dish_trader.py): satellite dish stack access with `getd`/`putd`/`clrd`
 - high level construct for other operations: slots, stack, etc
   - in development
 - Subroutines

@@ -1,0 +1,99 @@
+move r0 0
+j 3
+yield
+lbn r1 439026183 -1637724277 ReferenceId 0
+bnan r1 2
+lbn r2 -851746783 1194454930 Setting 0
+lbn r3 321604921 2147338600 Open 0
+clrd r1
+putd r1 0 257
+lbn r4 321604921 246144565 Open 0
+bne r2 0 27
+select r4 r4 1770757 1770758
+putd r1 4 r4
+yield
+lbn r6 439026183 -1637724277 SignalID 0
+sbn -815193061 1312721744 Setting r6
+move r5 0
+move r4 20
+move r7 0
+ble 31 r7 86
+add r7 r7 1
+getd r8 r1 r7
+and r10 r8 255
+bne r10 2 75
+sra r8 r8 8
+sbn -815193061 1266255753 Setting r8
+j 19
+move r6 17
+ble 1 r3 30
+move r6 13
+sll r5 r2 8
+or r5 r5 r6
+putd r1 4 r5
+select r4 r4 1705477 1705478
+putd r1 5 r4
+j 13
+ble 20 r5 41
+add r9 0 r5
+get r9 db r9
+sbn -851746783 r9 Setting r8
+add r5 r5 1
+j 19
+blt r10 7 19
+blt 12 r10 19
+sra r8 r8 16
+move r9 1
+beq r10 9 48
+seq r9 r10 11
+beq r2 0 60
+and r10 r8 r2
+sne r10 r10 0
+ble 1 r3 53
+seq r10 r8 r2
+bne r9 r3 19
+blt r10 1 19
+lbn r10 -815193061 594962675 Setting 0
+bne r10 0 60
+beq r6 r0 60
+sbn -815193061 594962675 Setting r6
+move r0 r6
+blt r9 1 36
+ble 31 r4 66
+add r9 0 r4
+get r9 db r9
+sbn -851746783 r9 Setting r8
+add r4 r4 1
+j 19
+bne r10 4 42
+sra r9 r8 8
+and r9 r9 65535
+sbn -815193061 1820037069 Setting r9
+sra r8 r8 24
+and r8 r8 65535
+sbn -815193061 1307562851 Setting r8
+j 19
+bne r10 3 67
+sra r9 r8 24
+and r9 r9 255
+sbn -815193061 1102875731 Setting r9
+sra r9 r8 16
+and r9 r9 255
+sbn -815193061 283567959 Setting r9
+sra r8 r8 8
+and r8 r8 255
+sbn -815193061 -1853400982 Setting r8
+j 19
+ble 20 r5 92
+add r1 0 r5
+get r1 db r1
+sbn -851746783 r1 Setting -1
+add r5 r5 1
+j 86
+ble 31 r4 3
+add r1 0 r4
+get r1 db r1
+sbn -851746783 r1 Setting -1
+add r4 r4 1
+j 92
+# 98 lines total (not including this line)

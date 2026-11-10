@@ -16,7 +16,8 @@ def test_examples(subtests: SubTests):
 
         with subtests.test(msg=f.name):
             mod = load_module_from_file(f, f"examples.{f.stem}")
-            programs = {k: p for k, p in mod.__dict__.items() if isinstance(p, Program)}
+            programs = [p for p in mod.__dict__.values() if isinstance(p, Program)]
+            assert programs, f"{f.name} defines no program"
 
-            (prog,) = programs.values()
-            run_one_test(prog)
+            for prog in programs:
+                run_one_test(prog)
