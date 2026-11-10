@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import abc
+import collections.abc
 import copy
+import functools
 import math
 import operator
 from collections import defaultdict
@@ -37,11 +39,10 @@ from rich.panel import Panel
 from rich.pretty import pretty_repr
 from rich.text import Text
 
+from ._diagnostic import DEBUG_INFO_STACK
 from ._diagnostic import DebugInfo
-from ._diagnostic import add_debug_info
 from ._diagnostic import catch_ex_and_exit
 from ._diagnostic import check_must_use
-from ._diagnostic import clear_debug_info
 from ._diagnostic import debug_info
 from ._diagnostic import register_exclusion
 from ._diagnostic import show_pending_diagnostics
@@ -421,24 +422,28 @@ class EffectBase(Protocol):
 type EffectRes = EffectBase | Iterable[EffectBase] | None
 
 
+@functools.cache
+def _effect_type_relation(tx: type, ty: type) -> tuple[bool, bool, bool]:
+    """(no common base, tx is child of ty, ty is child of tx)"""
+    common_base = (set(tx.__mro__) & set(ty.__mro__)) - set(safe_cast(type, EffectBase).__mro__)
+    return len(common_base) == 0, issubclass(tx, ty), issubclass(ty, tx)
+
+
 def known_distinct(x: EffectBase, y: EffectBase) -> bool:
     """
     whether self and other are completely unrelated.
 
     if returns true, both read and write operation on self may be reordered with operation on other
     """
-    tx = type(x)
-    ty = type(y)
+    unrelated, x_is_child, y_is_child = _effect_type_relation(type(x), type(y))
 
-    common_base = (set(tx.__mro__) & set(ty.__mro__)) - set(safe_cast(type, EffectBase).__mro__)
-
-    if len(common_base) == 0:
+    if unrelated:
         return True
 
     # call the method on the more specific class
-    if issubclass(tx, ty):  # tx is child
+    if x_is_child:
         return x.known_distinct(y)
-    if issubclass(ty, tx):
+    if y_is_child:
         return y.known_distinct(x)
 
     return False
@@ -1062,18 +1067,22 @@ class BoundInstr(Generic[B_co], ByIdMixin):
         ans = self.instr.reads(self)
         if ans is None:
             return []
-        if isinstance(ans, EffectBase):
-            return [ans]
-        return list(ans)
+        # no EffectBase is iterable; testing EffectBase (a runtime protocol) instead would take
+        # its slow structural path for every generator
+        if isinstance(ans, collections.abc.Iterable):
+            return list(ans)
+        return [ans]
 
     def writes(self) -> list[EffectBase]:
         assert isinstance(self.instr, InstrBase)
         ans = self.instr.writes(self)
         if ans is None:
             return []
-        if isinstance(ans, EffectBase):
-            return [ans]
-        return list(ans)
+        # no EffectBase is iterable; testing EffectBase (a runtime protocol) instead would take
+        # its slow structural path for every generator
+        if isinstance(ans, collections.abc.Iterable):
+            return list(ans)
+        return [ans]
 
     def defines_labels(self: BoundInstr) -> list[Label]:
         return list(self.instr.defines_labels(self))
@@ -1282,7 +1291,8 @@ class Block:
 
     def map_instrs(self, fn: MapInstrsFn) -> None:
         def get(x: BoundInstr) -> list[BoundInstr]:
-            with clear_debug_info(), add_debug_info(x.debug):
+            # same as clear_debug_info() + add_debug_info(x.debug), with one context manager
+            with DEBUG_INFO_STACK.bind([x.debug]):
                 ans = fn(x)
                 if ans is None:
                     return [x]
