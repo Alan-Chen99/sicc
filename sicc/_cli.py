@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from dataclasses import field
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 from typing import Any
@@ -23,6 +24,7 @@ from rich.text import Text
 from ._comment import comment
 from ._control_flow import loop
 from ._core import TracedProgram
+from ._crc_rev import crc_rev
 from ._diagnostic import CompilerError
 from ._diagnostic import describe_fn
 from ._diagnostic import register_exclusion
@@ -123,6 +125,10 @@ class CliTied:
 @cappa.command(name="sicc")
 @dataclass
 class Cli:
+    """
+    compile a program; `sicc crc-rev PREFIX HASH` instead prints a name with the hash HASH
+    """
+
     file: Path
     """the python file"""
 
@@ -267,6 +273,30 @@ class Transpile:
             print(fn.pretty())
 
 
+@cappa.command(name="sicc crc-rev")
+@dataclass
+class CrcRev:
+    """
+    print a name that starts with PREFIX and has the hash HASH, for a device that a program
+    addresses by a name hash it computes
+    """
+
+    prefix: str
+    hash: Annotated[int, Arg(parse=partial(int, base=0))]
+    """signed or unsigned 32-bit; decimal, or hex with 0x; a negative one goes after --"""
+
+    length: Annotated[int, Arg(short="-n", long="--length")] = 6
+    """number of letters and digits after PREFIX"""
+
+    def call(self) -> None:
+        # not rich's print: a name may contain [...], which rich takes as markup
+        sys.stdout.write(crc_rev(self.prefix, self.hash, self.length) + "\n")
+
+
 def main():
+    # cappa does not fall back to the positional FILE when the first argument is not a
+    # subcommand, so `crc-rev` is dispatched before parsing
+    if sys.argv[1:2] == ["crc-rev"]:
+        return cappa.parse(CrcRev, argv=sys.argv[2:]).call()
     cli = cappa.parse(Cli)
     return cli.call()

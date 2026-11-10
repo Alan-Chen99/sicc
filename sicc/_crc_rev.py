@@ -46,11 +46,17 @@ def char_constraint(b):
     )
 
 
-def crc_rev(prefix: str, wanted_crc: int, length: int = 6) -> str | None:
+def crc_rev(prefix: str, wanted_crc: int, length: int = 6) -> str:
     """
     find a string with a particular prefix and a crc,
-    by appending a suffix of len `length`
+    by appending a suffix of `length` letters and digits
+
+    `wanted_crc` may be signed, as from `crc32` and IC10, or unsigned
     """
+    if not -(2**31) <= wanted_crc < 2**32:
+        raise TypeError(f"a crc is a 32-bit number; got {wanted_crc}")
+    wanted_unsigned = wanted_crc & 0xFFFFFFFF
+
     crc_after_prefix = zlib.crc32(prefix.encode()) & 0xFFFFFFFF
 
     s = Solver()
@@ -62,16 +68,20 @@ def crc_rev(prefix: str, wanted_crc: int, length: int = 6) -> str | None:
 
     # full crc expression
     crc_expr = crc32_expr(sym, start=crc_after_prefix)
-    s.add(crc_expr == wanted_crc)
+    s.add(crc_expr == wanted_unsigned)
 
-    if s.check() == sat:
+    result = s.check()
+    if result == sat:
         m = s.model()
         suffix = "".join(chr(m[b].as_long()) for b in sym)
         ans = prefix + suffix
-        assert zlib.crc32(ans.encode()) == wanted_crc
+        assert zlib.crc32(ans.encode()) == wanted_unsigned
         return ans
 
-    raise RuntimeError()
+    raise RuntimeError(
+        f"z3 found no {length} letters and digits after {prefix!r} that give the crc "
+        f"{wanted_crc} ({result}); a longer suffix has more candidates"
+    )
 
 
 # ----------------------------------------------------------------------
