@@ -46,9 +46,9 @@ class Cell[T]:
     _verbose: bool = False
 
     def _log(self, msg: str):
-        from ._diagnostic import get_location_desc
-
         if self._verbose:
+            from ._diagnostic import get_location_desc
+
             print(msg, self._value, get_location_desc())
 
     @contextmanager

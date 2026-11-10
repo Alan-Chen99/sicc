@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-import copy
 import inspect
 import logging
 from dataclasses import dataclass
+from dataclasses import replace
 from typing import Any
 from typing import Callable
 from typing import Concatenate
 
+from ordered_set import OrderedSet
 from rich import print as print  # autoflake: skip
 from rich.pretty import pretty_repr
 
+from .._core import Block
 from .._core import Fragment
 from .._diagnostic import CompilerError
 from .._diagnostic import Report
@@ -52,7 +54,13 @@ class Transform[**P, R]:
         from .basic import get_index
 
         if not isinstance(self, CachedFn):
-            before = copy.deepcopy(frag)
+            # BoundInstr and Label are frozen and compare by id, so copying the containers is
+            # enough for the change check below; rendering reads only private_labels from scope
+            before = Fragment(
+                frag.finished_init,
+                {l: Block(list(b.contents), b.debug) for l, b in frag.blocks.items()},
+                replace(frag.scope, private_labels=OrderedSet(frag.scope.private_labels)),
+            )
         else:
             before = None
 
@@ -113,10 +121,14 @@ class CachedFn[**P, R](Transform[P, R]):
         bound.apply_defaults()
         cache_key = (self, *sorted(bound.arguments.items()))
 
+        # guarded: pretty_repr of the key is costly and this runs for every analysis lookup
+        debug = logging.root.isEnabledFor(logging.DEBUG)
         if cache_key in ctx._cache:
-            logging.debug(f"cached: {pretty_repr(cache_key)}")
+            if debug:
+                logging.debug(f"cached: {pretty_repr(cache_key)}")
             return ctx._cache[cache_key]
-        logging.debug(f"cach miss: {pretty_repr(cache_key)}")
+        if debug:
+            logging.debug(f"cach miss: {pretty_repr(cache_key)}")
         ans = self.fn(ctx, *args, **kwargs)
         ctx._cache[cache_key] = ans
         return ans
