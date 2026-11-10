@@ -171,6 +171,13 @@ class VarRead[T: VarT](abc.ABC):
     __mod__ = late_fn(lambda: mod)
     __rmod__ = late_fn(lambda: mod._rev_same_sig())
 
+    @overload
+    def __neg__(self: Int, /) -> VarRead[int]: ...
+    @overload
+    def __neg__(self: Float, /) -> VarRead[float]: ...
+    def __neg__(self: Float, /) -> VarRead[float]:
+        return sub(0, self)
+
     def __eq__(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, other: Any
     ) -> VarRead[bool]:

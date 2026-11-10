@@ -34,3 +34,15 @@ def test_mod():
     i = Variable(int, 7)
     i.value = i % 4
     d.Setting = i
+
+
+@wrap_test
+@program
+def test_neg():
+    d.Setting = -d.Power
+    # folded at compile time: expected Setting -2.5
+    d.Setting = -Variable(2.5)
+    # an int stays an int
+    i = Variable(d.RequiredPower)
+    i.value = -i
+    d.Setting = i

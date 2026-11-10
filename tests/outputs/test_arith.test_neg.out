@@ -1,0 +1,8 @@
+lb r0 -321403609 Power 0
+sub r0 0 r0
+sb -321403609 Setting r0
+sb -321403609 Setting -2.5
+lb r0 -321403609 RequiredPower 0
+sub r0 0 r0
+sb -321403609 Setting r0
+# 7 lines total (not including this line)
