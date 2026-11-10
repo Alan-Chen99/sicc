@@ -1,0 +1,13 @@
+lb r2 336213101 ImportCount 0
+lb r0 336213101 ExportCount 0
+move r1 r0
+move ra 7
+ble r1 0 6
+add r2 r2 r1
+j ra
+# add: r2
+add r1 r0 r0
+jal 4
+# add: r2
+# acc: r2
+# 12 lines total (not including this line)

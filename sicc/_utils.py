@@ -342,9 +342,11 @@ class _AllowCurry[Impl_co: Callable[..., Any]]:
         sig = inspect.signature(self.fn)
         try:
             _ = sig.bind(*args, **kwargs)
-            return self.fn(*args, **kwargs)
         except TypeError:
             pass
+        else:
+            # outside the try: a TypeError raised by `fn` itself must propagate
+            return self.fn(*args, **kwargs)
 
         # check sig is compatible
         _ = sig.bind(None, *args, **kwargs)

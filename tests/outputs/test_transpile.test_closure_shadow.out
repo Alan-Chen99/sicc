@@ -1,0 +1,7 @@
+lb r1 336213101 ImportCount 0
+add r0 r1 1
+mul r1 r1 2
+add r0 r0 r1
+add r0 r0 5
+# v: r0
+# 6 lines total (not including this line)

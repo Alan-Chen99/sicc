@@ -1,0 +1,5 @@
+lb r0 336213101 ImportCount 0
+add r1 r0 r0
+add r0 r1 r0
+# repeat: r0
+# 4 lines total (not including this line)

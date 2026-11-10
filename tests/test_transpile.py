@@ -327,3 +327,204 @@ def test_method():
     x = Data(d.ImportCount.get(typ=int), d.ExportCount.get(typ=float))
     x.some_method()
     comment("x:", x)
+
+
+################################################################################
+# Static locals
+
+
+@wrap_test
+@program
+@transpile
+def test_static_accumulator():
+    # a non-static list local would be a `_Place`; appending to its `.value` mutates a copy
+    seen: Static[list[int]] = []
+    i: Static[int]
+    for i in range(3):
+        seen.append(i * 10)
+    comment("seen:", len(seen), seen[2], "last i:", i)  # pyright: ignore[reportPossiblyUnboundVariable]
+
+
+# Annotated metadata stacks, so aliases that wrap Static stay static
+_Idx = Annotated[Static[int], "loop index"]
+
+
+@wrap_test
+@program
+@transpile
+def test_static_alias():
+    j: _Idx
+    for j in range(2):
+        comment("j:", j, "isinstance int:", isinstance(j, int))  # pyright: ignore[reportUnnecessaryIsInstance]
+
+    # alias defined after this function: annotations are evaluated lazily at first call
+    k: _LaterStatic = 3
+    comment("k is int:", isinstance(k, int))  # pyright: ignore[reportUnnecessaryIsInstance]
+
+
+_LaterStatic = Static[int]
+
+
+@transpile(inline=True)
+def _repeat_add(k: Static[int], x: Int) -> Int:
+    # a static param is the caller's python int, so range(k) unrolls at trace time
+    total = x
+    for _ in range(k):
+        total += x
+    return total
+
+
+@transpile
+def _static_param_subr(k: Static[int]) -> Int:
+    return k
+
+
+@transpile
+def _static_store_in_if(x: Int):
+    n: Static[int] = 0
+    if x > 0:
+        n = 1
+    comment("n:", n)
+
+
+@transpile
+def _static_store_in_while(x: Int):
+    n: Static[int] = 0
+    while x > 0:
+        n += 1
+    comment("n:", n)
+
+
+@transpile
+def _static_conflict():
+    a: Static[int] = 0  # pyright: ignore[reportRedeclaration]
+    a: int = 1
+    comment("a:", a)
+
+
+@transpile
+def _static_bad_annotation():
+    a: _NoSuchName = 0  # pyright: ignore[reportUndefinedVariable]
+    comment("a:", a)
+
+
+@wrap_test
+@program
+@transpile
+def test_static_param():
+    comment("repeat:", _repeat_add(2, d.ImportCount.get(typ=int)))
+
+    with pytest.raises(TypeError):
+        _static_param_subr(1)
+    with pytest.raises(TranspileError):
+        _static_store_in_if(d.ImportCount)
+    with pytest.raises(TranspileError):
+        _static_store_in_while(d.ImportCount)
+    with pytest.raises(TranspileError):
+        _static_conflict()
+    with pytest.raises(TranspileError):
+        _static_bad_annotation()
+
+
+@wrap_test
+@program
+@transpile
+def test_import_in_body():
+    import math
+
+    comment("floor(pi):", math.floor(math.pi))
+
+
+_calls: list[int] = []
+
+
+@wrap_test
+@program
+@transpile
+def test_untouched_call():
+    # references no non-static local: stays a plain call, so mutating a global is allowed
+    _calls.clear()
+    _calls.append(1)
+    _calls.append(2)
+    comment("calls:", len(_calls))
+    d.On = True
+
+
+@wrap_test
+@program
+@transpile
+def test_lambda_reads_local():
+    x = d.ImportCount.get(typ=int)
+    comment("v:", (lambda: x + 1)())
+
+
+################################################################################
+# nesting
+
+
+@wrap_test
+@program
+@transpile
+def test_nested_helper():
+    total = d.ImportCount.get(typ=int)
+    box = _Box(0)
+    scale: Static[int] = 3
+
+    def bump(k: int) -> int:
+        # trace-time python: `if` and `return` here run while tracing
+        nonlocal total
+        total += k
+        box.x = total
+        if k > 1:
+            return k * scale
+        return k
+
+    i: Static[int]
+    for i in range(3):
+        comment("bump:", bump(i))
+    comment("total:", total, "box.x:", box.x)
+
+
+@wrap_test
+@program
+@transpile
+def test_nested_transpile():
+    acc = d.ImportCount.get(typ=int)
+
+    @transpile
+    def add(v: Int) -> Int:
+        nonlocal acc
+        if v > 0:
+            acc += v
+        return acc
+
+    @transpile(inline=True)
+    def twice(v: Int) -> Int:
+        return v + v
+
+    comment("add:", add(d.ExportCount.get(typ=int)))
+    comment("add:", add(twice(d.ExportCount.get(typ=int))))
+    comment("acc:", acc)
+
+
+def _make_closure_shadow():
+    y = 5
+
+    @transpile(inline=True)
+    def f(x: Int) -> Int:
+        # the `y` of the lambda and of `dbl` are their own params, not the closure's `y`
+        def dbl(y: Int) -> Int:
+            return y * 2
+
+        return (lambda y: y + 1)(x) + dbl(x) + y
+
+    return f
+
+
+_closure_shadow = _make_closure_shadow()
+
+
+@wrap_test
+@program
+def test_closure_shadow():
+    comment("v:", _closure_shadow(d.ImportCount))

@@ -10,6 +10,7 @@ from ._cli import program as program
 from ._transpile import TranspileError as TranspileError
 from ._transpile import TranspileNotImplementedError as TranspileNotImplementedError
 from ._transpile import TranspileReservedPrefixError as TranspileReservedPrefixError
+from ._transpile import Static as Static
 from ._transpile import transpile as transpile
 from .config import print_ as print_
 

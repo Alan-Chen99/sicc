@@ -25,6 +25,9 @@ See [examples/explained.py](examples/explained.py) for how this works.
 - control flow
   - `if_`, `else_`, `while_`, `continue_`, `break_`, `return_`
     - the python counterparts would run at trace time
+  - `@transpile` rewrites python `if`, `while`, `for`, `and`, `or`, `return`, ... into these (see its docstring)
+    - locals annotated `Static[T]` stay trace-time python values
+    - nested `def`s are trace-time helpers; apply `@transpile` to transpile them too
 - math functions
   - only a small subset is supported at the moment
 - Structures with pre-defined fields
