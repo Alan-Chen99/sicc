@@ -64,22 +64,42 @@ LED_LOCKED_SIGID = ConsoleLED5("LED_LOCKED_SIGID")
 
 ################################################################################
 
-MEMORIES = ITEM_MEMORIES + GAS_MEMORIES
-
 # Dish stack opcodes (TraderInstruction.* in IC10), in the low byte of each entry.
 WRITE_TRADER_DATA = 1
-CONTACT_ID_HASH = 2
-CONTACT_META_DATA = 3
-CONTACT_SIGNAL_DATA = 4
 WRITE_BUY_DATA = 5
 WRITE_SELL_DATA = 6
 FILTER_PREFAB_EQUALS = 13
 FILTER_GAS_CONTAINS = 17
-# Cargo entries have opcodes 7-12: these two are gases, the others items.
-BUY_GAS_DATA = 9
-SELL_GAS_DATA = 11
+# Cargo entries: items (things and their children) and gases.
+ITEM_DATA = (
+    7,  # TraderBuyThingData
+    8,  # TraderBuyThingChildData
+    10,  # TraderSellThingData
+    12,  # TraderSellThingChildData
+)
+GAS_DATA = (
+    9,  # TraderBuyGasData
+    11,  # TraderSellGasData
+)
 # The dish's stack has 32 addresses.
 STACK_END = 32
+
+
+# The dish stack instructions, emitted as raw asm. `dish` is the dish's ReferenceId.
+
+
+def clrd(dish: Int) -> None:
+    asm("clrd", [], dish)
+
+
+def putd(dish: Int, addr: Int, value: Int) -> None:
+    asm("putd", [], dish, addr, value)
+
+
+def getd(dish: Int, addr: Int) -> VarRead[int]:
+    entry = Variable(int)
+    asm("getd", [entry], dish, addr)
+    return entry.value
 
 
 def cargo_request(at: int, buy: Bool) -> Int:
@@ -101,21 +121,40 @@ def read_filter(with_filter: bool) -> tuple[Int, Bool]:
 @transpile(inline=True)
 def run(with_filter: Static[bool]):
     # Logic Memory names, written by init. Each program has this as its only stack variable,
-    # so sicc places it at address 0 in all of them.
-    memories: Static[Pointer] = stack_var([str] * len(MEMORIES))
+    # so sicc places it at address 0 in all of them. Pointer is left without a type parameter:
+    # stack_var types a schema like `[str] * 20` as `Pointer[list[type[str]]]`, not as the
+    # strings read from it.
+    memories: Static[Pointer] = stack_var(
+        ([str] * len(ITEM_MEMORIES), [str] * len(GAS_MEMORIES))
+    )
     # The signal ID written to LED_LOCKED_SIGID last.
     last_locked = 0.0
+    # The dish stack address read last.
+    addr = 0
 
-    def memory(at: Int) -> LogicMemory:
-        return LogicMemory(memories[at].read())
+    # The helpers below read `dish` and `request_at`, set by the main loop.
 
     @transpile(inline=True)
-    def show(at: Int, end: Static[int], value: Float) -> Int:
-        """Show `value` on memory `at` if it is before `end`; return the next memory."""
-        if at < end:
-            memory(at).Setting = value
-            return at + 1
-        return at
+    def next_cargo(ops: Static[tuple[int, ...]]) -> Int:
+        """The value of the next entry after `addr` with an opcode in `ops`; -1 past the last."""
+        nonlocal addr
+        while addr < STACK_END - 1:
+            addr += 1
+            entry = getd(dish, addr)
+            op = entry & 0xFF
+            for wanted in ops:
+                if op == wanted:
+                    return entry >> 16
+        return -1
+
+    @transpile(inline=True)
+    def show_cargo(names: Static[Pointer], ops: Static[tuple[int, ...]]):
+        """Show the cargo entries with an opcode in `ops` on the Logic Memories `names`, in
+        order; -1 on those left over."""
+        nonlocal addr
+        addr = request_at
+        for name in names:
+            LogicMemory(name).Setting = next_cargo(ops)
 
     while True:
         dish = DISH_M.ReferenceId
@@ -123,68 +162,48 @@ def run(with_filter: Static[bool]):
             # no dish of that name
             yield_()
             continue
-        filt, gas = read_filter(with_filter)
+        filt, filt_gas = read_filter(with_filter)
 
         # Request: metadata into addresses 1-3; then the filter, if any; then the cargo list.
-        asm("clrd", [], dish)
-        asm("putd", [], dish, 0, (1 << 8) | WRITE_TRADER_DATA)
+        clrd(dish)
+        putd(dish, 0, (1 << 8) | WRITE_TRADER_DATA)
         buy = SELL_BUY_SWITCH.Open
         if filt == 0:
-            asm("putd", [], dish, 4, cargo_request(4, buy))
+            request_at = 4
+            putd(dish, 4, cargo_request(4, buy))
         else:
-            filter_op = FILTER_GAS_CONTAINS if gas else FILTER_PREFAB_EQUALS
-            asm("putd", [], dish, 4, (filt << 8) | filter_op)
-            asm("putd", [], dish, 5, cargo_request(5, buy))
+            # The dish lists only the cargo that matches the filter.
+            request_at = 5
+            filter_op = select(filt_gas, FILTER_GAS_CONTAINS, FILTER_PREFAB_EQUALS)
+            putd(dish, 4, (filt << 8) | filter_op)
+            putd(dish, 5, cargo_request(5, buy))
         yield_()
 
-        # Results
         signal = DISH_M.SignalID
         LED_SIGID.Setting = signal
-        item_at = 0
-        gas_at = len(ITEM_MEMORIES)
-        addr = 0
-        while addr < STACK_END - 1:
-            addr += 1
-            entry = asm_fn("getd", dish, addr)
-            op = entry & 0xFF
-            if op == CONTACT_ID_HASH:
-                LED_CON_TYPE_ID.Setting = entry >> 8
-            elif op == CONTACT_META_DATA:
-                LED_CONTACTED.Setting = (entry >> 24) & 0xFF
-                LED_TIER.Setting = (entry >> 16) & 0xFF
-                LED_SHUTTLE_TYPE.Setting = (entry >> 8) & 0xFF
-            elif op == CONTACT_SIGNAL_DATA:
-                LED_WATT_TO_RESOLVE.Setting = (entry >> 8) & 0xFFFF
-                LED_LIFETIME.Setting = (entry >> 24) & 0xFFFF
-            elif op >= 7 and op <= 12:
-                value = entry >> 16
-                is_gas = op == BUY_GAS_DATA or op == SELL_GAS_DATA
-                if filt != 0:
-                    # a gas filter matches gases with any of its flags; an item filter, that item
-                    match = (value & filt) != 0 if gas else value == filt
-                    if is_gas != gas or not match:
-                        continue
-                    if LED_LOCKED_SIGID.Setting == 0 and signal != last_locked:
-                        LED_LOCKED_SIGID.Setting = signal
-                        last_locked = signal
-                if is_gas:
-                    gas_at = show(gas_at, len(MEMORIES), value)
-                else:
-                    item_at = show(item_at, len(ITEM_MEMORIES), value)
+        LED_CON_TYPE_ID.Setting = getd(dish, 1) >> 8
+        meta = getd(dish, 2)
+        LED_CONTACTED.Setting = (meta >> 24) & 0xFF
+        LED_TIER.Setting = (meta >> 16) & 0xFF
+        LED_SHUTTLE_TYPE.Setting = (meta >> 8) & 0xFF
+        signal_data = getd(dish, 3)
+        LED_WATT_TO_RESOLVE.Setting = (signal_data >> 8) & 0xFFFF
+        LED_LIFETIME.Setting = (signal_data >> 24) & 0xFFFF
 
-        # Blank the memories left over.
-        while item_at < len(ITEM_MEMORIES):
-            memory(item_at).Setting = -1
-            item_at += 1
-        while gas_at < len(MEMORIES):
-            memory(gas_at).Setting = -1
-            gas_at += 1
+        show_cargo(memories[0], ITEM_DATA)
+        show_cargo(memories[1], GAS_DATA)
+
+        if filt != 0 and LED_LOCKED_SIGID.Setting == 0 and signal != last_locked:
+            # The dish lists only matching cargo, so any entry after the request is a match.
+            if getd(dish, request_at + 1) != 0:
+                LED_LOCKED_SIGID.Setting = signal
+                last_locked = signal
 
 
 @program
 def init():
     """Write the Logic Memory names to this chip's stack, at the addresses run() reads."""
-    stack_var(MEMORIES)
+    stack_var((ITEM_MEMORIES, GAS_MEMORIES))
 
 
 @program
