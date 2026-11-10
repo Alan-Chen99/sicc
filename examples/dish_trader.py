@@ -121,11 +121,11 @@ def read_filter(with_filter: bool) -> tuple[Int, Bool]:
 @transpile(inline=True)
 def run(with_filter: Static[bool]):
     # Logic Memory names, written by init. Each program has this as its only stack variable,
-    # so sicc places it at address 0 in all of them. Pointer is left without a type parameter:
-    # stack_var types a schema like `[str] * 20` as `Pointer[list[type[str]]]`, not as the
-    # strings read from it.
-    memories: Static[Pointer] = stack_var(
-        ([str] * len(ITEM_MEMORIES), [str] * len(GAS_MEMORIES))
+    # so sicc places it at address 0 in all of them. undef(str) declares a string without
+    # writing one, and types the pointer by what is read from it (`[str] * n` would type it as
+    # a list of `type[str]`).
+    memories: Static[Pointer[tuple[list[VarRead[str]], list[VarRead[str]]]]] = stack_var(
+        ([undef(str)] * len(ITEM_MEMORIES), [undef(str)] * len(GAS_MEMORIES))
     )
     # The signal ID written to LED_LOCKED_SIGID last.
     last_locked = 0.0
@@ -148,7 +148,7 @@ def run(with_filter: Static[bool]):
         return -1
 
     @transpile(inline=True)
-    def show_cargo(names: Static[Pointer], ops: Static[tuple[int, ...]]):
+    def show_cargo(names: Static[Pointer[list[VarRead[str]]]], ops: Static[tuple[int, ...]]):
         """Show the cargo entries with an opcode in `ops` on the Logic Memories `names`, in
         order; -1 on those left over."""
         nonlocal addr
