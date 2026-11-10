@@ -40,24 +40,24 @@ sbn 439026183 -1637724277 Horizontal r7
 jal 1
 lbn r7 439026183 -1637724277 Idle 0
 beq r7 0 39
-lbn r1 439026183 -1637724277 Vertical 0
+lbn r2 439026183 -1637724277 Vertical 0
 jal 1
 lbn r7 439026183 -1637724277 SignalID 0
 beq r7 -1 48
-lbn r1 439026183 -1637724277 Vertical 0
-blt r1 89.9 96
-move r3 r1
-sbn 439026183 -1637724277 Vertical r1
+lbn r2 439026183 -1637724277 Vertical 0
+blt r2 89.9 96
+move r1 r2
+sbn 439026183 -1637724277 Vertical r2
 jal 1
 lbn r7 439026183 -1637724277 Idle 0
 beq r7 0 50
-lbn r2 439026183 -1637724277 Vertical 0
+lbn r3 439026183 -1637724277 Vertical 0
 jal 1
 lbn r7 439026183 -1637724277 SignalID 0
 beq r7 -1 59
-lbn r2 439026183 -1637724277 Vertical 0
-blt 0.1 r2 99
-add r7 r2 r3
+lbn r3 439026183 -1637724277 Vertical 0
+blt 0.1 r3 99
+add r7 r3 r1
 div r7 r7 2
 sbn 439026183 -1637724277 Vertical r7
 sbn 439026183 -1637724277 Vertical r7
@@ -94,10 +94,10 @@ add r7 r5 5
 mod r7 r7 360
 sbn 439026183 -1637724277 Horizontal r7
 j 26
-add r7 r1 5
+add r7 r2 5
 sbn 439026183 -1637724277 Vertical r7
 j 43
-add r7 r2 -5
+add r7 r3 -5
 sbn 439026183 -1637724277 Vertical r7
 j 54
 # 102 lines total (not including this line)

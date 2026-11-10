@@ -363,7 +363,7 @@ def regalloc_try_fuse(ctx: TransformCtx) -> RegallocFuseRes:
 
     for instr in index.instrs_unpacked():
         for tie in _get_possible_fuse(instr):
-            possible_fuses[tie] = possible_fuses.get(tie, 0) + 100 if tie.force else 1
+            possible_fuses[tie] = possible_fuses.get(tie, 0) + (100 if tie.force else 1)
 
     possible_fuses_ = sorted(possible_fuses.items(), key=lambda item: item[1], reverse=True)
     for tie, _w in possible_fuses_:
