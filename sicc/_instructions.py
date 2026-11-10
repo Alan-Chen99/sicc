@@ -248,7 +248,7 @@ class Move[T: VarT = Any](MoveBase[T, T]):
         super().__init__(typ, typ)
 
 
-class Transmute[O: VarT, I: VarT](MoveBase[O, I]):
+class Transmute[O: VarT = Any, I: VarT = Any](MoveBase[O, I]):
     pass
 
 

@@ -1,0 +1,6 @@
+sbn -851746783 -999999998 Setting 2
+move r0 -1000000000
+sbn -851746783 r0 Setting r0
+add r0 r0 1
+bne r0 -999999997 2
+# 5 lines total (not including this line)

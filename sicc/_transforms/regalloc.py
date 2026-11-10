@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Any
 from typing import Iterable
 from typing import Iterator
 from typing import cast
@@ -29,6 +30,7 @@ from .._core import Value
 from .._core import Var
 from .._core import WriteMVar
 from .._diagnostic import mk_error
+from .._instructions import Transmute
 from .._tracing import mk_mvar
 from .._tracing import mk_var
 from .._utils import ByIdMixin
@@ -122,6 +124,11 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
         # note: vars are never live at "external" due to their invariant
         lifetimes[v.v] = OrderedSet(handle_one(v, set(reachable)))
 
+    def transmute_source(v: Var[Any]) -> Var[Any]:
+        while (t := index.vars[v].def_instr.isinst(Transmute)) and isinstance(t.inputs_[0], Var):
+            v = cast(Var[Any], t.inputs_[0])
+        return v
+
     def may_conflict(x: AnyVar, y: AnyVar) -> bool:
         conflicts = lifetimes[x] & lifetimes[y]
         if len(conflicts) == 0:
@@ -130,7 +137,9 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
         if isinstance(x, MVar) and isinstance(y, MVar):
             return True
         elif isinstance(x, Var) and isinstance(y, Var):
-            return True
+            # vars never change, and a transmute has the value of its input, so a var and its
+            # transmutes can share a register
+            return transmute_source(x) != transmute_source(y)
         elif isinstance(x, MVar) and isinstance(y, Var):
             mv, v = x, y
         elif isinstance(x, Var) and isinstance(y, MVar):
