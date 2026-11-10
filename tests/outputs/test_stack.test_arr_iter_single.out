@@ -1,0 +1,20 @@
+put db 0 10
+put db 1 11
+put db 2 12
+put db 3 13
+move sp 1
+pop r0
+# fwd: r0
+add sp sp 2
+bne sp 5 5
+move sp 4
+pop r0
+# rev: r0
+bne sp 0 10
+move sp 0
+add sp sp 1
+pop r0
+# idx: r0
+add sp sp 1
+bne sp 4 14
+# 19 lines total (not including this line)

@@ -71,8 +71,10 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
 GLOBAL_FRAG_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
     # uses mvar analysis
     elim_mvars_read_writes,
-    forward_remove_full_block,
+    # before forward_remove_full_block, which can move a write into the block a short-circuit
+    # edge would be threaded through
     thread_branch_edges,
+    forward_remove_full_block,
 ]
 
 FINAL_OPTS: list[Callable[[Fragment], bool | None]] = GLOBAL_FRAG_OPTS + [

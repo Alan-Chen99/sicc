@@ -124,6 +124,23 @@ def test_bool_operators():
         comment("not(and)")
 
 
+@transpile(inline=True)
+def _find_op() -> Int:
+    while d.ExportCount < 31:
+        op = d.ImportCount
+        if op == 7 or op == 8 or op == 10:
+            return op >> 16
+    return -1
+
+
+@wrap_test
+@program
+@transpile
+def test_or_return_in_loop():
+    # the `or` compiles to a chain of branches, as in straight-line code
+    comment("found:", _find_op())
+
+
 def _side_effect() -> Bool:
     d.On = True
     return d.On

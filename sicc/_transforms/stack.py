@@ -26,6 +26,28 @@ def _mk_sp_var() -> Var[int]:
     )
 
 
+def _is_offset(ctx: TransformCtx, addr: Var[int]) -> bool:
+    """`addr` is `v + c` or `v - c` for a Var `v` and a constant `c`."""
+    d = get_index.call_cached(ctx).vars[addr].def_instr
+    if add := d.isinst(AddI):
+        return sum(isinstance(x, Var) for x in add.inputs_) == 1
+    if sub := d.isinst(SubI):
+        v, c = sub.inputs_
+        return isinstance(v, Var) and not isinstance(c, Var)
+    return False
+
+
+def _goes_to_sp(ctx: TransformCtx, v: Var) -> bool:
+    """`v` is moved into a var that prefers sp, as a coroutine restoring its sp does."""
+    index = get_index.call_cached(ctx)
+    for use in index.vars[v].uses:
+        if split := use.isinst(SplitLifetime):
+            (out,) = split.outputs_
+            if out.reg.preferred_reg == Register.SP:
+                return True
+    return False
+
+
 def _stack_chain_to_push_pop_one(ctx: TransformCtx, instr: BoundInstr[StackOpChain]) -> bool:
     f = ctx.frag
 
@@ -35,11 +57,16 @@ def _stack_chain_to_push_pop_one(ctx: TransformCtx, instr: BoundInstr[StackOpCha
         return False
 
     if len(parts) == 1:
-        # (part,) = parts
-        # _pin, addr, *_val = part.inputs_
-        # if not isinstance(addr, Var):
-        #     return False
-        return False
+        # Pointing sp at a single access takes a line, where `get`/`put` take the address
+        # directly. That line replaces the one computing an offset address, and disappears
+        # when v can live in sp, as a loop iterator over the stack does. A value read into
+        # sp overwrites the sp a pop leaves, so the line could never disappear.
+        (part,) = parts
+        _device, addr, *_val = part.inputs_
+        if not isinstance(addr, Var) or not _is_offset(ctx, addr):
+            return False
+        if (read := part.isinst(ReadStack)) and _goes_to_sp(ctx, read.outputs_[0]):
+            return False
 
     device, addr, *_val = parts[0].inputs_
     for p in parts[1:]:

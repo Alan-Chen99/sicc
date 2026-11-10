@@ -63,6 +63,22 @@ def test_arr_iter():
 
 @wrap_test
 @program()
+def test_arr_iter_single():
+    # one value per element: each read can be a pop, with the iterator in sp
+    arr = stack_var([10, 11, 12, 13])
+
+    for x in arr:
+        comment("fwd:", x)
+
+    for x in arr.iter_rev():
+        comment("rev:", x)
+
+    for i in range_(4):
+        comment("idx:", arr[i].read())
+
+
+@wrap_test
+@program()
 def test_arr_iter_mut():
     arr = make_data_arr()
 

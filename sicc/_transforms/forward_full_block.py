@@ -1,3 +1,7 @@
+from typing import cast
+
+import networkx as nx
+
 from .._core import AlwaysUnpack
 from .._core import Block
 from .._core import Var
@@ -5,11 +9,30 @@ from .._core import WriteMVar
 from .._instructions import Bundle
 from .._instructions import Jump
 from .._utils import is_eq_typed
+from .control_flow import CfgNode
 from .control_flow import build_control_flow_graph
 from .control_flow import external
 from .optimize_mvars import compute_mvar_lifetime
+from .utils import CachedFn
 from .utils import LoopingTransform
 from .utils import TransformCtx
+
+
+@CachedFn
+def _immediate_dominators(ctx: TransformCtx) -> dict[CfgNode, CfgNode]:
+    graph = build_control_flow_graph.call_cached(ctx)
+    return cast(
+        dict[CfgNode, CfgNode],
+        nx.immediate_dominators(graph, external),  # pyright: ignore[reportUnknownMemberType]
+    )
+
+
+def _dominates(idom: dict[CfgNode, CfgNode], a: CfgNode, b: CfgNode) -> bool:
+    while b != a:
+        if b not in idom or idom[b] == b:
+            return False
+        b = idom[b]
+    return True
 
 
 def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
@@ -65,6 +88,13 @@ def _try_forward_once(ctx: TransformCtx, b: Block) -> bool:
     # handled in fuse
     if len(list(graph.successors(pred_block.end))) <= 1:
         return False
+
+    # Into a loop's back branch, b would run on every iteration, and its writes would be live
+    # throughout the loop, where they can take sp from an iterator popping the stack.
+    idom = _immediate_dominators.call_cached(ctx)
+    for succ in graph.successors(pred_block.end):
+        if succ != b.label_instr and _dominates(idom, succ, pred_block.end):
+            return False
 
     for i in b.contents:
         if not (i := i.isinst(WriteMVar)):

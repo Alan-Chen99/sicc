@@ -1,0 +1,10 @@
+lb r0 336213101 ExportCount 0
+move r1 -1
+ble 31 r0 8
+lb r0 336213101 ImportCount 0
+beq r0 7 7
+beq r0 8 7
+bne r0 10 0
+sra r1 r0 16
+# found: r1
+# 9 lines total (not including this line)

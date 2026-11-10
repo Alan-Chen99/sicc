@@ -14,53 +14,51 @@ getd r1 r0 1
 sra r1 r1 8
 sbn -815193061 1266255753 Setting r1
 getd r1 r0 2
-sra r2 r1 24
-and r2 r2 255
-sbn -815193061 1102875731 Setting r2
-sra r2 r1 16
-and r2 r2 255
-sbn -815193061 283567959 Setting r2
+sra sp r1 24
+and sp sp 255
+sbn -815193061 1102875731 Setting sp
+sra sp r1 16
+and sp sp 255
+sbn -815193061 283567959 Setting sp
 sra r1 r1 8
 and r1 r1 255
 sbn -815193061 -1853400982 Setting r1
 getd r1 r0 3
-sra r2 r1 8
-and r2 r2 65535
-sbn -815193061 1820037069 Setting r2
+sra sp r1 8
+and sp sp 65535
+sbn -815193061 1820037069 Setting sp
 sra r1 r1 24
 and r1 r1 65535
 sbn -815193061 1307562851 Setting r1
 move r1 4
-move r2 1
-sub r3 r2 1
-get r3 db r3
-move r5 -1
-ble 31 r1 46
+move sp 1
+pop r2
+move r4 -1
+ble 31 r1 45
 add r1 r1 1
-getd r5 r0 r1
-and r4 r5 255
-sra r5 r5 16
-beq r4 7 46
-beq r4 8 46
-beq r4 10 46
-bne r4 12 36
-sbn -851746783 r3 Setting r5
-add r2 r2 1
-bne r2 21 34
+getd r4 r0 r1
+and r3 r4 255
+sra r4 r4 16
+beq r3 7 45
+beq r3 8 45
+beq r3 10 45
+bne r3 12 35
+sbn -851746783 r2 Setting r4
+add sp sp 2
+bne sp 21 34
 move r1 4
-move r2 21
-sub r3 r2 1
-get r3 db r3
-move r5 -1
-ble 31 r1 61
+move sp 21
+pop r2
+move r4 -1
+ble 31 r1 59
 add r1 r1 1
-getd r5 r0 r1
-and r4 r5 255
-sra r5 r5 16
-beq r4 9 61
-bne r4 11 53
-sbn -851746783 r3 Setting r5
-add r2 r2 1
-beq r2 32 2
-j 51
-# 65 lines total (not including this line)
+getd r4 r0 r1
+and r3 r4 255
+sra r4 r4 16
+beq r3 9 59
+bne r3 11 51
+sbn -851746783 r2 Setting r4
+add sp sp 2
+beq sp 32 2
+j 50
+# 63 lines total (not including this line)
