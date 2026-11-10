@@ -34,6 +34,7 @@ from .lower import lower_instrs
 from .offset_arith import opt_offset_arith
 from .optimize_mvars import elim_mvars_read_writes
 from .optimize_mvars import writeback_mvar_use
+from .predicates import fold_const_predicates
 from .predicates import handle_nan_eq
 from .regalloc import regalloc
 from .remove_trivial_vars import remove_trivial_vars_
@@ -52,6 +53,7 @@ FRAG_OPTS: list[Callable[[Fragment], bool | None]] = [
     remove_trivial_blocks,
     #
     opt_consteval,
+    fold_const_predicates,
     opt_identity_arith,
     opt_move_like,
     remove_trivial_push_pop,

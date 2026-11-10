@@ -1,16 +1,5 @@
-beq 0 2 3
 # i: 0
-beq 0 3 14
-beq 1 2 6
 # i: 1
-beq 1 3 14
-beq 2 2 9
-# i: 2
-beq 2 3 14
-beq 3 2 12
 # i: 3
-beq 3 3 14
-beq 4 2 14
-# i: 4
 # done
-# 15 lines total (not including this line)
+# 4 lines total (not including this line)
