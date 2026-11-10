@@ -1,0 +1,14 @@
+put db 2 1
+put db 0 2
+put db 1 3
+put db 4 4
+put db 5 5
+# a: Pointer(Pin(db), 2, int:const) b: Pointer(Pin(db), 4, [int:const, int:const])
+move sp 1
+pop r0
+# fixed: r0
+add sp sp 2
+bne sp 3 7
+get r0 d1 3
+# d1: r0
+# 13 lines total (not including this line)

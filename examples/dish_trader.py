@@ -83,6 +83,8 @@ GAS_DATA = (
 )
 # The dish's stack has 32 addresses.
 STACK_END = 32
+# The address of the Logic Memory names in this chip's stack, written by init and read by run().
+MEMORIES_ADDR = 0
 
 
 # The dish stack instructions, emitted as raw asm. `dish` is the dish's ReferenceId.
@@ -120,12 +122,12 @@ def read_filter(with_filter: bool) -> tuple[Int, Bool]:
 
 @transpile(inline=True)
 def run(with_filter: Static[bool]):
-    # Logic Memory names, written by init. Each program has this as its only stack variable,
-    # so sicc places it at address 0 in all of them. undef(str) declares a string without
-    # writing one, and types the pointer by what is read from it (`[str] * n` would type it as
-    # a list of `type[str]`).
+    # Logic Memory names, written by init. undef(str) declares a string without writing one,
+    # and types the pointer by what is read from it (`[str] * n` would type it as a list of
+    # `type[str]`).
     memories: Static[Pointer[tuple[list[VarRead[str]], list[VarRead[str]]]]] = stack_var(
-        ([undef(str)] * len(ITEM_MEMORIES), [undef(str)] * len(GAS_MEMORIES))
+        ([undef(str)] * len(ITEM_MEMORIES), [undef(str)] * len(GAS_MEMORIES)),
+        addr=MEMORIES_ADDR,
     )
     # The signal ID written to LED_LOCKED_SIGID last.
     last_locked = 0.0
@@ -203,7 +205,7 @@ def run(with_filter: Static[bool]):
 @program
 def init():
     """Write the Logic Memory names to this chip's stack, at the addresses run() reads."""
-    stack_var((ITEM_MEMORIES, GAS_MEMORIES))
+    stack_var((ITEM_MEMORIES, GAS_MEMORIES), addr=MEMORIES_ADDR)
 
 
 @program

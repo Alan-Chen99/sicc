@@ -79,6 +79,20 @@ def test_arr_iter_single():
 
 @wrap_test
 @program()
+def test_fixed_addr():
+    # a at 2 and b at 4-5: the automatically placed variables skip the fixed ones at 0-1 and 3
+    a = stack_var(1)
+    fixed = stack_var([2, 3], addr=0)
+    b = stack_var([4, 5])
+    on_d1 = stack_var(float, d1, addr=3)
+    comment("a:", a, "b:", b)
+    for x in fixed:
+        comment("fixed:", x)
+    comment("d1:", on_d1.read())
+
+
+@wrap_test
+@program()
 def test_arr_iter_mut():
     arr = make_data_arr()
 

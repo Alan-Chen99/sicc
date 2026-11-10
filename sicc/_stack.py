@@ -326,27 +326,41 @@ class SupportsGetItem[K, V](Protocol):
 
 
 @overload
-def stack_var[T: VarT](typ: type[T], /, device: Pin | None = None) -> Pointer[UserValue[T]]: ...
-@overload
 def stack_var[T: VarT](
-    init: UserValue[T], /, device: Pin | None = None
+    typ: type[T], /, device: Pin | None = None, *, addr: int | None = None
 ) -> Pointer[UserValue[T]]: ...
 @overload
-def stack_var[T](init: T, /, device: Pin | None = None) -> Pointer[T]: ...
+def stack_var[T: VarT](
+    init: UserValue[T], /, device: Pin | None = None, *, addr: int | None = None
+) -> Pointer[UserValue[T]]: ...
+@overload
+def stack_var[T](
+    init: T, /, device: Pin | None = None, *, addr: int | None = None
+) -> Pointer[T]: ...
 
 
-def stack_var[T](init_or_typ: T | Any, /, device: Pin | None = None) -> Pointer[T | Any]:
+def stack_var[T](
+    init_or_typ: T | Any, /, device: Pin | None = None, *, addr: int | None = None
+) -> Pointer[T | Any]:
     """
     make a (global) variable on the stack, and return a pointer to it
+
+    `addr`: the stack address of the variable, for a layout that other programs or chips also
+    use. Without it, the variable is placed when generating asm, at addresses that the fixed
+    variables used in the same program do not take. A fixed variable that no instruction of the
+    program accesses takes no addresses there.
     """
     from ._stationeers import Pin
+
+    if addr is not None and addr < 0:
+        raise TypeError(f"stack address must not be negative; got {addr}")
 
     tree = TreeSpec.from_schema(init_or_typ)
     leaves: list[Any] = tree.tree.flatten_up_to(cast_unchecked(init_or_typ))
 
     ans = Pointer(
         _device=device or Pin.db(),
-        _addr=Constant(StaticBuffer(get_id(), tree.types)),
+        _addr=Constant(StaticBuffer(get_id(), tree.types, addr)),
         _tree=tree,
     )
 

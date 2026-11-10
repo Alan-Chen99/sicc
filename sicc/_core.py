@@ -263,8 +263,12 @@ db_internal = PinType(_name="db")
 class StaticBuffer(VirtualConst[int], ByIdMixin):
     id: int
     types: tuple[type[VarT], ...]
+    #: address chosen by the user; None to place the buffer when generating asm
+    fixed: int | None = None
 
     def __repr__(self) -> str:
+        if self.fixed is not None:
+            return f"b{self.id}@{self.fixed}"
         return f"b{self.id}"
         # ans += "[" + ", ".join(x.__name__ for x in self.types) + "]"
         # return ans
@@ -278,13 +282,32 @@ class StaticBuffer(VirtualConst[int], ByIdMixin):
 
     @override
     def resolve(self, ctx: AsRawCtx) -> int:
+        if self.fixed is not None:
+            return self.fixed
         buffers = ctx.state.buffers
         if self in buffers:
             return buffers[self]
         ans = ctx.state.buffers_alloc_end
-        ctx.state.buffers_alloc_end += len(self)
+        # sorted by start, so moving past one range cannot create an overlap with an earlier one
+        for start, end in ctx.state.fixed_ranges:
+            if start < ans + len(self) and ans < end:
+                ans = end
+        ctx.state.buffers_alloc_end = ans + len(self)
         buffers[self] = ans
         return ans
+
+
+def _fixed_ranges(x: object) -> Iterator[tuple[int, int]]:
+    """The [start, end) address ranges of the fixed StaticBuffers in the constant `x`."""
+    if isinstance(x, StaticBuffer):
+        if x.fixed is not None:
+            yield x.fixed, x.fixed + len(x)
+    elif isinstance(x, PtrArith):
+        for buf, _ in x.parts:
+            yield from _fixed_ranges(buf)
+    elif isinstance(x, ConstEval):
+        for arg in x.args:
+            yield from _fixed_ranges(arg)
 
 
 @dataclass(frozen=True)
@@ -1435,6 +1458,8 @@ class GenAsmState:
 
     buffers: dict[StaticBuffer, int]
     buffers_alloc_end: int
+    #: [start, end) of the fixed buffers in the program, sorted; other buffers avoid these
+    fixed_ranges: list[tuple[int, int]]
 
 
 def format_raw_val(x: Value, ctx: AsRawCtx, typ: type[VarT], debug: DebugInfo) -> RawText:
@@ -1566,7 +1591,8 @@ class TracedProgram:
             else:
                 raise TypeError(instr)
 
-        return GenAsmState(instr_lines, label_lines, {}, 0)
+        fixed_ranges = sorted({r for instr in instrs for x in instr.inputs for r in _fixed_ranges(x)})
+        return GenAsmState(instr_lines, label_lines, {}, 0, fixed_ranges)
 
     def gen_asm(self) -> RawText:
         with catch_ex_and_exit(self.frag):
