@@ -1,3 +1,6 @@
+from collections import defaultdict
+from typing import cast
+
 import networkx as nx
 from rich.text import Text
 
@@ -5,9 +8,9 @@ from .._core import FORMAT_ANNOTATE
 from .._core import AlwaysUnpack
 from .._diagnostic import mk_warn
 from .._instructions import AsmBlock
-from .._utils import cast_unchecked_val
 from ..config import verbose
 from .basic import get_index
+from .control_flow import CfgNode
 from .control_flow import build_control_flow_graph
 from .control_flow import compute_label_provenance
 from .control_flow import external
@@ -33,13 +36,36 @@ def check_vars_defined(ctx: TransformCtx) -> None:
     label_prov = compute_label_provenance.call_cached(ctx, out_unpack=AlwaysUnpack())
     graph = build_control_flow_graph.call_cached(ctx, out_unpack=AlwaysUnpack())
 
+    # a use reachable from external without passing the def is one the def does not dominate.
+    # dominator tree with DFS pre/post numbers: a dominates b iff b's interval nests in a's
+    idom = cast(
+        dict[CfgNode, CfgNode],
+        nx.immediate_dominators(graph, external),  # pyright: ignore[reportUnknownMemberType]
+    )
+    children: defaultdict[CfgNode, list[CfgNode]] = defaultdict(list)
+    for n, d in idom.items():
+        if n != d:
+            children[d].append(n)
+    pre: dict[CfgNode, int] = {}
+    post: dict[CfgNode, int] = {}
+    stack: list[tuple[CfgNode, bool]] = [(external, False)]
+    while stack:
+        n, done = stack.pop()
+        if done:
+            post[n] = len(pre) + len(post)
+            continue
+        pre[n] = len(pre) + len(post)
+        stack.append((n, True))
+        stack.extend((c, False) for c in children[n])
+
+    def undominated_use(d: CfgNode, u: CfgNode) -> bool:
+        if u not in pre:
+            return False
+        return d not in pre or not (pre[d] <= pre[u] and post[u] <= post[d])
+
     for v in index.vars.values():
-        graph_ = cast_unchecked_val(graph)(
-            nx.restricted_view(graph, {v.def_instr}, [])  # pyright: ignore[reportUnknownMemberType]
-        )
-        reach = nx.descendants(graph_, external)  # pyright: ignore[reportUnknownMemberType]
         for u in v.uses:
-            if u in reach:
+            if undominated_use(v.def_instr, u):
                 err = u.debug.error(
                     f"variable {v.v} ({v.v.debug.describe}) does not dominiate its use",
                 )
