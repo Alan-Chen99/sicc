@@ -5,7 +5,9 @@ import copy
 import functools
 import inspect
 import types
+from contextlib import AbstractContextManager
 from contextlib import contextmanager
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Annotated
 from typing import Any
@@ -270,6 +272,20 @@ def _ifexp[T](test: Bool, body: Callable[[], T], orelse: Callable[[], T]) -> T:
     if isinstance(test, bool):
         return body() if test else orelse()
     return cond(test, body, orelse)
+
+
+def _if_body(test: Bool) -> AbstractContextManager[None]:
+    """`if_(test)`; a python bool `test` selects a branch at trace time instead (see visit_If)."""
+    if isinstance(test, bool):
+        return nullcontext()
+    return if_(test)
+
+
+def _if_else(test: Bool) -> AbstractContextManager[None]:
+    """`else_()` for `_if_body(test)`."""
+    if isinstance(test, bool):
+        return nullcontext()
+    return else_()
 
 
 def _not(x: Bool) -> Bool:
@@ -720,34 +736,56 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
     # Control flow transformations
     #####
 
-    def visit_If(self, node: ast.If) -> ast.AST:
-        """Transform `if x: ... else: ...` -> `with if_(x): body; with else_(): orelse`
+    def visit_If(self, node: ast.If) -> ast.AST | list[ast.stmt]:
+        """Transform `if x: body else: orelse` into
 
-        The else_() must be called from within the if_() context manager.
+        ```
+        tmp = x
+        with _if_body(tmp):  # if_(tmp)
+            if tmp is not False:
+                body
+            if tmp is not True:
+                with _if_else(tmp):  # else_()
+                    orelse
+        ```
+
+        On a runtime `x`, both python `if`s hold: this is `with if_(x): body; with else_():
+        orelse`, the else_() called from within the if_() context manager as it must be. On a
+        python bool, only the branch taken is traced, like `and`, `or`, `not` and ternaries.
         """
 
         node = self._generic_visit_sametype(node)
         if self._helper.value:
             return node
 
-        if_body = node.body
+        test_name = self._tmp("if_test")
 
+        def test() -> ast.Name:
+            return ast.Name(id=test_name, ctx=ast.Load())
+
+        def unless(value: bool, body: list[ast.stmt]) -> ast.If:
+            return ast.If(
+                test=ast.Compare(left=test(), ops=[ast.IsNot()], comparators=[ast.Constant(value)]),
+                body=body,
+                orelse=[],
+            )
+
+        if_body: list[ast.stmt] = [unless(False, node.body)]
         if node.orelse:
-            # Regular else block: with else_(): <else body>
             else_with = ast.With(
-                items=[ast.withitem(context_expr=_embed_call(else_))],
+                items=[ast.withitem(context_expr=_embed_call(_if_else, test()))],
                 body=node.orelse,
             )
-            if_body.append(else_with)
+            if_body.append(unless(True, [else_with]))
 
-        # Create: with if_(test): <if_body including else>
-        if_call = ast.copy_location(_embed_call(if_, node.test), node.test)
+        init_test = ast.Assign(targets=[ast.Name(id=test_name, ctx=ast.Store())], value=node.test)
+        if_call = ast.copy_location(_embed_call(_if_body, test()), node.test)
         if_with = ast.With(
             items=[ast.withitem(context_expr=if_call)],
             body=if_body,
         )
 
-        return ast.copy_location(if_with, node)
+        return [ast.copy_location(init_test, node), ast.copy_location(if_with, node)]
 
     def visit_While(self, node: ast.While) -> ast.AST:
         """Transform `while x:` -> `with while_(lambda: x):`"""
@@ -1171,7 +1209,7 @@ def transpile[**P, R](fn: Callable[P, R], /, *, wrap: bool = True, inline: bool 
     ```
 
     **control flow**
-    `if x: ... else: ...` -> `with if_(x): ... with else_(): ...`
+    `if x: ... else: ...` -> `with if_(x): ... with else_(): ...` (on a python bool, at trace time)
     `x if y else z` -> `_ifexp(y, lambda: x, lambda: z)` (on a python bool, at trace time)
     `while x` -> `with while_(lambda: x): ... with else_(): ...`
     `for x in y` -> `for x in _patch_for_loop(y, ...)`

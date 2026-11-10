@@ -27,6 +27,7 @@ See [examples/explained.py](examples/explained.py) for how this works.
     - the python counterparts would run at trace time
   - `@transpile` rewrites python `if`, `while`, `for`, `and`, `or`, `return`, ... into these (see its docstring)
     - locals annotated `Static[T]` stay trace-time python values
+    - `if`, ternary, `and`, `or` and `not` on a python `bool` (such as a `Static` one) are decided at trace time; only the branch taken is traced
     - nested `def`s are trace-time helpers; apply `@transpile` to transpile them too
 - math functions
   - only a small subset is supported at the moment

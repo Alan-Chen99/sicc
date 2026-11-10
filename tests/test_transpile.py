@@ -87,6 +87,34 @@ def test_bool_const():
             comment(i, "or", j, "->", i or j)
 
 
+@transpile(inline=True)
+def _if_const(dev: Static[Autolathe | None], flag: Static[bool], n: Static[int]):
+    # on a python bool, only the branch taken is traced
+    if dev is not None:
+        dev.On = True
+    else:
+        comment("dev is None")
+
+    if flag:
+        comment("flag")
+    else:
+        assert False, "not traced"
+
+    if n == 1:
+        comment("one")
+    elif n == 2:
+        comment("two")
+    else:
+        comment("other")
+
+
+@wrap_test
+@program
+@transpile
+def test_if_const():
+    _if_const(None, True, 2)
+
+
 @wrap_test
 @program
 @transpile

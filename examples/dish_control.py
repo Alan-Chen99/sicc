@@ -131,19 +131,13 @@ def roam() -> Float:
         DISH_M.Horizontal = (DISH_M.Horizontal + 2) % 360
 
 
-# DISH_S / DISH_L handling is plain python rather than @transpile, so `is not None` is
-# checked at trace time and an unconfigured dish emits nothing.
-
-
-def stop_optional_dishes():
-    if DISH_S is not None:
-        DISH_S.On = False
-    if DISH_L is not None:
-        DISH_L.On = False
-
-
 def pick_dishes() -> tuple[Dish, Dish]:
-    """Return the (scan, comm) dishes: DISH_S scans when LED_TIER < 2, DISH_L interrogates."""
+    """
+    Return the (scan, comm) dishes: DISH_S scans when LED_TIER < 2, DISH_L interrogates.
+
+    Plain python: @transpile does not allow reassigning the trace-time `scan` and `comm` under
+    an `if`, even one on a python bool such as `DISH_S is not None`.
+    """
     scan = DISH_M.as_generic_device_keep_type()
     comm = DISH_M.as_generic_device_keep_type()
     if DISH_S is not None:
@@ -211,7 +205,12 @@ def search(scan: Dish, comm: Dish):
 def main():
     while True:
         label(RESTART)
-        stop_optional_dishes()
+        # On a python bool, `if` picks its branch at trace time: a dish left as None adds no
+        # lines.
+        if DISH_S is not None:
+            DISH_S.On = False
+        if DISH_L is not None:
+            DISH_L.On = False
         target.value = roam()
         scan, comm = pick_dishes()
         search(scan, comm)
