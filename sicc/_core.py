@@ -220,7 +220,6 @@ class ConstEval[T: VarT](VirtualConst[T]):
         args = [ctx.resolve_const(x) for x in self.args]
         if any(isinstance(x, Undef) for x in args):
             return Undef(self.typ)
-        print("resolve!", self.fn, args)
         return self.fn(*args)
 
     def __repr__(self):

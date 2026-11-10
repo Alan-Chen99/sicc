@@ -61,7 +61,8 @@ from ._instructions import Jump
 from ._instructions import LShift
 from ._instructions import Max
 from ._instructions import Min
-from ._instructions import Mod
+from ._instructions import ModF
+from ._instructions import ModI
 from ._instructions import MulF
 from ._instructions import MulI
 from ._instructions import Not
@@ -438,7 +439,7 @@ add = Function(AddI(), AddF())
 sub = Function(SubI(), SubF())
 mul = Function(MulI(), MulF())
 div = Function(DivF())
-mod = Function(Mod())
+mod = Function(ModI(), ModF())
 
 and_ = Function(AndB(), AndI())
 or_ = Function(OrB(), OrI())

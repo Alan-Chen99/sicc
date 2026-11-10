@@ -494,7 +494,15 @@ class DivF(AsmInstrBase):
     consteval_fn = operator.truediv
 
 
-class Mod(AsmInstrBase):
+class ModF(AsmInstrBase):
+    opcode = "mod"
+    in_types = (float, float)
+    out_types = (float,)
+
+    consteval_fn = operator.mod
+
+
+class ModI(AsmInstrBase):
     opcode = "mod"
     in_types = (int, int)
     out_types = (int,)
