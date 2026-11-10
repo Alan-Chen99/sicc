@@ -365,17 +365,6 @@ class DeviceBase(Generic[DT_co, N_co]):
         )
         return ans
 
-    def as_base(self) -> Device:
-        assert self._pin is None
-        assert self.device_type is not None
-        return Device(
-            name=self.name,
-            device_type=self.device_type,
-        )
-
-    def as_base_keep_type(self) -> Self:
-        return cast_unchecked(self.as_base())
-
     @property
     def StaticPrefabHash(self) -> DT_co:
         return self.device_type
@@ -383,6 +372,16 @@ class DeviceBase(Generic[DT_co, N_co]):
     @property
     def slots(self) -> _SlotProxy:
         return _SlotProxy(self)
+
+    def as_generic_device(self) -> Device:
+        assert self.device_type is not None
+        return Device(
+            name=self.name,
+            device_type=self.device_type,
+        )
+
+    def as_generic_device_keep_type(self) -> Self:
+        return cast_unchecked(self.as_generic_device())
 
 
 class Pin(DeviceBase[None, None]):
@@ -721,11 +720,28 @@ class SlotField[T: VarT = Any](VarRead[T]):
 
 
 class Device[D: Str = Str, N: Str | None = Str | None](DeviceBase[D, N]):
-    def __init__(self, device_type: D, name: N = None) -> None:
-        super().__init__(_device_type=device_type, _name=name)
+    def __init__(
+        self,
+        device_type: D,
+        name: N = None,
+        default_batchmode: BatchMode = BatchMode.AVG,
+    ) -> None:
+        super().__init__(_device_type=device_type, _name=name, _default_batchmode=default_batchmode)
+
+    PrefabHash: FieldDesc[str] = mk_field_ro(str)
+    NameHash: FieldDesc[str] = mk_field_ro(str)
+    ReferenceId: FieldDesc[int] = mk_field_ro(int)
+
+    def exist(self) -> VarRead[bool]:
+        # >=1 devices with this PrefabHash
+        return self.PrefabHash.get(mode=BatchMode.SUM, typ=int) != 0
+
+    def is_unique(self) -> VarRead[bool]:
+        # ==1 devices with this PrefabHash
+        return self.PrefabHash.sum == self.StaticPrefabHash
 
 
-class DeviceTyped(DeviceBase[str]):
+class DeviceTyped(Device[str, Str | None]):
     _hash: int
 
     @classmethod
@@ -746,7 +762,8 @@ class DeviceTyped(DeviceBase[str]):
         if pin_ is not None:
             assert name is None
 
-        super().__init__(
+        DeviceBase.__init__(
+            self,
             _device_type=device_type,
             _name=name,
             _default_batchmode=default_batchmode,
@@ -775,18 +792,6 @@ class DeviceTyped(DeviceBase[str]):
             _pin=pin,
         )
         return ans
-
-    PrefabHash: FieldDesc[str] = mk_field_ro(str)
-    NameHash: FieldDesc[str] = mk_field_ro(str)
-    ReferenceId: FieldDesc[int] = mk_field_ro(int)
-
-    def exist(self) -> VarRead[bool]:
-        # >=1 devices with this PrefabHash
-        return self.PrefabHash.sum.transmute(int) != 0
-
-    def is_unique(self) -> VarRead[bool]:
-        # ==1 devices with this PrefabHash
-        return self.PrefabHash.sum == self.StaticPrefabHash
 
 
 ################################################################################

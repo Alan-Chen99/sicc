@@ -33,7 +33,7 @@ RESET_VERTICAL = 0
 @shared_generator  # remove @shared_generator to unroll
 def iter_panels():
     for x in panels:
-        yield x.as_base_keep_type()
+        yield x.as_generic_device_keep_type()
 
 
 @program
