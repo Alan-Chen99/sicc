@@ -465,7 +465,8 @@ def debug_info(depth: int = 1) -> DebugInfo:
     # print("stack:", DEBUG_INFO_STACK.value)
     for x in DEBUG_INFO_STACK.value:
         ans.fuse(x)
-    if ans.traceback is None:
+    # traceback is only rendered at verbose >= 2 (location_info_full), and capturing it is costly
+    if ans.traceback is None and verbose.value >= 2:
         ans.traceback = get_trace()
     if ans.location is None:
         ans.location = get_location(depth + 1)
@@ -495,7 +496,7 @@ def track_caller(depth: int = 0) -> Iterator[None]:
     # TODO: improve efficiency by checking if already in "track_caller"
     # so this would do nothing
     loc = get_location(depth + 3)
-    tb = get_trace()
+    tb = get_trace() if verbose.value >= 2 else None
     with add_debug_info(DebugInfo(location=loc, traceback=tb, track_caller=True)):
         yield
 
