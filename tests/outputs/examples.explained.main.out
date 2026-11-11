@@ -13,16 +13,16 @@ lbn r0 -324331872 1884244228 RequiredPower 3
 # x: r0
 # x_alias: r0
 lbn r0 -324331872 122190226 RequiredPower 0
-add r0 r0 1
-# x: r0
-# x_alias: r0
-add r1 r0 5.1
-# new x: r1
-# x_alias: r0
+add r1 r0 1
+# x: r1
+# x_alias: r1
+add r2 r1 5.1
+# new x: r2
+# x_alias: r1
 lbn r1 -324331872 1884244228 RequiredPower 0
 add r1 r1 2
 # var 0: r1
-add r0 r0 1
+add r0 r0 2
 # var 1: r0
 add r0 r1 r0
 # sum: r0

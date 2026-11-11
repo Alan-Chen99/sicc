@@ -1,0 +1,15 @@
+lb r0 -2045627372 Horizontal 0
+add r0 r0 2
+mod r0 r0 360
+sb -2045627372 Horizontal r0
+lbn r1 439026183 -1786934088 Idle 0
+lb r2 -443130773 DispenseSlot 0
+# float: r0 bool: r1 int: r2
+sb -443130773 RequestHash -1301215609
+lb r0 -619745681 CelestialHash 0
+seq r0 r0 -718617319
+# is mars: r0
+lb r0 -321403609 Setting 0
+sbn -851746783 HASH("mem") Setting -1301215609
+# pressure: r0
+# 14 lines total (not including this line)

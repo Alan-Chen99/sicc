@@ -389,62 +389,62 @@ class _BaseGasOutput2:
 class _Powered:
     On: _FieldDescW[bool] = _mk_field(bool)
     Power: _FieldDesc[bool] = _mk_field_ro(bool)
-    RequiredPower: _FieldDesc[int] = _mk_field_ro(int)
+    RequiredPower: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class _NumericalSetting:
-    Maximum: _FieldDesc = _mk_field_ro()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Setting: _FieldDescW = _mk_field()
+    Maximum: _FieldDesc[float] = _mk_field_ro(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Setting: _FieldDescW[float] = _mk_field(float)
 
 
 class _ImportExport:
-    ClearMemory: _FieldDescW = _mk_field()
-    ExportCount: _FieldDesc = _mk_field_ro()
-    ImportCount: _FieldDesc = _mk_field_ro()
+    ClearMemory: _FieldDescW[bool] = _mk_field(bool)
+    ExportCount: _FieldDesc[int] = _mk_field_ro(int)
+    ImportCount: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class _ImportOnly:
-    ClearMemory: _FieldDescW = _mk_field()
-    ImportCount: _FieldDesc = _mk_field_ro()
+    ClearMemory: _FieldDescW[bool] = _mk_field(bool)
+    ImportCount: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class _PowerMeasure:
-    PowerActual: _FieldDesc = _mk_field_ro()
-    PowerPotential: _FieldDesc = _mk_field_ro()
+    PowerActual: _FieldDesc[float] = _mk_field_ro(float)
+    PowerPotential: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class _Volume:
-    Volume: _FieldDesc = _mk_field_ro()
-    VolumeOfLiquid: _FieldDesc = _mk_field_ro()
+    Volume: _FieldDesc[float] = _mk_field_ro(float)
+    VolumeOfLiquid: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class _Battery:
-    Charge: _FieldDesc = _mk_field_ro()
-    Maximum: _FieldDesc = _mk_field_ro()
+    Charge: _FieldDesc[float] = _mk_field_ro(float)
+    Maximum: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class _Door:
-    Idle: _FieldDesc = _mk_field_ro()
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
     Setting: _FieldDescW = _mk_field()
 
 
 class _Machine:
-    Activate: _FieldDescW = _mk_field()
-    CompletionRatio: _FieldDesc = _mk_field_ro()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    CompletionRatio: _FieldDesc[float] = _mk_field_ro(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Reagents: _FieldDesc = _mk_field_ro()
+    Reagents: _FieldDesc[float] = _mk_field_ro(float)
     RecipeHash: _FieldDescW[str] = _mk_field(str)
 
 
 class _Sleeper:
-    Activate: _FieldDescW = _mk_field()
-    EntityState: _FieldDesc = _mk_field_ro()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    EntityState: _FieldDesc[int] = _mk_field_ro(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
@@ -455,7 +455,7 @@ class AccessBridge(
     _Powered,
 ):
     _hash: int = 1298920475
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
@@ -469,10 +469,10 @@ class ActiveVent(
     _hash: int = -1129453144
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    PressureExternal: _FieldDescW = _mk_field()
-    PressureInternal: _FieldDescW = _mk_field()
+    PressureExternal: _FieldDescW[float] = _mk_field(float)
+    PressureInternal: _FieldDescW[float] = _mk_field(float)
 
 
 class AdvancedComposter(
@@ -482,12 +482,12 @@ class AdvancedComposter(
     _Powered,
 ):
     _hash: int = 446212963
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDesc = _mk_field_ro()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class AdvancedFurnace(
@@ -498,12 +498,12 @@ class AdvancedFurnace(
     _Powered,
 ):
     _hash: int = 545937711
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Reagents: _FieldDesc = _mk_field_ro()
+    Reagents: _FieldDesc[float] = _mk_field_ro(float)
     RecipeHash: _FieldDesc[str] = _mk_field_ro(str)
     SettingInput: _FieldDescW = _mk_field()
     SettingOutput: _FieldDescW = _mk_field()
@@ -516,7 +516,7 @@ class AdvancedPackagingMachine(
     _Powered,
 ):
     _hash: int = -463037670
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class AirConditioner(
@@ -530,11 +530,11 @@ class AirConditioner(
     _hash: int = -2087593337
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    OperationalTemperatureEfficiency: _FieldDesc = _mk_field_ro()
-    PressureEfficiency: _FieldDesc = _mk_field_ro()
-    TemperatureDifferentialEfficiency: _FieldDesc = _mk_field_ro()
+    OperationalTemperatureEfficiency: _FieldDesc[float] = _mk_field_ro(float)
+    PressureEfficiency: _FieldDesc[float] = _mk_field_ro(float)
+    TemperatureDifferentialEfficiency: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class Airlock(
@@ -567,11 +567,11 @@ class ArcFurnace(
     _Powered,
 ):
     _hash: int = -247344692
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Idle: _FieldDesc = _mk_field_ro()
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Reagents: _FieldDesc = _mk_field_ro()
+    Reagents: _FieldDesc[float] = _mk_field_ro(float)
     RecipeHash: _FieldDesc[str] = _mk_field_ro(str)
 
 
@@ -584,9 +584,9 @@ class AreaPowerControl(
     _hash: int = 1999523701
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Ratio: _FieldDesc = _mk_field_ro()
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class AreaPowerControlReversed(
@@ -598,9 +598,9 @@ class AreaPowerControlReversed(
     _hash: int = -1032513487
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Ratio: _FieldDesc = _mk_field_ro()
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class AutoMinerSmall(
@@ -609,7 +609,7 @@ class AutoMinerSmall(
     _Powered,
 ):
     _hash: int = 7274344
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
@@ -621,7 +621,7 @@ class Autolathe(
     _Powered,
 ):
     _hash: int = 336213101
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class AutomatedOven(
@@ -631,7 +631,7 @@ class AutomatedOven(
     _Powered,
 ):
     _hash: int = -1672404896
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class BackLiquidPressureRegulator(
@@ -671,10 +671,10 @@ class Battery(
     _hash: int = -400115994
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
     On: _FieldDescW[bool] = _mk_field(bool)
     Power: _FieldDesc[bool] = _mk_field_ro(bool)
-    Ratio: _FieldDesc = _mk_field_ro()
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class BatteryCharger(
@@ -682,7 +682,7 @@ class BatteryCharger(
     _Powered,
 ):
     _hash: int = 1945930022
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
 
 
@@ -691,7 +691,7 @@ class BatteryChargerSmall(
     _Powered,
 ):
     _hash: int = -761772413
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
 
 
@@ -703,10 +703,10 @@ class BatteryLarge(
     _hash: int = -1388288459
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
     On: _FieldDescW[bool] = _mk_field(bool)
     Power: _FieldDesc[bool] = _mk_field_ro(bool)
-    Ratio: _FieldDesc = _mk_field_ro()
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class BatteryMedium(
@@ -715,10 +715,10 @@ class BatteryMedium(
     _PowerMeasure,
 ):
     _hash: int = -1125305264
-    Mode: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
     On: _FieldDescW[bool] = _mk_field(bool)
     Power: _FieldDesc[bool] = _mk_field_ro(bool)
-    Ratio: _FieldDesc = _mk_field_ro()
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class BatterySmall(
@@ -727,10 +727,10 @@ class BatterySmall(
     _PowerMeasure,
 ):
     _hash: int = -2123455080
-    Mode: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
     On: _FieldDescW[bool] = _mk_field(bool)
     Power: _FieldDesc[bool] = _mk_field_ro(bool)
-    Ratio: _FieldDesc = _mk_field_ro()
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class Beacon(
@@ -741,9 +741,9 @@ class Beacon(
     Color: _FieldDescW[_Color] = _mk_field(_Color)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    PositionX: _FieldDesc = _mk_field_ro()
-    PositionY: _FieldDesc = _mk_field_ro()
-    PositionZ: _FieldDesc = _mk_field_ro()
+    PositionX: _FieldDesc[float] = _mk_field_ro(float)
+    PositionY: _FieldDesc[float] = _mk_field_ro(float)
+    PositionZ: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class Bench(
@@ -799,7 +799,7 @@ class BlockBed(
     _Powered,
 ):
     _hash: int = 697908419
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
 
 
@@ -808,14 +808,14 @@ class CableAnalysizer(
     _PowerMeasure,
 ):
     _hash: int = 1036015121
-    PowerRequired: _FieldDesc = _mk_field_ro()
+    PowerRequired: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class Camera(
     _DeviceTyped,
 ):
     _hash: int = -342072665
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     On: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -861,8 +861,8 @@ class CargoStorageMedium(
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDesc = _mk_field_ro()
-    Ratio: _FieldDesc = _mk_field_ro()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class CargoStorageSmall(
@@ -874,8 +874,8 @@ class CargoStorageSmall(
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDesc = _mk_field_ro()
-    Ratio: _FieldDesc = _mk_field_ro()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class Centrifuge(
@@ -886,7 +886,7 @@ class Centrifuge(
     _hash: int = 690945935
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Reagents: _FieldDesc = _mk_field_ro()
+    Reagents: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class ChuteBin(
@@ -904,8 +904,8 @@ class ChuteDigitalFlipFlopSplitterLeft(
     _Powered,
 ):
     _hash: int = -810874728
-    Mode: _FieldDescW = _mk_field()
-    Quantity: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Quantity: _FieldDescW[float] = _mk_field(float)
     Setting: _FieldDescW = _mk_field()
     SettingOutput: _FieldDescW = _mk_field()
 
@@ -915,8 +915,8 @@ class ChuteDigitalFlipFlopSplitterRight(
     _Powered,
 ):
     _hash: int = 163728359
-    Mode: _FieldDescW = _mk_field()
-    Quantity: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Quantity: _FieldDescW[float] = _mk_field(float)
     Setting: _FieldDescW = _mk_field()
     SettingOutput: _FieldDescW = _mk_field()
 
@@ -928,7 +928,7 @@ class ChuteDigitalValveLeft(
     _hash: int = 648608238
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDescW = _mk_field()
+    Quantity: _FieldDescW[float] = _mk_field(float)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -939,7 +939,7 @@ class ChuteDigitalValveRight(
     _hash: int = -1337091041
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDescW = _mk_field()
+    Quantity: _FieldDescW[float] = _mk_field(float)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -976,7 +976,7 @@ class ChuteUmbilicalMale(
     _hash: int = -958884053
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -986,10 +986,10 @@ class CircuitHousing(
 ):
     _hash: int = -128473777
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    LineNumber: _FieldDescW = _mk_field()
-    Mode: _FieldDescW = _mk_field()
+    LineNumber: _FieldDescW[int] = _mk_field(int)
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDescW = _mk_field()
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class CircuitHousingCompact(
@@ -998,10 +998,10 @@ class CircuitHousingCompact(
 ):
     _hash: int = 2037291645
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    LineNumber: _FieldDescW = _mk_field()
-    Mode: _FieldDescW = _mk_field()
+    LineNumber: _FieldDescW[int] = _mk_field(int)
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDescW = _mk_field()
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class CombustionCentrifuge(
@@ -1013,14 +1013,14 @@ class CombustionCentrifuge(
     _Powered,
 ):
     _hash: int = 1238905683
-    CombustionLimiter: _FieldDescW = _mk_field()
+    CombustionLimiter: _FieldDescW[float] = _mk_field(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Reagents: _FieldDesc = _mk_field_ro()
-    Rpm: _FieldDesc = _mk_field_ro()
-    Stress: _FieldDesc = _mk_field_ro()
-    Throttle: _FieldDescW = _mk_field()
+    Reagents: _FieldDesc[float] = _mk_field_ro(float)
+    Rpm: _FieldDesc[float] = _mk_field_ro(float)
+    Stress: _FieldDesc[float] = _mk_field_ro(float)
+    Throttle: _FieldDescW[float] = _mk_field(float)
 
 
 class CombustionDeepMiner(
@@ -1032,13 +1032,13 @@ class CombustionDeepMiner(
     _Powered,
 ):
     _hash: int = 1234476501
-    CombustionLimiter: _FieldDescW = _mk_field()
+    CombustionLimiter: _FieldDescW[float] = _mk_field(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Rpm: _FieldDesc = _mk_field_ro()
-    Stress: _FieldDesc = _mk_field_ro()
-    Throttle: _FieldDescW = _mk_field()
+    Rpm: _FieldDesc[float] = _mk_field_ro(float)
+    Stress: _FieldDesc[float] = _mk_field_ro(float)
+    Throttle: _FieldDescW[float] = _mk_field(float)
 
 
 class Combustor(
@@ -1051,10 +1051,10 @@ class Combustor(
     _Powered,
 ):
     _hash: int = -1037204948
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1150,7 +1150,7 @@ class Console(
     _Powered,
 ):
     _hash: int = 235638270
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
     Setting: _FieldDesc = _mk_field_ro()
@@ -1161,7 +1161,7 @@ class ConsoleDual(
     _Powered,
 ):
     _hash: int = -722284333
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
     Setting: _FieldDesc = _mk_field_ro()
@@ -1174,7 +1174,7 @@ class ConsoleLED1x2(
     _hash: int = -53151617
     Color: _FieldDescW[_Color] = _mk_field(_Color)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -1185,7 +1185,7 @@ class ConsoleLED1x2Back(
     _hash: int = 338182791
     Color: _FieldDescW[_Color] = _mk_field(_Color)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -1196,7 +1196,7 @@ class ConsoleLED1x2Side(
     _hash: int = 1516738565
     Color: _FieldDescW[_Color] = _mk_field(_Color)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -1207,7 +1207,7 @@ class ConsoleLED1x3(
     _hash: int = -1949054743
     Color: _FieldDescW[_Color] = _mk_field(_Color)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -1218,7 +1218,7 @@ class ConsoleLED5(
     _hash: int = -815193061
     Color: _FieldDescW[_Color] = _mk_field(_Color)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -1227,7 +1227,7 @@ class ConsoleMonitor(
     _Powered,
 ):
     _hash: int = 801677497
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
     Setting: _FieldDesc = _mk_field_ro()
@@ -1250,10 +1250,10 @@ class CrewModuleActiveVent(
     _hash: int = -1817129150
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    PressureExternal: _FieldDescW = _mk_field()
-    PressureInternal: _FieldDescW = _mk_field()
+    PressureExternal: _FieldDescW[float] = _mk_field(float)
+    PressureInternal: _FieldDescW[float] = _mk_field(float)
 
 
 class CrewModuleLight(
@@ -1272,7 +1272,7 @@ class CrewUmbilical(
     _hash: int = 1203291689
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1283,10 +1283,10 @@ class CryoTubeHorizontal(
     _Sleeper,
 ):
     _hash: int = 1443059329
-    HealthDamage: _FieldDesc = _mk_field_ro()
-    Mode: _FieldDescW = _mk_field()
+    HealthDamage: _FieldDesc[float] = _mk_field_ro(float)
+    Mode: _FieldDescW[int] = _mk_field(int)
     Pressure: _FieldDesc[float] = _mk_field_ro(float)
-    StunDamage: _FieldDesc = _mk_field_ro()
+    StunDamage: _FieldDesc[float] = _mk_field_ro(float)
     Temperature: _FieldDesc[float] = _mk_field_ro(float)
 
 
@@ -1297,10 +1297,10 @@ class CryoTubeVertical(
     _Sleeper,
 ):
     _hash: int = -1381321828
-    HealthDamage: _FieldDesc = _mk_field_ro()
-    Mode: _FieldDescW = _mk_field()
+    HealthDamage: _FieldDesc[float] = _mk_field_ro(float)
+    Mode: _FieldDescW[int] = _mk_field(int)
     Pressure: _FieldDesc[float] = _mk_field_ro(float)
-    StunDamage: _FieldDesc = _mk_field_ro()
+    StunDamage: _FieldDesc[float] = _mk_field_ro(float)
     Temperature: _FieldDesc[float] = _mk_field_ro(float)
 
 
@@ -1308,13 +1308,13 @@ class DaylightSensor(
     _DeviceTyped,
 ):
     _hash: int = 1076425094
-    Activate: _FieldDescW = _mk_field()
-    Horizontal: _FieldDesc = _mk_field_ro()
-    Mode: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    Horizontal: _FieldDesc[float] = _mk_field_ro(float)
+    Mode: _FieldDescW[int] = _mk_field(int)
     On: _FieldDescW[bool] = _mk_field(bool)
-    SolarAngle: _FieldDesc = _mk_field_ro()
-    SolarIrradiance: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDesc = _mk_field_ro()
+    SolarAngle: _FieldDesc[float] = _mk_field_ro(float)
+    SolarIrradiance: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class DeepMiner(
@@ -1333,11 +1333,11 @@ class DeviceLfoVolume(
 ):
     _hash: int = -1844430312
     _prefab_name = "DeviceLfoVolume"
-    Activate: _FieldDescW = _mk_field()
-    Bpm: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    Bpm: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
-    Time: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Time: _FieldDescW[float] = _mk_field(float)
 
 
 class DeviceStepUnit(
@@ -1346,10 +1346,10 @@ class DeviceStepUnit(
 ):
     _hash: int = 1762696475
     _prefab_name = "DeviceStepUnit"
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
-    Volume: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Volume: _FieldDescW[float] = _mk_field(float)
 
 
 class DigitalValve(
@@ -1419,10 +1419,10 @@ class Electrolyzer(
     _Powered,
 ):
     _hash: int = -1668992663
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1433,7 +1433,7 @@ class ElectronicsPrinter(
     _Powered,
 ):
     _hash: int = 1307165496
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class ElevatorLevelFront(
@@ -1441,9 +1441,9 @@ class ElevatorLevelFront(
     _Powered,
 ):
     _hash: int = -827912235
-    Activate: _FieldDescW = _mk_field()
-    ElevatorLevel: _FieldDescW = _mk_field()
-    ElevatorSpeed: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    ElevatorLevel: _FieldDescW[int] = _mk_field(int)
+    ElevatorSpeed: _FieldDescW[float] = _mk_field(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
@@ -1454,9 +1454,9 @@ class ElevatorLevelIndustrial(
     _Powered,
 ):
     _hash: int = 2060648791
-    Activate: _FieldDescW = _mk_field()
-    ElevatorLevel: _FieldDescW = _mk_field()
-    ElevatorSpeed: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    ElevatorLevel: _FieldDescW[int] = _mk_field(int)
+    ElevatorSpeed: _FieldDescW[float] = _mk_field(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
@@ -1467,16 +1467,16 @@ class ElevatorShaft(
     _Powered,
 ):
     _hash: int = 826144419
-    ElevatorLevel: _FieldDescW = _mk_field()
-    ElevatorSpeed: _FieldDescW = _mk_field()
+    ElevatorLevel: _FieldDescW[int] = _mk_field(int)
+    ElevatorSpeed: _FieldDescW[float] = _mk_field(float)
 
 
 class ElevatorShaftIndustrial(
     _DeviceTyped,
 ):
     _hash: int = 1998354978
-    ElevatorLevel: _FieldDescW = _mk_field()
-    ElevatorSpeed: _FieldDescW = _mk_field()
+    ElevatorLevel: _FieldDescW[int] = _mk_field(int)
+    ElevatorSpeed: _FieldDescW[float] = _mk_field(float)
 
 
 class EmergencyButton(
@@ -1484,7 +1484,7 @@ class EmergencyButton(
     _Powered,
 ):
     _hash: int = 1668452680
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
@@ -1521,10 +1521,10 @@ class Fermenter(
     _Powered,
 ):
     _hash: int = 1103525139
-    CompletionRatio: _FieldDesc = _mk_field_ro()
+    CompletionRatio: _FieldDesc[float] = _mk_field_ro(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1539,7 +1539,7 @@ class Filtration(
     _hash: int = -348054045
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1554,7 +1554,7 @@ class FiltrationLiquid(
     _hash: int = -1399038877
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1595,11 +1595,11 @@ class Furnace(
     _NumericalSetting,
 ):
     _hash: int = 1947944864
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Reagents: _FieldDesc = _mk_field_ro()
+    Reagents: _FieldDesc[float] = _mk_field_ro(float)
     RecipeHash: _FieldDesc[str] = _mk_field_ro(str)
 
 
@@ -1611,7 +1611,7 @@ class GasGenerator(
 ):
     _hash: int = 1165997963
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    PowerGeneration: _FieldDesc = _mk_field_ro()
+    PowerGeneration: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class GasMixer(
@@ -1629,7 +1629,7 @@ class GasSensor(
     _BaseGas,
 ):
     _hash: int = -1252983604
-    VolumeOfLiquid: _FieldDesc = _mk_field_ro()
+    VolumeOfLiquid: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class GasTankStorage(
@@ -1637,7 +1637,7 @@ class GasTankStorage(
 ):
     _hash: int = 1632165346
     Pressure: _FieldDesc[float] = _mk_field_ro(float)
-    Quantity: _FieldDesc = _mk_field_ro()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
     RatioCarbonDioxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioHelium: _FieldDesc[float] = _mk_field_ro(float)
     RatioHydrazine: _FieldDesc[float] = _mk_field_ro(float)
@@ -1691,7 +1691,7 @@ class GasUmbilicalMale(
     _hash: int = -1814939203
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1710,8 +1710,8 @@ class GovernedGasEngine(
 ):
     _hash: int = -214232602
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    PassedMoles: _FieldDesc = _mk_field_ro()
-    Throttle: _FieldDescW = _mk_field()
+    PassedMoles: _FieldDesc[float] = _mk_field_ro(float)
+    Throttle: _FieldDescW[float] = _mk_field(float)
 
 
 class GroundBasedTelescope(
@@ -1719,24 +1719,24 @@ class GroundBasedTelescope(
     _Powered,
 ):
     _hash: int = -619745681
-    Activate: _FieldDescW = _mk_field()
-    AlignmentError: _FieldDesc = _mk_field_ro()
-    CelestialHash: _FieldDesc = _mk_field_ro()
-    CelestialParentHash: _FieldDesc = _mk_field_ro()
-    DistanceAu: _FieldDesc = _mk_field_ro()
-    DistanceKm: _FieldDesc = _mk_field_ro()
-    Eccentricity: _FieldDesc = _mk_field_ro()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    AlignmentError: _FieldDesc[float] = _mk_field_ro(float)
+    CelestialHash: _FieldDesc[str] = _mk_field_ro(str)
+    CelestialParentHash: _FieldDesc[str] = _mk_field_ro(str)
+    DistanceAu: _FieldDesc[float] = _mk_field_ro(float)
+    DistanceKm: _FieldDesc[float] = _mk_field_ro(float)
+    Eccentricity: _FieldDesc[float] = _mk_field_ro(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Horizontal: _FieldDescW = _mk_field()
-    HorizontalRatio: _FieldDescW = _mk_field()
-    Inclination: _FieldDesc = _mk_field_ro()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    HorizontalRatio: _FieldDescW[float] = _mk_field(float)
+    Inclination: _FieldDesc[float] = _mk_field_ro(float)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    OrbitPeriod: _FieldDesc = _mk_field_ro()
-    SemiMajorAxis: _FieldDesc = _mk_field_ro()
-    TrueAnomaly: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
-    VerticalRatio: _FieldDescW = _mk_field()
+    OrbitPeriod: _FieldDesc[float] = _mk_field_ro(float)
+    SemiMajorAxis: _FieldDesc[float] = _mk_field_ro(float)
+    TrueAnomaly: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
+    VerticalRatio: _FieldDescW[float] = _mk_field(float)
 
 
 class GrowLight(
@@ -1767,10 +1767,10 @@ class H2Combustor(
     # hidden in the Stationpedia; may be deprecated or not buildable
     _hash: int = 1840108251
     _prefab_name = "H2Combustor"
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1780,12 +1780,12 @@ class Harvie(
     _Powered,
 ):
     _hash: int = 958056199
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Harvest: _FieldDescW = _mk_field()
+    Harvest: _FieldDescW[bool] = _mk_field(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
-    Plant: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Plant: _FieldDescW[bool] = _mk_field(bool)
 
 
 class HarvieReversed(
@@ -1795,12 +1795,12 @@ class HarvieReversed(
 ):
     # hidden in the Stationpedia; may be deprecated or not buildable
     _hash: int = -271480358
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Harvest: _FieldDescW = _mk_field()
+    Harvest: _FieldDescW[bool] = _mk_field(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
-    Plant: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Plant: _FieldDescW[bool] = _mk_field(bool)
 
 
 class HorizontalAutoMiner(
@@ -1809,9 +1809,9 @@ class HorizontalAutoMiner(
     _Powered,
 ):
     _hash: int = 1070427573
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1822,7 +1822,7 @@ class HydraulicPipeBender(
     _Powered,
 ):
     _hash: int = -1888248335
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class HydroponicsAutomated(
@@ -1834,12 +1834,12 @@ class HydroponicsAutomated(
 ):
     # hidden in the Stationpedia; may be deprecated or not buildable
     _hash: int = 1812780450
-    Activate: _FieldDesc = _mk_field_ro()
+    Activate: _FieldDesc[int] = _mk_field_ro(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Harvest: _FieldDescW = _mk_field()
+    Harvest: _FieldDescW[bool] = _mk_field(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Plant: _FieldDescW = _mk_field()
+    Plant: _FieldDescW[bool] = _mk_field(bool)
 
 
 class HydroponicsStation(
@@ -1870,7 +1870,7 @@ class IceCrusher(
     _Volume,
 ):
     _hash: int = 443849486
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Pressure: _FieldDesc[float] = _mk_field_ro(float)
@@ -1893,10 +1893,10 @@ class IndustrialBurner(
 ):
     # hidden in the Stationpedia; may be deprecated or not buildable
     _hash: int = 1493870235
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Reagents: _FieldDesc = _mk_field_ro()
+    Reagents: _FieldDesc[float] = _mk_field_ro(float)
     RecipeHash: _FieldDesc[str] = _mk_field_ro(str)
 
 
@@ -1913,7 +1913,7 @@ class IndustrialCombustor(
     _hash: int = -586072380
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1928,7 +1928,7 @@ class IndustrialFiltration(
     _hash: int = 1167018773
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -1969,9 +1969,9 @@ class Klaxon(
     _Powered,
 ):
     _hash: int = -828056979
-    Mode: _FieldDescW = _mk_field()
-    SoundAlert: _FieldDescW = _mk_field()
-    Volume: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    SoundAlert: _FieldDescW[int] = _mk_field(int)
+    Volume: _FieldDescW[float] = _mk_field(float)
 
 
 class Landingpad_DataConnectionPiece(
@@ -1981,11 +1981,11 @@ class Landingpad_DataConnectionPiece(
 ):
     _hash: int = -2066405918
     _prefab_name = "Landingpad_DataConnectionPiece"
-    Activate: _FieldDescW = _mk_field()
-    ContactTypeId: _FieldDesc = _mk_field_ro()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    ContactTypeId: _FieldDesc[str] = _mk_field_ro(str)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class Landingpad_GasConnectorInwardPiece(
@@ -2017,7 +2017,7 @@ class Landingpad_GasTankConnectorPiece(
     _hash: int = 1724924668
     _prefab_name = "Landingpad_GasTankConnectorPiece"
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
 
 
 class Landingpad_LiquidConnectorInwardPiece(
@@ -2049,7 +2049,7 @@ class Landingpad_LiquidTankConnectorPiece(
     _hash: int = 102601368
     _prefab_name = "Landingpad_LiquidTankConnectorPiece"
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
 
 
 class Landingpad_ThreshholdPiece(
@@ -2087,9 +2087,9 @@ class LargeExtendableRadiator(
     _NumericalSetting,
 ):
     _hash: int = -566775170
-    EnergyConvected: _FieldDesc = _mk_field_ro()
-    EnergyRadiated: _FieldDesc = _mk_field_ro()
-    Horizontal: _FieldDescW = _mk_field()
+    EnergyConvected: _FieldDesc[float] = _mk_field_ro(float)
+    EnergyRadiated: _FieldDesc[float] = _mk_field_ro(float)
+    Horizontal: _FieldDescW[float] = _mk_field(float)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
@@ -2127,23 +2127,23 @@ class LargeSatelliteDish(
     _Powered,
 ):
     _hash: int = 1913391845
-    Activate: _FieldDescW = _mk_field()
-    BestContactFilter: _FieldDescW = _mk_field()
-    ContactSlotIndex: _FieldDesc = _mk_field_ro()
-    ContactTypeId: _FieldDesc = _mk_field_ro()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    BestContactFilter: _FieldDescW[int] = _mk_field(int)
+    ContactSlotIndex: _FieldDesc[int] = _mk_field_ro(int)
+    ContactTypeId: _FieldDesc[str] = _mk_field_ro(str)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Horizontal: _FieldDescW = _mk_field()
-    Idle: _FieldDesc = _mk_field_ro()
-    InterrogationProgress: _FieldDesc = _mk_field_ro()
-    MinimumWattsToContact: _FieldDesc = _mk_field_ro()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
+    InterrogationProgress: _FieldDesc[float] = _mk_field_ro(float)
+    MinimumWattsToContact: _FieldDesc[float] = _mk_field_ro(float)
     Setting: _FieldDescW = _mk_field()
-    SignalID: _FieldDesc = _mk_field_ro()
-    SignalStrength: _FieldDesc = _mk_field_ro()
-    SizeX: _FieldDesc = _mk_field_ro()
-    SizeZ: _FieldDesc = _mk_field_ro()
-    TargetPadIndex: _FieldDescW = _mk_field()
-    Vertical: _FieldDescW = _mk_field()
-    WattsReachingContact: _FieldDesc = _mk_field_ro()
+    SignalID: _FieldDesc[int] = _mk_field_ro(int)
+    SignalStrength: _FieldDesc[float] = _mk_field_ro(float)
+    SizeX: _FieldDesc[float] = _mk_field_ro(float)
+    SizeZ: _FieldDesc[float] = _mk_field_ro(float)
+    TargetPadIndex: _FieldDescW[int] = _mk_field(int)
+    Vertical: _FieldDescW[float] = _mk_field(float)
+    WattsReachingContact: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class LarreDockAtmos(
@@ -2152,17 +2152,17 @@ class LarreDockAtmos(
     _Powered,
 ):
     _hash: int = 1978422481
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     CombustionInput: _FieldDesc[bool] = _mk_field_ro(bool)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Extended: _FieldDesc = _mk_field_ro()
-    Idle: _FieldDesc = _mk_field_ro()
-    Mode: _FieldDescW = _mk_field()
+    Extended: _FieldDesc[bool] = _mk_field_ro(bool)
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    PositionX: _FieldDesc = _mk_field_ro()
-    PressureExternal: _FieldDescW = _mk_field()
+    PositionX: _FieldDesc[float] = _mk_field_ro(float)
+    PressureExternal: _FieldDescW[float] = _mk_field(float)
     PressureInput: _FieldDesc[float] = _mk_field_ro(float)
-    PressureInternal: _FieldDescW = _mk_field()
+    PressureInternal: _FieldDescW[float] = _mk_field(float)
     RatioCarbonDioxideInput: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidCarbonDioxideInput: _FieldDesc[float] = _mk_field_ro(float)
     RatioLiquidMethaneInput: _FieldDesc[float] = _mk_field_ro(float)
@@ -2195,15 +2195,15 @@ class LarreDockCargo(
     _Powered,
 ):
     _hash: int = -1555459562
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Extended: _FieldDesc = _mk_field_ro()
-    Idle: _FieldDesc = _mk_field_ro()
+    Extended: _FieldDesc[bool] = _mk_field_ro(bool)
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    PositionX: _FieldDesc = _mk_field_ro()
+    PositionX: _FieldDesc[float] = _mk_field_ro(float)
     Setting: _FieldDescW = _mk_field()
-    TargetPrefabHash: _FieldDesc = _mk_field_ro()
-    TargetSlotIndex: _FieldDescW = _mk_field()
+    TargetPrefabHash: _FieldDesc[str] = _mk_field_ro(str)
+    TargetSlotIndex: _FieldDescW[int] = _mk_field(int)
 
 
 class LarreDockCollector(
@@ -2211,15 +2211,15 @@ class LarreDockCollector(
     _Powered,
 ):
     _hash: int = -522428667
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Extended: _FieldDesc = _mk_field_ro()
-    Idle: _FieldDesc = _mk_field_ro()
-    Mode: _FieldDescW = _mk_field()
+    Extended: _FieldDesc[bool] = _mk_field_ro(bool)
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    PositionX: _FieldDesc = _mk_field_ro()
-    Quantity: _FieldDesc = _mk_field_ro()
-    Ratio: _FieldDesc = _mk_field_ro()
+    PositionX: _FieldDesc[float] = _mk_field_ro(float)
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -2228,15 +2228,15 @@ class LarreDockHydroponics(
     _Powered,
 ):
     _hash: int = 85133079
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Extended: _FieldDesc = _mk_field_ro()
-    Idle: _FieldDesc = _mk_field_ro()
+    Extended: _FieldDesc[bool] = _mk_field_ro(bool)
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    PositionX: _FieldDesc = _mk_field_ro()
+    PositionX: _FieldDesc[float] = _mk_field_ro(float)
     Setting: _FieldDescW = _mk_field()
-    TargetPrefabHash: _FieldDesc = _mk_field_ro()
-    TargetSlotIndex: _FieldDesc = _mk_field_ro()
+    TargetPrefabHash: _FieldDesc[str] = _mk_field_ro(str)
+    TargetSlotIndex: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class LightLong(
@@ -2307,7 +2307,7 @@ class LiquidPipeAnalyzer(
     _hash: int = -2113838091
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    NetworkFault: _FieldDesc = _mk_field_ro()
+    NetworkFault: _FieldDesc[bool] = _mk_field_ro(bool)
 
 
 class LiquidPipeHeater(
@@ -2386,7 +2386,7 @@ class LiquidTankStorage(
 ):
     _hash: int = 1691898022
     Pressure: _FieldDesc[float] = _mk_field_ro(float)
-    Quantity: _FieldDesc = _mk_field_ro()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
     RatioCarbonDioxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioHelium: _FieldDesc[float] = _mk_field_ro(float)
     RatioHydrazine: _FieldDesc[float] = _mk_field_ro(float)
@@ -2426,7 +2426,7 @@ class LiquidTurboVolumePump(
     _hash: int = -1051805505
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
 
 
 class LiquidUmbilicalFemale(
@@ -2451,7 +2451,7 @@ class LiquidUmbilicalMale(
     _hash: int = -1798420047
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -2505,14 +2505,14 @@ class LogicBatchWriter(
 ):
     _hash: int = 1415443359
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    ForceWrite: _FieldDescW = _mk_field()
+    ForceWrite: _FieldDescW[bool] = _mk_field(bool)
 
 
 class LogicButton(
     _DeviceTyped,
 ):
     _hash: int = 491845673
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Setting: _FieldDesc = _mk_field_ro()
 
@@ -2523,7 +2523,7 @@ class LogicCompare(
 ):
     _hash: int = -1489728908
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDesc = _mk_field_ro()
 
 
@@ -2531,8 +2531,8 @@ class LogicDial(
     _DeviceTyped,
 ):
     _hash: int = 554524804
-    Mode: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -2542,7 +2542,7 @@ class LogicGate(
 ):
     _hash: int = 1942143074
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDesc = _mk_field_ro()
 
 
@@ -2559,7 +2559,7 @@ class LogicMath(
 ):
     _hash: int = 1657691323
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDesc = _mk_field_ro()
 
 
@@ -2569,7 +2569,7 @@ class LogicMathUnary(
 ):
     _hash: int = -1160020195
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDesc = _mk_field_ro()
 
 
@@ -2586,7 +2586,7 @@ class LogicMinMax(
 ):
     _hash: int = 929022276
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDesc = _mk_field_ro()
 
 
@@ -2595,14 +2595,14 @@ class LogicPidController(
     _Powered,
 ):
     _hash: int = -1905534007
-    DerivativeGain: _FieldDescW = _mk_field()
+    DerivativeGain: _FieldDescW[float] = _mk_field(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    IntegralGain: _FieldDescW = _mk_field()
-    Maximum: _FieldDescW = _mk_field()
-    Minimum: _FieldDescW = _mk_field()
-    ProportionalGain: _FieldDescW = _mk_field()
-    Reset: _FieldDescW = _mk_field()
-    Setpoint: _FieldDescW = _mk_field()
+    IntegralGain: _FieldDescW[float] = _mk_field(float)
+    Maximum: _FieldDescW[float] = _mk_field(float)
+    Minimum: _FieldDescW[float] = _mk_field(float)
+    ProportionalGain: _FieldDescW[float] = _mk_field(float)
+    Reset: _FieldDescW[bool] = _mk_field(bool)
+    Setpoint: _FieldDescW[float] = _mk_field(float)
     Setting: _FieldDesc = _mk_field_ro()
 
 
@@ -2629,7 +2629,7 @@ class LogicRocketDownlink(
 ):
     _hash: int = 876108549
     Power: _FieldDesc[bool] = _mk_field_ro(bool)
-    RequiredPower: _FieldDesc[int] = _mk_field_ro(int)
+    RequiredPower: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class LogicRocketUplink(
@@ -2654,7 +2654,7 @@ class LogicSelect(
 ):
     _hash: int = 1822736084
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDesc = _mk_field_ro()
 
 
@@ -2675,8 +2675,8 @@ class LogicSorter(
     _hash: int = 873418029
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
-    StackSize: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class LogicStepSequencer8(
@@ -2685,11 +2685,11 @@ class LogicStepSequencer8(
 ):
     _hash: int = 1531272458
     _prefab_name = "LogicStepSequencer8"
-    Activate: _FieldDescW = _mk_field()
-    Bpm: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    Bpm: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
-    Time: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Time: _FieldDescW[float] = _mk_field(float)
 
 
 class LogicSwitch(
@@ -2716,7 +2716,7 @@ class LogicWriter(
 ):
     _hash: int = -1326019434
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    ForceWrite: _FieldDescW = _mk_field()
+    ForceWrite: _FieldDescW[bool] = _mk_field(bool)
 
 
 class LogicWriterSwitch(
@@ -2724,16 +2724,16 @@ class LogicWriterSwitch(
     _Powered,
 ):
     _hash: int = -1321250424
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    ForceWrite: _FieldDescW = _mk_field()
+    ForceWrite: _FieldDescW[bool] = _mk_field(bool)
 
 
 class ManualFloorHatch(
     _DeviceTyped,
 ):
     _hash: int = 1435578852
-    Idle: _FieldDesc = _mk_field_ro()
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
     Setting: _FieldDescW = _mk_field()
@@ -2753,8 +2753,8 @@ class MediumConvectionRadiator(
     _NumericalSetting,
 ):
     _hash: int = -1918215845
-    EnergyConvected: _FieldDesc = _mk_field_ro()
-    EnergyRadiated: _FieldDesc = _mk_field_ro()
+    EnergyConvected: _FieldDesc[float] = _mk_field_ro(float)
+    EnergyRadiated: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class MediumConvectionRadiatorLiquid(
@@ -2763,8 +2763,8 @@ class MediumConvectionRadiatorLiquid(
     _NumericalSetting,
 ):
     _hash: int = -1169014183
-    EnergyConvected: _FieldDesc = _mk_field_ro()
-    EnergyRadiated: _FieldDesc = _mk_field_ro()
+    EnergyConvected: _FieldDesc[float] = _mk_field_ro(float)
+    EnergyRadiated: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class MediumHangerDoor(
@@ -2781,8 +2781,8 @@ class MediumRadiator(
     _NumericalSetting,
 ):
     _hash: int = -975966237
-    EnergyConvected: _FieldDesc = _mk_field_ro()
-    EnergyRadiated: _FieldDesc = _mk_field_ro()
+    EnergyConvected: _FieldDesc[float] = _mk_field_ro(float)
+    EnergyRadiated: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class MediumRadiatorLiquid(
@@ -2791,8 +2791,8 @@ class MediumRadiatorLiquid(
     _NumericalSetting,
 ):
     _hash: int = -1141760613
-    EnergyConvected: _FieldDesc = _mk_field_ro()
-    EnergyRadiated: _FieldDesc = _mk_field_ro()
+    EnergyConvected: _FieldDesc[float] = _mk_field_ro(float)
+    EnergyRadiated: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class MediumRocketGasFuelTank(
@@ -2819,9 +2819,9 @@ class MotionSensor(
     _DeviceTyped,
 ):
     _hash: int = -1713470563
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     On: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDesc = _mk_field_ro()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class Nitrolyzer(
@@ -2834,9 +2834,9 @@ class Nitrolyzer(
     _Powered,
 ):
     _hash: int = 1898243702
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -2844,9 +2844,9 @@ class OccupancySensor(
     _DeviceTyped,
 ):
     _hash: int = 322782515
-    Activate: _FieldDesc = _mk_field_ro()
-    Quantity: _FieldDesc = _mk_field_ro()
-    StackSize: _FieldDesc = _mk_field_ro()
+    Activate: _FieldDesc[int] = _mk_field_ro(int)
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class OverheadShortCornerLocker(
@@ -2870,10 +2870,10 @@ class Packer(
     _Powered,
 ):
     _hash: int = 94539235
-    Dispense: _FieldDescW = _mk_field()
+    Dispense: _FieldDescW[bool] = _mk_field(bool)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -2883,8 +2883,8 @@ class PassiveLargeRadiatorGas(
     _NumericalSetting,
 ):
     _hash: int = 2066977095
-    EnergyConvected: _FieldDesc = _mk_field_ro()
-    EnergyRadiated: _FieldDesc = _mk_field_ro()
+    EnergyConvected: _FieldDesc[float] = _mk_field_ro(float)
+    EnergyRadiated: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class PassiveLargeRadiatorLiquid(
@@ -2893,8 +2893,8 @@ class PassiveLargeRadiatorLiquid(
     _NumericalSetting,
 ):
     _hash: int = 24786172
-    EnergyConvected: _FieldDesc = _mk_field_ro()
-    EnergyRadiated: _FieldDesc = _mk_field_ro()
+    EnergyConvected: _FieldDesc[float] = _mk_field_ro(float)
+    EnergyRadiated: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class PassiveSpeaker(
@@ -2902,8 +2902,8 @@ class PassiveSpeaker(
 ):
     _hash: int = 248893646
     _prefab_name = "PassiveSpeaker"
-    SoundAlert: _FieldDescW = _mk_field()
-    Volume: _FieldDescW = _mk_field()
+    SoundAlert: _FieldDescW[int] = _mk_field(int)
+    Volume: _FieldDescW[float] = _mk_field(float)
 
 
 class PassthroughHeatExchangerGasToGas(
@@ -2936,7 +2936,7 @@ class PipeAnalysizer(
     _hash: int = 435685051
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    NetworkFault: _FieldDesc = _mk_field_ro()
+    NetworkFault: _FieldDesc[bool] = _mk_field_ro(bool)
 
 
 class PipeHeater(
@@ -2952,10 +2952,10 @@ class PipeIgniter(
     _DeviceTyped,
 ):
     _hash: int = 1286441942
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Power: _FieldDesc[bool] = _mk_field_ro(bool)
-    RequiredPower: _FieldDesc[int] = _mk_field_ro(int)
+    RequiredPower: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class PipeLiquidOneWayValveLever(
@@ -3005,7 +3005,7 @@ class PowerPylonInput(
     _hash: int = 2089507482
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -3015,14 +3015,14 @@ class PowerTransmitter(
     _Powered,
 ):
     _hash: int = -65087121
-    Charge: _FieldDesc = _mk_field_ro()
+    Charge: _FieldDesc[float] = _mk_field_ro(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Horizontal: _FieldDescW = _mk_field()
-    Mode: _FieldDesc = _mk_field_ro()
-    PositionX: _FieldDesc = _mk_field_ro()
-    PositionY: _FieldDesc = _mk_field_ro()
-    PositionZ: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
+    PositionX: _FieldDesc[float] = _mk_field_ro(float)
+    PositionY: _FieldDesc[float] = _mk_field_ro(float)
+    PositionZ: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class PowerTransmitterOmni(
@@ -3039,14 +3039,14 @@ class PowerTransmitterReceiver(
     _Powered,
 ):
     _hash: int = 1195820278
-    Charge: _FieldDesc = _mk_field_ro()
+    Charge: _FieldDesc[float] = _mk_field_ro(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Horizontal: _FieldDescW = _mk_field()
-    Mode: _FieldDesc = _mk_field_ro()
-    PositionX: _FieldDesc = _mk_field_ro()
-    PositionY: _FieldDesc = _mk_field_ro()
-    PositionZ: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
+    PositionX: _FieldDesc[float] = _mk_field_ro(float)
+    PositionY: _FieldDesc[float] = _mk_field_ro(float)
+    PositionZ: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class PowerUmbilicalMale(
@@ -3056,7 +3056,7 @@ class PowerUmbilicalMale(
     _hash: int = 1529453938
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -3068,8 +3068,8 @@ class PoweredVent(
     _hash: int = 938836756
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
-    PressureExternal: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    PressureExternal: _FieldDescW[float] = _mk_field(float)
 
 
 class PoweredVentLarge(
@@ -3080,8 +3080,8 @@ class PoweredVentLarge(
     _hash: int = -785498334
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
-    PressureExternal: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    PressureExternal: _FieldDescW[float] = _mk_field(float)
 
 
 class PressurantValve(
@@ -3101,8 +3101,8 @@ class PressureFedGasEngine(
 ):
     _hash: int = -624011170
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    PassedMoles: _FieldDesc = _mk_field_ro()
-    Throttle: _FieldDescW = _mk_field()
+    PassedMoles: _FieldDesc[float] = _mk_field_ro(float)
+    Throttle: _FieldDescW[float] = _mk_field(float)
 
 
 class PressureFedGasEngineHeavy(
@@ -3112,8 +3112,8 @@ class PressureFedGasEngineHeavy(
 ):
     _hash: int = -762538653
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    PassedMoles: _FieldDesc = _mk_field_ro()
-    Throttle: _FieldDescW = _mk_field()
+    PassedMoles: _FieldDesc[float] = _mk_field_ro(float)
+    Throttle: _FieldDescW[float] = _mk_field(float)
 
 
 class PressureFedLiquidEngine(
@@ -3124,8 +3124,8 @@ class PressureFedLiquidEngine(
 ):
     _hash: int = 379750958
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    PassedMoles: _FieldDesc = _mk_field_ro()
-    Throttle: _FieldDescW = _mk_field()
+    PassedMoles: _FieldDesc[float] = _mk_field_ro(float)
+    Throttle: _FieldDescW[float] = _mk_field(float)
 
 
 class PressureFedLiquidEngineHeavy(
@@ -3136,8 +3136,8 @@ class PressureFedLiquidEngineHeavy(
 ):
     _hash: int = -2122207560
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    PassedMoles: _FieldDesc = _mk_field_ro()
-    Throttle: _FieldDescW = _mk_field()
+    PassedMoles: _FieldDesc[float] = _mk_field_ro(float)
+    Throttle: _FieldDescW[float] = _mk_field(float)
 
 
 class PressurePlateLarge(
@@ -3175,8 +3175,8 @@ class ProximitySensor(
     _DeviceTyped,
 ):
     _hash: int = 568800213
-    Activate: _FieldDesc = _mk_field_ro()
-    Quantity: _FieldDesc = _mk_field_ro()
+    Activate: _FieldDesc[int] = _mk_field_ro(int)
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -3188,8 +3188,8 @@ class PumpedLiquidEngine(
 ):
     _hash: int = -2031440019
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    PassedMoles: _FieldDesc = _mk_field_ro()
-    Throttle: _FieldDescW = _mk_field()
+    PassedMoles: _FieldDesc[float] = _mk_field_ro(float)
+    Throttle: _FieldDescW[float] = _mk_field(float)
 
 
 class PurgeValve(
@@ -3208,9 +3208,9 @@ class Recycler(
     _Powered,
 ):
     _hash: int = -1633947337
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Reagents: _FieldDesc = _mk_field_ro()
+    Reagents: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class RefrigeratedVendingMachine(
@@ -3220,16 +3220,16 @@ class RefrigeratedVendingMachine(
     _Powered,
 ):
     _hash: int = -1577831321
-    Activate: _FieldDescW = _mk_field()
-    DispenseSlot: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    DispenseSlot: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDesc = _mk_field_ro()
-    Ratio: _FieldDesc = _mk_field_ro()
-    RequestHash: _FieldDescW = _mk_field()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    RequestHash: _FieldDescW[str] = _mk_field(str)
     Setting: _FieldDescW = _mk_field()
-    TargetPrefabHash: _FieldDesc = _mk_field_ro()
-    TargetSlotIndex: _FieldDesc = _mk_field_ro()
+    TargetPrefabHash: _FieldDesc[str] = _mk_field_ro(str)
+    TargetSlotIndex: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class RobotArmDoor(
@@ -3238,7 +3238,7 @@ class RobotArmDoor(
     _hash: int = -2131782367
     Open: _FieldDescW[bool] = _mk_field(bool)
     Power: _FieldDesc[bool] = _mk_field_ro(bool)
-    RequiredPower: _FieldDesc[int] = _mk_field_ro(int)
+    RequiredPower: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class RoboticArmDock(
@@ -3246,11 +3246,11 @@ class RoboticArmDock(
     _Powered,
 ):
     _hash: int = -1818718810
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Extended: _FieldDesc = _mk_field_ro()
-    Idle: _FieldDesc = _mk_field_ro()
-    PositionX: _FieldDesc = _mk_field_ro()
+    Extended: _FieldDesc[bool] = _mk_field_ro(bool)
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
+    PositionX: _FieldDesc[float] = _mk_field_ro(float)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -3259,30 +3259,30 @@ class RocketAvionics(
     _Powered,
 ):
     _hash: int = 808389066
-    Acceleration: _FieldDesc = _mk_field_ro()
-    Altitude: _FieldDesc = _mk_field_ro()
-    Apex: _FieldDesc = _mk_field_ro()
-    AutoLand: _FieldDescW = _mk_field()
-    AutoShutOff: _FieldDescW = _mk_field()
-    BurnTimeRemaining: _FieldDesc = _mk_field_ro()
-    Chart: _FieldDesc = _mk_field_ro()
-    ChartedNavPoints: _FieldDesc = _mk_field_ro()
-    CurrentCode: _FieldDesc = _mk_field_ro()
-    CurrentNodeType: _FieldDesc = _mk_field_ro()
-    Density: _FieldDesc = _mk_field_ro()
-    DestinationCode: _FieldDescW = _mk_field()
-    Discover: _FieldDesc = _mk_field_ro()
-    DryMass: _FieldDesc = _mk_field_ro()
+    Acceleration: _FieldDesc[float] = _mk_field_ro(float)
+    Altitude: _FieldDesc[float] = _mk_field_ro(float)
+    Apex: _FieldDesc[float] = _mk_field_ro(float)
+    AutoLand: _FieldDescW[bool] = _mk_field(bool)
+    AutoShutOff: _FieldDescW[bool] = _mk_field(bool)
+    BurnTimeRemaining: _FieldDesc[float] = _mk_field_ro(float)
+    Chart: _FieldDesc[float] = _mk_field_ro(float)
+    ChartedNavPoints: _FieldDesc[int] = _mk_field_ro(int)
+    CurrentCode: _FieldDesc[int] = _mk_field_ro(int)
+    CurrentNodeType: _FieldDesc[int] = _mk_field_ro(int)
+    Density: _FieldDesc[float] = _mk_field_ro(float)
+    DestinationCode: _FieldDescW[int] = _mk_field(int)
+    Discover: _FieldDesc[float] = _mk_field_ro(float)
+    DryMass: _FieldDesc[float] = _mk_field_ro(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    FlightControlRule: _FieldDesc = _mk_field_ro()
-    Gravity: _FieldDesc = _mk_field_ro()
-    Mass: _FieldDesc = _mk_field_ro()
-    MinedQuantity: _FieldDesc = _mk_field_ro()
-    Mode: _FieldDescW = _mk_field()
-    NavPoints: _FieldDesc = _mk_field_ro()
-    Open: _FieldDescW[bool] = _mk_field(bool)
-    Progress: _FieldDesc = _mk_field_ro()
-    Quantity: _FieldDesc = _mk_field_ro()
+    FlightControlRule: _FieldDesc[int] = _mk_field_ro(int)
+    Gravity: _FieldDesc[float] = _mk_field_ro(float)
+    Mass: _FieldDesc[float] = _mk_field_ro(float)
+    MinedQuantity: _FieldDesc[int] = _mk_field_ro(int)
+    Mode: _FieldDescW[int] = _mk_field(int)
+    NavPoints: _FieldDesc[int] = _mk_field_ro(int)
+    Open: _FieldDescW[int] = _mk_field(int)
+    Progress: _FieldDesc[float] = _mk_field_ro(float)
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
     RatioCarbonDioxide: _FieldDesc[float] = _mk_field_ro(float)
     RatioHelium: _FieldDesc[float] = _mk_field_ro(float)
     RatioHydrazine: _FieldDesc[float] = _mk_field_ro(float)
@@ -3311,22 +3311,22 @@ class RocketAvionics(
     RatioSilanol: _FieldDesc[float] = _mk_field_ro(float)
     RatioSteam: _FieldDesc[float] = _mk_field_ro(float)
     RatioWater: _FieldDesc[float] = _mk_field_ro(float)
-    ReEntryAltitude: _FieldDesc = _mk_field_ro()
-    Reagents: _FieldDesc = _mk_field_ro()
-    Richness: _FieldDesc = _mk_field_ro()
-    Sites: _FieldDesc = _mk_field_ro()
-    Size: _FieldDesc = _mk_field_ro()
-    StackSize: _FieldDesc = _mk_field_ro()
-    Survey: _FieldDesc = _mk_field_ro()
-    TargetNodeType: _FieldDesc = _mk_field_ro()
+    ReEntryAltitude: _FieldDesc[float] = _mk_field_ro(float)
+    Reagents: _FieldDesc[float] = _mk_field_ro(float)
+    Richness: _FieldDesc[float] = _mk_field_ro(float)
+    Sites: _FieldDesc[int] = _mk_field_ro(int)
+    Size: _FieldDesc[float] = _mk_field_ro(float)
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
+    Survey: _FieldDesc[float] = _mk_field_ro(float)
+    TargetNodeType: _FieldDesc[int] = _mk_field_ro(int)
     Temperature: _FieldDesc[float] = _mk_field_ro(float)
-    Thrust: _FieldDesc = _mk_field_ro()
-    ThrustToWeight: _FieldDesc = _mk_field_ro()
-    TimeToDestination: _FieldDesc = _mk_field_ro()
+    Thrust: _FieldDesc[float] = _mk_field_ro(float)
+    ThrustToWeight: _FieldDesc[float] = _mk_field_ro(float)
+    TimeToDestination: _FieldDesc[float] = _mk_field_ro(float)
     TotalMoles: _FieldDesc[float] = _mk_field_ro(float)
-    TotalQuantity: _FieldDesc = _mk_field_ro()
-    VelocityRelativeY: _FieldDesc = _mk_field_ro()
-    Weight: _FieldDesc = _mk_field_ro()
+    TotalQuantity: _FieldDesc[int] = _mk_field_ro(int)
+    VelocityRelativeY: _FieldDesc[float] = _mk_field_ro(float)
+    Weight: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class RocketCelestialTracker(
@@ -3334,12 +3334,12 @@ class RocketCelestialTracker(
     _Powered,
 ):
     _hash: int = 997453927
-    CelestialHash: _FieldDesc = _mk_field_ro()
+    CelestialHash: _FieldDesc[str] = _mk_field_ro(str)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Horizontal: _FieldDesc = _mk_field_ro()
-    Index: _FieldDescW = _mk_field()
-    StackSize: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDesc = _mk_field_ro()
+    Horizontal: _FieldDesc[float] = _mk_field_ro(float)
+    Index: _FieldDescW[int] = _mk_field(int)
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
+    Vertical: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class RocketCircuitHousing(
@@ -3348,10 +3348,10 @@ class RocketCircuitHousing(
 ):
     _hash: int = 150135861
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    LineNumber: _FieldDescW = _mk_field()
-    Mode: _FieldDescW = _mk_field()
+    LineNumber: _FieldDescW[int] = _mk_field(int)
+    Mode: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDescW = _mk_field()
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class RocketEngine(
@@ -3400,7 +3400,7 @@ class RocketFiltrationGas(
     _hash: int = -1061194321
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
 
 
 class RocketGasCollector(
@@ -3420,8 +3420,8 @@ class RocketLargePayloadBay(
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    PositionX: _FieldDescW = _mk_field()
-    PositionZ: _FieldDescW = _mk_field()
+    PositionX: _FieldDescW[float] = _mk_field(float)
+    PositionZ: _FieldDescW[float] = _mk_field(float)
 
 
 class RocketManufactory(
@@ -3431,7 +3431,7 @@ class RocketManufactory(
     _Powered,
 ):
     _hash: int = 1781051034
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class RocketMiner(
@@ -3440,10 +3440,10 @@ class RocketMiner(
     _Powered,
 ):
     _hash: int = -2087223687
-    DrillCondition: _FieldDesc = _mk_field_ro()
+    DrillCondition: _FieldDesc[float] = _mk_field_ro(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDesc = _mk_field_ro()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class RocketScanner(
@@ -3488,15 +3488,15 @@ class SDBSilo(
     _Powered,
 ):
     _hash: int = 1155865682
-    Activate: _FieldDescW = _mk_field()
-    Dispense: _FieldDescW = _mk_field()
-    DispenseSlot: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    Dispense: _FieldDescW[bool] = _mk_field(bool)
+    DispenseSlot: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDesc = _mk_field_ro()
-    StackSize: _FieldDesc = _mk_field_ro()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class SatelliteDish(
@@ -3504,24 +3504,24 @@ class SatelliteDish(
     _Powered,
 ):
     _hash: int = 439026183
-    Activate: _FieldDescW = _mk_field()
-    BestContactFilter: _FieldDescW = _mk_field()
-    ContactSlotIndex: _FieldDesc = _mk_field_ro()
-    ContactTypeId: _FieldDesc = _mk_field_ro()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    BestContactFilter: _FieldDescW[int] = _mk_field(int)
+    ContactSlotIndex: _FieldDesc[int] = _mk_field_ro(int)
+    ContactTypeId: _FieldDesc[str] = _mk_field_ro(str)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Horizontal: _FieldDescW = _mk_field()
-    Idle: _FieldDesc = _mk_field_ro()
-    InterrogationProgress: _FieldDesc = _mk_field_ro()
-    MinimumWattsToContact: _FieldDesc = _mk_field_ro()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
+    InterrogationProgress: _FieldDesc[float] = _mk_field_ro(float)
+    MinimumWattsToContact: _FieldDesc[float] = _mk_field_ro(float)
     Setting: _FieldDescW = _mk_field()
-    SignalID: _FieldDesc = _mk_field_ro()
-    SignalStrength: _FieldDesc = _mk_field_ro()
-    SizeX: _FieldDesc = _mk_field_ro()
-    SizeZ: _FieldDesc = _mk_field_ro()
-    StackSize: _FieldDesc = _mk_field_ro()
-    TargetPadIndex: _FieldDescW = _mk_field()
-    Vertical: _FieldDescW = _mk_field()
-    WattsReachingContact: _FieldDesc = _mk_field_ro()
+    SignalID: _FieldDesc[int] = _mk_field_ro(int)
+    SignalStrength: _FieldDesc[float] = _mk_field_ro(float)
+    SizeX: _FieldDesc[float] = _mk_field_ro(float)
+    SizeZ: _FieldDesc[float] = _mk_field_ro(float)
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
+    TargetPadIndex: _FieldDescW[int] = _mk_field(int)
+    Vertical: _FieldDescW[float] = _mk_field(float)
+    WattsReachingContact: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class SecurityPrinter(
@@ -3531,7 +3531,7 @@ class SecurityPrinter(
     _Powered,
 ):
     _hash: int = -641491515
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class ShelfMedium(
@@ -3562,7 +3562,7 @@ class Shower(
     _NumericalSetting,
 ):
     _hash: int = -775128944
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
 
 
@@ -3581,7 +3581,7 @@ class ShuttleLandingPad(
 ):
     # hidden in the Stationpedia; may be deprecated or not buildable
     _hash: int = -1309237526
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
 
 
@@ -3592,8 +3592,8 @@ class Sleeper(
     _Sleeper,
 ):
     _hash: int = -1467449329
-    HealthDamage: _FieldDesc = _mk_field_ro()
-    StunDamage: _FieldDesc = _mk_field_ro()
+    HealthDamage: _FieldDesc[float] = _mk_field_ro(float)
+    StunDamage: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class SleeperLeft(
@@ -3603,9 +3603,9 @@ class SleeperLeft(
     _Sleeper,
 ):
     _hash: int = 1213495833
-    HealthDamage: _FieldDesc = _mk_field_ro()
-    Mode: _FieldDescW = _mk_field()
-    StunDamage: _FieldDesc = _mk_field_ro()
+    HealthDamage: _FieldDesc[float] = _mk_field_ro(float)
+    Mode: _FieldDescW[int] = _mk_field(int)
+    StunDamage: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class SleeperRight(
@@ -3615,9 +3615,9 @@ class SleeperRight(
     _Sleeper,
 ):
     _hash: int = -1812330717
-    HealthDamage: _FieldDesc = _mk_field_ro()
-    Mode: _FieldDescW = _mk_field()
-    StunDamage: _FieldDesc = _mk_field_ro()
+    HealthDamage: _FieldDesc[float] = _mk_field_ro(float)
+    Mode: _FieldDescW[int] = _mk_field(int)
+    StunDamage: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class SleeperVertical(
@@ -3627,9 +3627,9 @@ class SleeperVertical(
     _Sleeper,
 ):
     _hash: int = -1300059018
-    HealthDamage: _FieldDesc = _mk_field_ro()
-    Mode: _FieldDescW = _mk_field()
-    StunDamage: _FieldDesc = _mk_field_ro()
+    HealthDamage: _FieldDesc[float] = _mk_field_ro(float)
+    Mode: _FieldDescW[int] = _mk_field(int)
+    StunDamage: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class SleeperVerticalDroid(
@@ -3637,7 +3637,7 @@ class SleeperVerticalDroid(
     _Powered,
 ):
     _hash: int = 1382098999
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
     Open: _FieldDescW[bool] = _mk_field(bool)
@@ -3669,23 +3669,23 @@ class SmallSatelliteDish(
     _Powered,
 ):
     _hash: int = -2138748650
-    Activate: _FieldDescW = _mk_field()
-    BestContactFilter: _FieldDescW = _mk_field()
-    ContactSlotIndex: _FieldDesc = _mk_field_ro()
-    ContactTypeId: _FieldDesc = _mk_field_ro()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    BestContactFilter: _FieldDescW[int] = _mk_field(int)
+    ContactSlotIndex: _FieldDesc[int] = _mk_field_ro(int)
+    ContactTypeId: _FieldDesc[str] = _mk_field_ro(str)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Horizontal: _FieldDescW = _mk_field()
-    Idle: _FieldDesc = _mk_field_ro()
-    InterrogationProgress: _FieldDesc = _mk_field_ro()
-    MinimumWattsToContact: _FieldDesc = _mk_field_ro()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
+    InterrogationProgress: _FieldDesc[float] = _mk_field_ro(float)
+    MinimumWattsToContact: _FieldDesc[float] = _mk_field_ro(float)
     Setting: _FieldDescW = _mk_field()
-    SignalID: _FieldDesc = _mk_field_ro()
-    SignalStrength: _FieldDesc = _mk_field_ro()
-    SizeX: _FieldDesc = _mk_field_ro()
-    SizeZ: _FieldDesc = _mk_field_ro()
-    TargetPadIndex: _FieldDescW = _mk_field()
-    Vertical: _FieldDescW = _mk_field()
-    WattsReachingContact: _FieldDesc = _mk_field_ro()
+    SignalID: _FieldDesc[int] = _mk_field_ro(int)
+    SignalStrength: _FieldDesc[float] = _mk_field_ro(float)
+    SizeX: _FieldDesc[float] = _mk_field_ro(float)
+    SizeZ: _FieldDesc[float] = _mk_field_ro(float)
+    TargetPadIndex: _FieldDescW[int] = _mk_field(int)
+    Vertical: _FieldDescW[float] = _mk_field(float)
+    WattsReachingContact: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class SolarPanel(
@@ -3693,9 +3693,9 @@ class SolarPanel(
     _Battery,
 ):
     _hash: int = -2045627372
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanel1x5(
@@ -3703,9 +3703,9 @@ class SolarPanel1x5(
     _Battery,
 ):
     _hash: int = 939649277
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanel1x5Reinforced(
@@ -3713,9 +3713,9 @@ class SolarPanel1x5Reinforced(
     _Battery,
 ):
     _hash: int = 1945473703
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanel1x5ReinforcedSingle(
@@ -3723,9 +3723,9 @@ class SolarPanel1x5ReinforcedSingle(
     _Battery,
 ):
     _hash: int = -2049226859
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanel1x5Single(
@@ -3733,9 +3733,9 @@ class SolarPanel1x5Single(
     _Battery,
 ):
     _hash: int = -295209029
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanel45(
@@ -3743,9 +3743,9 @@ class SolarPanel45(
     _Battery,
 ):
     _hash: int = -1554349863
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanel45Reinforced(
@@ -3753,9 +3753,9 @@ class SolarPanel45Reinforced(
     _Battery,
 ):
     _hash: int = 930865127
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanelDual(
@@ -3763,9 +3763,9 @@ class SolarPanelDual(
     _Battery,
 ):
     _hash: int = -539224550
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanelDualReinforced(
@@ -3773,9 +3773,9 @@ class SolarPanelDualReinforced(
     _Battery,
 ):
     _hash: int = -1545574413
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanelFlat(
@@ -3783,9 +3783,9 @@ class SolarPanelFlat(
     _Battery,
 ):
     _hash: int = 1968102968
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanelFlatReinforced(
@@ -3793,9 +3793,9 @@ class SolarPanelFlatReinforced(
     _Battery,
 ):
     _hash: int = 1697196770
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolarPanelReinforced(
@@ -3803,9 +3803,9 @@ class SolarPanelReinforced(
     _Battery,
 ):
     _hash: int = -934345724
-    Horizontal: _FieldDescW = _mk_field()
-    Ratio: _FieldDesc = _mk_field_ro()
-    Vertical: _FieldDescW = _mk_field()
+    Horizontal: _FieldDescW[float] = _mk_field(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    Vertical: _FieldDescW[float] = _mk_field(float)
 
 
 class SolidFuelGenerator(
@@ -3815,7 +3815,7 @@ class SolidFuelGenerator(
     _hash: int = 813146305
     Lock: _FieldDescW[bool] = _mk_field(bool)
     On: _FieldDescW[bool] = _mk_field(bool)
-    PowerGeneration: _FieldDesc = _mk_field_ro()
+    PowerGeneration: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class Sorter(
@@ -3826,8 +3826,8 @@ class Sorter(
     _hash: int = -1009150565
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
-    Output: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Output: _FieldDescW[int] = _mk_field(int)
 
 
 class SphericalTank(
@@ -3847,11 +3847,11 @@ class Stacker(
     _Powered,
 ):
     _hash: int = -2020231820
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
-    Output: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Output: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -3861,11 +3861,11 @@ class StackerReverse(
     _Powered,
 ):
     _hash: int = 1585641623
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
-    Output: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Output: _FieldDescW[int] = _mk_field(int)
     Setting: _FieldDescW = _mk_field()
 
 
@@ -3876,12 +3876,12 @@ class StirlingEngine(
     _Powered,
 ):
     _hash: int = -260316435
-    EnvironmentEfficiency: _FieldDesc = _mk_field_ro()
+    EnvironmentEfficiency: _FieldDesc[float] = _mk_field_ro(float)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    PowerGeneration: _FieldDesc = _mk_field_ro()
-    Quantity: _FieldDesc = _mk_field_ro()
-    Volume: _FieldDesc = _mk_field_ro()
-    WorkingGasEfficiency: _FieldDesc = _mk_field_ro()
+    PowerGeneration: _FieldDesc[float] = _mk_field_ro(float)
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
+    Volume: _FieldDesc[float] = _mk_field_ro(float)
+    WorkingGasEfficiency: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class StopWatch(
@@ -3890,9 +3890,9 @@ class StopWatch(
 ):
     _hash: int = -1527229051
     _prefab_name = "StopWatch"
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Time: _FieldDesc = _mk_field_ro()
+    Time: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class StorageLocker(
@@ -3913,7 +3913,7 @@ class SuitStorage(
 ):
     _hash: int = 255034731
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class SuitStorageFrame(
@@ -3926,7 +3926,7 @@ class SuitStorageFrame(
 ):
     _hash: int = -504802150
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class SuitStorageLocker(
@@ -3939,7 +3939,7 @@ class SuitStorageLocker(
 ):
     _hash: int = -346183425
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class SuperLargeDirectHeatExchangeGastoGas(
@@ -4043,7 +4043,7 @@ class TerraformingManufactory(
 ):
     # hidden in the Stationpedia; may be deprecated or not buildable
     _hash: int = 1549873866
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class ToolManufactory(
@@ -4053,7 +4053,7 @@ class ToolManufactory(
     _Powered,
 ):
     _hash: int = -465741100
-    StackSize: _FieldDesc = _mk_field_ro()
+    StackSize: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class TraderWaypoint(
@@ -4123,7 +4123,7 @@ class TurboVolumePump(
     _hash: int = 1310794736
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
 
 
 class Unloader(
@@ -4134,15 +4134,15 @@ class Unloader(
     _hash: int = 750118160
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDescW = _mk_field()
-    Output: _FieldDescW = _mk_field()
+    Mode: _FieldDescW[int] = _mk_field(int)
+    Output: _FieldDescW[int] = _mk_field(int)
 
 
 class UprightWindTurbine(
     _DeviceTyped,
 ):
     _hash: int = 1622183451
-    PowerGeneration: _FieldDesc = _mk_field_ro()
+    PowerGeneration: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class Valve(
@@ -4159,15 +4159,15 @@ class VendingMachine(
     _Powered,
 ):
     _hash: int = -443130773
-    Activate: _FieldDescW = _mk_field()
-    DispenseSlot: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    DispenseSlot: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDesc = _mk_field_ro()
-    Ratio: _FieldDesc = _mk_field_ro()
-    RequestHash: _FieldDescW = _mk_field()
-    TargetPrefabHash: _FieldDesc = _mk_field_ro()
-    TargetSlotIndex: _FieldDesc = _mk_field_ro()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    RequestHash: _FieldDescW[str] = _mk_field(str)
+    TargetPrefabHash: _FieldDesc[str] = _mk_field_ro(str)
+    TargetSlotIndex: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class VendingMachineSmall(
@@ -4176,15 +4176,15 @@ class VendingMachineSmall(
     _Powered,
 ):
     _hash: int = 19591354
-    Activate: _FieldDescW = _mk_field()
-    DispenseSlot: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
+    DispenseSlot: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Quantity: _FieldDesc = _mk_field_ro()
-    Ratio: _FieldDesc = _mk_field_ro()
-    RequestHash: _FieldDescW = _mk_field()
-    TargetPrefabHash: _FieldDesc = _mk_field_ro()
-    TargetSlotIndex: _FieldDesc = _mk_field_ro()
+    Quantity: _FieldDesc[float] = _mk_field_ro(float)
+    Ratio: _FieldDesc[float] = _mk_field_ro(float)
+    RequestHash: _FieldDescW[str] = _mk_field(str)
+    TargetPrefabHash: _FieldDesc[str] = _mk_field_ro(str)
+    TargetSlotIndex: _FieldDesc[int] = _mk_field_ro(int)
 
 
 class VolumePump(
@@ -4238,7 +4238,7 @@ class WaterBottleFillerPowered(
     _Powered,
 ):
     _hash: int = -756587791
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
 
 
@@ -4247,7 +4247,7 @@ class WaterBottleFillerPoweredBottom(
     _Powered,
 ):
     _hash: int = 1986658780
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
 
 
@@ -4287,19 +4287,19 @@ class WeatherStation(
     _Powered,
 ):
     _hash: int = 1997212478
-    Activate: _FieldDescW = _mk_field()
+    Activate: _FieldDescW[int] = _mk_field(int)
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
     Lock: _FieldDescW[bool] = _mk_field(bool)
-    Mode: _FieldDesc = _mk_field_ro()
-    NextWeatherEventTime: _FieldDesc = _mk_field_ro()
-    NextWeatherHash: _FieldDesc = _mk_field_ro()
+    Mode: _FieldDesc[int] = _mk_field_ro(int)
+    NextWeatherEventTime: _FieldDesc[float] = _mk_field_ro(float)
+    NextWeatherHash: _FieldDesc[str] = _mk_field_ro(str)
 
 
 class WindTurbine(
     _DeviceTyped,
 ):
     _hash: int = -2082355173
-    PowerGeneration: _FieldDesc = _mk_field_ro()
+    PowerGeneration: _FieldDesc[float] = _mk_field_ro(float)
 
 
 class WindowShutter(
@@ -4309,7 +4309,7 @@ class WindowShutter(
     # hidden in the Stationpedia; may be deprecated or not buildable
     _hash: int = 2056377335
     Error: _FieldDesc[bool] = _mk_field_ro(bool)
-    Idle: _FieldDesc = _mk_field_ro()
-    Mode: _FieldDescW = _mk_field()
+    Idle: _FieldDesc[bool] = _mk_field_ro(bool)
+    Mode: _FieldDescW[int] = _mk_field(int)
     Open: _FieldDescW[bool] = _mk_field(bool)
     Setting: _FieldDescW = _mk_field()

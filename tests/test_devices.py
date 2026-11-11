@@ -58,3 +58,22 @@ def test_prefab_names():
     # prefab name that is not "Structure" + a Python identifier
     TransformerMediumReversed("T1").Setting = 100
     comment("hydrogen:", filt.output.RatioHydrogen)
+
+
+@wrap_test
+@program
+def test_field_types():
+    # typed reads give Variables their type; an untyped (Any) read raises "cannot infer type"
+    angle = Variable(SolarPanel().Horizontal)
+    angle.value = (angle + 2) % 360
+    SolarPanel().Horizontal = angle
+    idle = Variable(SatelliteDish("dish").Idle)
+    slot = Variable(VendingMachine().DispenseSlot)
+    comment("float:", angle, "bool:", idle, "int:", slot)
+    # hash fields take names
+    VendingMachine().RequestHash = "ItemIronIngot"
+    comment("is mars:", GroundBasedTelescope().CelestialHash == "Mars")
+    # Setting is a float on gas devices, untyped elsewhere: a LogicMemory can hold a hash
+    pressure = Variable(VolumePump().Setting)
+    LogicMemory("mem").Setting = "ItemIronIngot"
+    comment("pressure:", pressure)

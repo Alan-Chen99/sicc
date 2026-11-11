@@ -124,7 +124,7 @@ def main():
 
     # if you are using the pyright type checker or language server,
     # it understands the trace-time type
-    reveal_type(val)  # Type of "val" is "VarRead[int]"
+    reveal_type(val)  # Type of "val" is "VarRead[float]"
 
     # a variable from a device read is marked readonly
     # to prevent attempting to write to the device by writing the variable.
@@ -140,7 +140,7 @@ def main():
     # compiler cannot distinguish x_alias and x
     x_alias = x
 
-    reveal_type(x)  # pyright only: Type of "x" is "Variable[int]"
+    reveal_type(x)  # pyright only: Type of "x" is "Variable[float]"
 
     comment("x:", x)
     comment("x_alias:", x_alias)
@@ -161,7 +161,7 @@ def main():
     comment("x_alias:", x_alias)  # still points to the old x
 
     # one need not assign a "Variable" to a python variable
-    vs = [Variable(int, doors[i].RequiredPower) for i in range(2)]
+    vs = [Variable(float, doors[i].RequiredPower) for i in range(2)]
     for i, v in enumerate(vs):
         v.value += 2
         comment(f"var {i}:", v)

@@ -32,18 +32,18 @@ def main():
             if not occupied:
                 continue
 
-            harvie.Plant = 1
+            harvie.Plant = True
             continue
 
         if mature == 1:
-            harvie.Harvest = 1
+            harvie.Harvest = True
             continue
 
         # Seeds available returns 1, all seeds picked returns 0,
         # and plants too young/old for seeds returns -1.
         seeding = tray_pin.slots[0]["Seeding"]
         if seeding == 1:
-            harvie.Harvest = 1
+            harvie.Harvest = True
 
 
 if __name__ == "__main__":

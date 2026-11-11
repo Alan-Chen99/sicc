@@ -49,10 +49,8 @@ def track():
     around; vertical stays within 0-90, where a step that cannot move counts as not stronger.
     """
     LIGHT.On = True
-    # A device read has type Any unless given one, and a local of type Any cannot later be
-    # assigned a number, such as the 0 or 90 that clamp() below can return.
-    h = DISH.Horizontal.get(typ=float)
-    v = DISH.Vertical.get(typ=float)
+    h = DISH.Horizontal
+    v = DISH.Vertical
     v_dir = -1
     h_dir = 1
     while True:

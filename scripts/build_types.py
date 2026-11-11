@@ -13,6 +13,7 @@ import dataclasses
 import json
 import re
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
@@ -28,6 +29,74 @@ PORT_SUFFIXES = ["", "Input", "Input2", "Output", "Output2"]
 
 # exposed on sicc._stationeers.Device for every device
 DEVICE_FIELDS = {"NameHash", "PrefabHash", "ReferenceId"}
+
+# The values GetLogicValue returns for the field on every device that has it, read off the
+# decompiled game (Stationeers 0.2.6429; ilspycmd on the Assembly-CSharp.dll of the server that
+# game_data/dump.sh installs). The game's own field descriptions are not reliable: Activate is
+# "1 if device is activated, otherwise 0", yet StructureHarvie stores 2 in it.
+# Port variants of the gas fields (PressureInput, ...) are typed in generate().
+FIELD_TYPES: dict[str, str] = {
+    "Color": "_Color",
+    **dict.fromkeys(
+        [
+            *["AutoLand", "AutoShutOff", "ClearMemory", "Dispense", "Error", "Extended"],
+            *["ForceWrite", "Harvest", "Idle", "Lock", "NetworkFault", "On", "Open", "Plant"],
+            *["Power", "Reset"],
+        ],
+        "bool",
+    ),
+    **dict.fromkeys(
+        [
+            *["Activate", "BestContactFilter", "Bpm", "ChartedNavPoints", "ContactSlotIndex"],
+            *["CurrentCode", "CurrentNodeType", "DestinationCode", "DispenseSlot"],
+            *["ElevatorLevel", "EntityState", "ExportCount", "FlightControlRule", "ImportCount"],
+            *["Index", "LineNumber", "MinedQuantity", "Mode", "NavPoints", "Output", "SignalID"],
+            *["Sites", "SoundAlert", "StackSize", "TargetNodeType", "TargetPadIndex"],
+            *["TargetSlotIndex", "TotalQuantity"],
+        ],
+        "int",
+    ),
+    # Animator.StringToHash of a name, the same number as HASH("name")
+    **dict.fromkeys(
+        [
+            *["CelestialHash", "CelestialParentHash", "ContactTypeId", "NextWeatherHash"],
+            *["RecipeHash", "RequestHash", "TargetPrefabHash"],
+        ],
+        "str",
+    ),
+    **dict.fromkeys(
+        [
+            *["Acceleration", "AlignmentError", "Altitude", "Apex", "BurnTimeRemaining"],
+            *["Charge", "Chart", "CombustionLimiter", "CompletionRatio", "Density"],
+            *["DerivativeGain", "Discover", "DistanceAu", "DistanceKm", "DrillCondition"],
+            *["DryMass", "Eccentricity", "ElevatorSpeed", "EnergyConvected", "EnergyRadiated"],
+            *["EnvironmentEfficiency", "Gravity", "HealthDamage", "Horizontal"],
+            *["HorizontalRatio", "Inclination", "IntegralGain", "InterrogationProgress", "Mass"],
+            *["Maximum", "Minimum", "MinimumWattsToContact", "NextWeatherEventTime"],
+            *["OperationalTemperatureEfficiency", "OrbitPeriod", "PassedMoles", "PositionX"],
+            *["PositionY", "PositionZ", "PowerActual", "PowerGeneration", "PowerPotential"],
+            *["PowerRequired", "PressureEfficiency", "PressureExternal", "PressureInternal"],
+            *["Progress", "ProportionalGain", "Quantity", "Ratio", "ReEntryAltitude"],
+            *["Reagents", "RequiredPower", "Richness", "Rpm", "SemiMajorAxis", "Setpoint"],
+            *["SignalStrength", "Size", "SizeX", "SizeZ", "SolarAngle", "SolarIrradiance"],
+            *["Stress", "StunDamage", "Survey", "TemperatureDifferentialEfficiency", "Throttle"],
+            *["Thrust", "ThrustToWeight", "Time", "TimeToDestination", "TrueAnomaly"],
+            *["VelocityRelativeY", "Vertical", "VerticalRatio", "Volume", "VolumeOfLiquid"],
+            *["WattsReachingContact", "Weight", "WorkingGasEfficiency"],
+        ],
+        "float",
+    ),
+}
+
+# Means something different on each device (a LogicMemory holds hashes, a LogicDial an int,
+# a pump a pressure); typed only where a mixin pins the meaning down (_NumericalSetting).
+UNTYPED_FIELDS = {"Setting", "SettingInput", "SettingOutput"}
+
+# (prefab name, field) whose values differ from FIELD_TYPES
+DEVICE_FIELD_TYPES = {
+    # -1 when the rocket has no crew module
+    ("StructureRocketAvionics", "Open"): "int",
+}
 
 
 class PrefabDump(TypedDict):
@@ -66,12 +135,14 @@ class Property:
 class Mixin:
     name: str
     properties: frozenset[Property]
-    extra: str = ""
+    extra: str
+    # overrides field_types for this mixin's properties
+    types: dict[str, str]
 
     def generate_code(self, field_types: dict[str, str]) -> str:
         code = f"class {self.name}:\n"
         for prop in sorted(self.properties):
-            code += prop.generate_code(field_types)
+            code += prop.generate_code(field_types | self.types)
         return code + self.extra
 
 
@@ -91,8 +162,9 @@ class DeviceClass:
         code += f"  _hash: int = {self.prefab_hash}\n"
         if self.prefab_name != f"Structure{self.name}":
             code += f"  _prefab_name = {self.prefab_name!r}\n"
+        own_types = {f: t for (p, f), t in DEVICE_FIELD_TYPES.items() if p == self.prefab_name}
         for prop in sorted(self.properties):
-            code += prop.generate_code(field_types)
+            code += prop.generate_code(field_types | own_types)
         return code
 
 
@@ -145,28 +217,25 @@ def _check_hand_written(dump: GameDump, port_fields: list[str]) -> None:
         )
 
 
+def _field_types(port_fields: list[str]) -> dict[str, str]:
+    port_types = {
+        name + suf: "bool" if name == "Combustion" else "float"
+        for name in port_fields
+        for suf in PORT_SUFFIXES
+    }
+    assert not port_types.keys() & FIELD_TYPES.keys(), port_types.keys() & FIELD_TYPES.keys()
+    return FIELD_TYPES | port_types
+
+
 def generate(dump: GameDump) -> str:
     port_fields = _port_fields(dump["enums"]["LogicType"])
     _check_hand_written(dump, port_fields)
+    field_types = _field_types(port_fields)
 
-    field_types: dict[str, str] = {
-        "Error": "bool",
-        "Lock": "bool",
-        "On": "bool",
-        "Open": "bool",
-        "Power": "bool",
-        "RequiredPower": "int",
-        "Color": "_Color",
-        "RecipeHash": "str",
-        **{
-            name + suf: "bool" if name == "Combustion" else "float"
-            for name in port_fields
-            for suf in PORT_SUFFIXES
-        },
-    }
-
-    def mixin(name: str, *properties: Property, extra: str = "") -> Mixin:
-        return Mixin(name, frozenset(properties), extra)
+    def mixin(
+        name: str, *properties: Property, extra: str = "", types: dict[str, str] | None = None
+    ) -> Mixin:
+        return Mixin(name, frozenset(properties), extra, types or {})
 
     P = Property
     mixins: list[Mixin] = []
@@ -182,7 +251,15 @@ def generate(dump: GameDump) -> str:
         mixins.append(mixin(f"_BaseGas{suf}", *(P(name + suf) for name in port_fields), extra=extra))
     mixins += [
         mixin("_Powered", P("Power"), P("RequiredPower"), P("On", True)),
-        mixin("_NumericalSetting", P("Maximum"), P("Ratio"), P("Setting", True)),
+        # in 0.2.6429, only gas devices (Setting = DeviceAtmospherics.OutputSetting) and
+        # transformers have all three
+        mixin(
+            "_NumericalSetting",
+            P("Maximum"),
+            P("Ratio"),
+            P("Setting", True),
+            types={"Setting": "float"},
+        ),
         mixin("_ImportExport", P("ImportCount"), P("ExportCount"), P("ClearMemory", True, False)),
         mixin("_ImportOnly", P("ImportCount"), P("ClearMemory", True, False)),
         mixin("_PowerMeasure", P("PowerActual"), P("PowerPotential")),
@@ -238,6 +315,11 @@ def generate(dump: GameDump) -> str:
             name, prefab_name, prefab["prefab_hash"], prefab["hidden"], properties, sorted(bases)
         )
 
+    for prefab_name, field in DEVICE_FIELD_TYPES:
+        (dev,) = (d for d in devices.values() if d.prefab_name == prefab_name)
+        # a mixin would type the field for every device sharing it
+        assert field in {p.name for p in dev.properties}, (prefab_name, field)
+
     code = _HEADER.format(script=Path(__file__).name, game_version=dump["game_version"])
     for m in mixins:
         code += m.generate_code(field_types)
@@ -251,6 +333,16 @@ def main() -> None:
     OUT_FILE.write_text(generate(dump), encoding="utf-8")
     subprocess.run(["black", "-q", str(OUT_FILE)], check=True)
     print("Output written to", OUT_FILE)
+
+    used = {name for p in dump["prefabs"] if p["device"] for name in p["logic"]}
+    typed = _field_types(_port_fields(dump["enums"]["LogicType"])).keys()
+    unclassified = sorted(used - typed - UNTYPED_FIELDS - DEVICE_FIELDS)
+    if unclassified:
+        print(
+            "warning: fields left untyped (Any); check what the game returns and add them to"
+            f" FIELD_TYPES: {', '.join(unclassified)}",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

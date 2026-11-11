@@ -50,7 +50,7 @@ TRANSMITTER = Device("StructureLogicTransmitter", "Hardsuit LT 1")
 Dish = SatelliteDish | SmallSatelliteDish | LargeSatelliteDish
 
 # The signal ID being searched for; set by main, read by tick() and search().
-target = Variable(float)
+target = Variable(int)
 # Start of the main loop; tick() jumps here to abandon a search.
 RESTART = label_ref("restart")
 
@@ -117,7 +117,7 @@ def sweep_vertical(scan: Dish, step: Static[int], at_end: Static[Callable[[Float
 
 
 @transpile(inline=True)
-def roam() -> Float:
+def roam() -> Int:
     """Tilt DISH_M to 60 and turn it 2 degrees per tick until a target is set; return it."""
     DISH_M.Vertical = 60
     DISH_M.BestContactFilter = -1
