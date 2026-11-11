@@ -1,0 +1,25 @@
+lbs r0 -443130773 5 Occupied 3
+lbs r1 -443130773 5 Quantity 0
+add r1 r1 1
+# occupied: r0 quantity: r1
+lbns r0 -443130773 197120362 2 OccupantHash 0
+seq r0 r0 -1301215609
+# iron: r0
+ls r0 d1 0 Mature
+seq r0 r0 -1
+ls r1 d1 0 Growth
+# no plant: r0 stage: r1
+lb r0 -443130773 DispenseSlot 0
+lbs r0 -443130773 r0 PrefabHash 0
+# dispensing: r0
+ss d2 0 Open 1
+sbs 1632165346 0 Open 0
+lbn r0 1632165346 -1391282375 ReferenceId 0
+ss r0 0 Open 1
+lbn r0 1632165346 1165829298 ReferenceId 0
+ls r1 r0 0 Open
+not r1 r1
+ss r0 0 Open r1
+ls r0 r0 0 Pressure
+# tank: r0
+# 24 lines total (not including this line)

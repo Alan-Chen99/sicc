@@ -1,0 +1,26 @@
+clr d0
+put d0 0 -333111195903
+put d0 1 774
+get r0 d0 0
+and r0 r0 255
+# first op: r0
+lbn r0 873418029 324606265 ReferenceId 0
+clrd r0
+get r0 d0 1
+lbn r1 873418029 324606265 ReferenceId 0
+putd r1 2 r0
+lbn r0 439026183 -1786934088 ReferenceId 0
+putd r0 0 257
+getd r0 r0 2
+sra r0 r0 8
+# contact: r0
+lbn r0 -128473777 -648530656 ReferenceId 0
+putd r0 10 1.5
+lbn r0 -128473777 -648530656 ReferenceId 0
+getd r0 r0 11
+add r0 r0 1
+# other: r0
+put d3 0 2
+get r0 d3 1
+# d3: r0
+# 25 lines total (not including this line)

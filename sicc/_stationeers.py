@@ -5,6 +5,7 @@ from dataclasses import field
 from enum import Enum
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Final
 from typing import Generic
 from typing import Literal
 from typing import Self
@@ -15,12 +16,20 @@ from typing import override
 import rich.repr
 from rich.pretty import pretty_repr
 
+from ._api import Bool
 from ._api import Function
 from ._api import Int
 from ._api import Str
 from ._api import UserValue
 from ._api import VarRead
 from ._api import _get_type
+from ._api import and_
+from ._api import not_equal
+from ._api import or_
+from ._api import rshift_signed
+from ._api import sub
+from ._api import transmute
+from ._api import xor
 from ._core import AnyType
 from ._core import AsRaw
 from ._core import AsRawCtx
@@ -37,6 +46,7 @@ from ._diagnostic import debug_info
 from ._diagnostic import register_exclusion
 from ._instructions import AsmInstrBase
 from ._instructions import EffectExternal
+from ._instructions import LShift
 from ._tree_utils import field as optree_field  # pyright: ignore[reportUnknownVariableType]
 from ._tree_utils import optree_dataclass
 from ._tree_utils import pytree
@@ -121,6 +131,8 @@ class LogicType(AsRaw):
         if ctx.instr is not None and ctx.instr.instr.src_instr in [
             Load,
             Store,
+            LoadById,
+            StoreById,
             LoadBatch,
             StoreBatch,
             LoadBatchNamed,
@@ -148,6 +160,8 @@ class SlotType(AsRaw):
             LoadSlot,
             LoadBatchSlot,
             LoadBatchNamedSlot,
+            StoreSlot,
+            StoreBatchSlot,
         ]:
             return RawText.str(self.name)
         # FIXME: this works or no?
@@ -261,6 +275,30 @@ class StoreBatchNamed[T: VarT](AsmInstrBase):
         return EffectExternal()
 
 
+class LoadById[T: VarT](AsmInstrBase):
+    jumps = False
+
+    # ld r? referenceId logicType
+    def __init__(self, out_type: type[T]) -> None:
+        self.opcode = "ld"
+        self.in_types = (int, LogicType)
+        self.out_types = (out_type,)
+
+    reads_ = EffectExternal()
+
+
+class StoreById[T: VarT](AsmInstrBase):
+    jumps = False
+
+    # sd referenceId logicType r?
+    def __init__(self, in_type: type[T]) -> None:
+        self.opcode = "sd"
+        self.in_types = (int, LogicType, in_type)
+        self.out_types = ()
+
+    writes_ = EffectExternal()
+
+
 def _valid_logic_attr(name: str, parent: object) -> bool:
     if name and name[0].isupper() and not hasattr(type(parent), name):
         return True
@@ -279,6 +317,8 @@ class DeviceBase(Generic[DT_co, N_co]):
     name: N_co
     default_batchmode: BatchMode
     _pin: Int | LiteralPin | None
+    # the device's ReferenceId; set for a device addressed by it (ld/sd/getd/...)
+    _ref_id: Int | None
 
     def __init__(
         self,
@@ -287,19 +327,24 @@ class DeviceBase(Generic[DT_co, N_co]):
         _name: N_co,
         _default_batchmode: BatchMode = BatchMode.AVG,
         _pin: Int | LiteralPin | None = None,
+        _ref_id: Int | None = None,
     ) -> None:
         if not type(self) in _did_register_optree:
             pytree.register_node_class()(type(self))
             _did_register_optree.add(type(self))
+        assert _pin is None or _ref_id is None
 
         self.device_type = _device_type
         self.name = _name
         self.default_batchmode = _default_batchmode
         self._pin = _pin
+        self._ref_id = _ref_id
 
     def __rich_repr__(self) -> rich.repr.Result:
         if self._pin is not None:
             yield self._pin
+        elif self._ref_id is not None:
+            yield "ref_id", self._ref_id
         else:
             yield self.device_type
             if self.name is not None:
@@ -314,6 +359,17 @@ class DeviceBase(Generic[DT_co, N_co]):
         if isinstance(self._pin, LiteralPin):
             return PinType(_name=self._pin._name)
         return cast_unchecked(self._pin)
+
+    def _id_value(self) -> Int:
+        """
+        The ReferenceId, for the instructions that address a device only by pin or ReferenceId
+        (ss, getd, putd, clrd). A batch-addressed device reads its ReferenceId with the default
+        batch mode, which is the ReferenceId only if exactly one device matches.
+        """
+        assert self._pin is None
+        if self._ref_id is not None:
+            return self._ref_id
+        return DeviceLogicTypeRead(self, LogicType("ReferenceId"), int)
 
     @overload
     def __getitem__(self, logic_type: ValLogicTypeLike) -> DeviceLogicType[Any, Self]: ...
@@ -349,11 +405,12 @@ class DeviceBase(Generic[DT_co, N_co]):
     __transpile_setitem__ = transpile_setitem_default
 
     def tree_flatten(self) -> Any:
-        return (self.device_type, self.name, self._pin), (self.default_batchmode,), None
+        children = (self.device_type, self.name, self._pin, self._ref_id)
+        return children, (self.default_batchmode,), None
 
     @classmethod
     def tree_unflatten(cls, metadata: Any, children: Any) -> Self:
-        device_type, name, pin = children
+        device_type, name, pin, ref_id = children
         (default_batchmode,) = metadata
         ans = cls.__new__(cls)
         DeviceBase.__init__(
@@ -362,6 +419,7 @@ class DeviceBase(Generic[DT_co, N_co]):
             _name=name,
             _default_batchmode=default_batchmode,
             _pin=pin,
+            _ref_id=ref_id,
         )
         return ans
 
@@ -370,8 +428,9 @@ class DeviceBase(Generic[DT_co, N_co]):
         return self.device_type
 
     @property
-    def slots(self) -> _SlotProxy:
-        return _SlotProxy(self)
+    def slots(self) -> Slots[Slot]:
+        """The device's slots; `slots[i]["Occupied"]` reads LogicSlotType Occupied of slot i."""
+        return Slots(self, Slot)
 
     def as_generic_device(self) -> Device:
         assert self.device_type is not None
@@ -403,6 +462,14 @@ class Pin(DeviceBase[None, None]):
     @staticmethod
     def db() -> Pin:
         return Pin("db")
+
+    @property
+    def memory(self) -> MemoryReadWrite[Any]:
+        """
+        The device's memory, untyped: `memory[address]` (get), `memory[address] = value` (put),
+        `memory.clear()` (clr); e.g. the stack of the chip in an IC housing.
+        """
+        return MemoryReadWrite(self, AnyType, None)
 
     if TYPE_CHECKING:
 
@@ -473,6 +540,8 @@ class DeviceLogicTypeRead(Generic[T, D_co], VarRead[T]):
         # Pin-based access: use direct Load instruction
         if self.device._pin is not None:
             return Function(Load(typ or self.typ)).call(self.device._pin_value(), self.logic_type)
+        if self.device._ref_id is not None:
+            return Function(LoadById(typ or self.typ)).call(self.device._ref_id, self.logic_type)
 
         assert self.device.device_type is not None
         if mode is None:
@@ -519,6 +588,8 @@ class DeviceLogicType(Generic[T, D_co], DeviceLogicTypeRead[T, D_co]):
         # Pin-based access: use direct Store instruction
         if self.device._pin is not None:
             return Function(Store(typ)).call(self.device._pin_value(), self.logic_type, val)
+        if self.device._ref_id is not None:
+            return Function(StoreById(typ)).call(self.device._ref_id, self.logic_type, val)
         assert self.device.device_type is not None
 
         if self.device.name is None:
@@ -590,18 +661,66 @@ def mk_field_ro[T: VarT](
 ################################################################################
 
 
-@optree_dataclass
-class _SlotProxy:
-    device: DeviceBase
+class Slots[S: Slot = Slot]:
+    """`device.slots`; `slots[i]` is slot i of the device."""
 
-    def __getitem__(self, idx: Int) -> Slot:
-        return Slot(self.device, idx)
+    # Final, not a dataclass field: Slots[S] is then covariant in S, so a device's typed slots
+    # override DeviceBase.slots
+    device: Final[DeviceBase]
+    slot_cls: Final[type[S]]
+
+    def __init__(self, device: DeviceBase, slot_cls: type[S]) -> None:
+        self.device = device
+        self.slot_cls = slot_cls
+
+    def tree_flatten(self) -> Any:
+        return (self.device,), self.slot_cls, None
+
+    @classmethod
+    def tree_unflatten(cls, metadata: Any, children: Any) -> Self:
+        (device,) = children
+        return cls(device, metadata)
+
+    def __getitem__(self, idx: Int) -> S:
+        return self.slot_cls(self.device, idx)
 
 
-@optree_dataclass
+pytree.register_node_class()(Slots)
+
+
 class Slot:
+    """
+    Slot `idx` of `device`. `slot["Occupied"]` is LogicSlotType Occupied, untyped.
+
+    Typed devices give their slots a subclass with an attribute, typed, for each LogicSlotType
+    that their slots have; with a compile-time index, using one that the slot lacks is an error.
+    """
+
     device: DeviceBase
     idx: Int
+
+    def __init__(self, device: DeviceBase, idx: Int) -> None:
+        self.device = device
+        self.idx = idx
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        pytree.register_node_class()(cls)
+
+    def tree_flatten(self) -> Any:
+        return (self.device, self.idx), None, None
+
+    @classmethod
+    def tree_unflatten(cls, metadata: Any, children: Any) -> Self:
+        device, idx = children
+        return cls(device, idx)
+
+    def __rich_repr__(self) -> rich.repr.Result:
+        yield self.device
+        yield self.idx
+
+    def __repr__(self) -> str:
+        return pretty_repr(self)
 
     @overload
     def __getitem__(self, logic_type: ValSlotTypeLike) -> SlotField: ...
@@ -616,14 +735,24 @@ class Slot:
             )
         return SlotField(self.device, self.idx, SlotType.create(logic_type), AnyType)
 
+    def __setitem__(self, logic_type: ValSlotTypeLike, val: UserValue) -> None:
+        self[logic_type].set(val)
+
+    __transpile_setattr__ = transpile_setattr_default
+    __transpile_setitem__ = transpile_setitem_default
+
+
+pytree.register_node_class()(Slot)
+
 
 class LoadSlot[T: VarT](AsmInstrBase):
     jumps = False
 
-    # ls r? pin slotIndex logicSlotType
-    def __init__(self, out_type: type[T]) -> None:
+    # ls r? device slotIndex logicSlotType
+    # device: a pin, or (dev_type int) a ReferenceId
+    def __init__(self, out_type: type[T], dev_type: type[VarT] = PinType) -> None:
         self.opcode = "ls"
-        self.in_types = (PinType, int, SlotType)
+        self.in_types = (dev_type, int, SlotType)
         self.out_types = (out_type,)
 
     @override
@@ -655,14 +784,47 @@ class LoadBatchNamedSlot[T: VarT](AsmInstrBase):
     reads_ = EffectExternal()
 
 
+class StoreSlot[T: VarT](AsmInstrBase):
+    jumps = False
+
+    # ss device slotIndex logicSlotType r?
+    # device: a pin, or (dev_type int) a ReferenceId
+    def __init__(self, in_type: type[T], dev_type: type[VarT] = PinType) -> None:
+        self.opcode = "ss"
+        self.in_types = (dev_type, int, SlotType, in_type)
+        self.out_types = ()
+
+    writes_ = EffectExternal()
+
+
+class StoreBatchSlot[T: VarT](AsmInstrBase):
+    jumps = False
+
+    # sbs deviceHash slotIndex logicSlotType r?
+    def __init__(self, in_type: type[T]) -> None:
+        self.opcode = "sbs"
+        self.in_types = (str, int, SlotType, in_type)
+        self.out_types = ()
+
+    writes_ = EffectExternal()
+
+
 @dataclass(eq=False)
-class SlotField[T: VarT = Any](VarRead[T]):
+class SlotFieldRead[T: VarT = Any](VarRead[T]):
     device: DeviceBase
     idx: Int
     logic_type: UserValue[SlotType]
     typ: type[T]
 
     _debug: DebugInfo = field(default_factory=debug_info)
+
+    def __rich_repr__(self) -> rich.repr.Result:
+        yield self.device
+        yield self.idx
+        yield self.logic_type
+
+    def __repr__(self) -> str:
+        return pretty_repr(self)
 
     @overload
     def get(self, *, mode: ValBatchMode | None = None) -> VarRead[T]: ...
@@ -676,6 +838,10 @@ class SlotField[T: VarT = Any](VarRead[T]):
         if self.device._pin is not None:
             return Function(LoadSlot(typ or self.typ)).call(
                 self.device._pin_value(), self.idx, self.logic_type
+            )
+        if self.device._ref_id is not None:
+            return Function(LoadSlot(typ or self.typ, int)).call(
+                self.device._ref_id, self.idx, self.logic_type
             )
 
         assert self.device.device_type is not None
@@ -716,6 +882,108 @@ class SlotField[T: VarT = Any](VarRead[T]):
         return self.typ
 
 
+class SlotField[T: VarT = Any](SlotFieldRead[T]):
+    def set(self, val: UserValue[T]) -> None:
+        """
+        ss on a pin; sbs (every device of the type) on a batch device without a name; ss by
+        ReferenceId otherwise, as IC10 has no named batch slot write.
+        """
+        typ = _get_type(val) if self.typ == AnyType else self.typ
+
+        if self.device._pin is not None:
+            return Function(StoreSlot(typ)).call(
+                self.device._pin_value(), self.idx, self.logic_type, val
+            )
+        if self.device._ref_id is None and self.device.name is None:
+            assert self.device.device_type is not None
+            return Function(StoreBatchSlot(typ)).call(
+                self.device.device_type, self.idx, self.logic_type, val
+            )
+        return Function(StoreSlot(typ, int)).call(
+            self.device._id_value(), self.idx, self.logic_type, val
+        )
+
+
+def _check_slot_index(slot: Slot, logic_type: SlotType, write: bool) -> None:
+    """With a compile-time index, check that slot `idx` of the device has the LogicSlotType."""
+    if not isinstance(slot.idx, int):
+        return
+    device = slot.device
+    assert isinstance(device, DeviceTyped)
+    if not 0 <= slot.idx < device._slot_count:
+        raise TypeError(
+            f"{device._device_type_from_cls_name()} has slots 0 to {device._slot_count - 1};"
+            f" there is no slot {slot.idx}"
+        )
+    name = logic_type.name
+    if write:
+        ok = slot.idx in device._slot_write[name]
+    else:
+        ok = name not in device._slot_only or slot.idx in device._slot_only[name]
+    if not ok:
+        raise TypeError(
+            f"{device._device_type_from_cls_name()}: slot {slot.idx} has no"
+            f" {'writable ' if write else ''}{name}"
+        )
+
+
+@dataclass
+class SlotFieldDesc[T: VarT = Any]:
+    typ: type[T]
+    logic_type: SlotType | None = None
+
+    def __set_name__(self, owner: Any, name: str):
+        if self.logic_type is None:
+            self.logic_type = SlotType(name)
+
+    @overload
+    def __get__(self, obj: None, objtype: type) -> Self: ...
+    @overload
+    def __get__(self, obj: Slot, objtype: type) -> SlotFieldRead[T]: ...
+    def __get__(self, obj: Slot | None, objtype: type):
+        if obj is None:
+            return self
+        assert self.logic_type is not None
+        _check_slot_index(obj, self.logic_type, write=False)
+        return SlotFieldRead(obj.device, obj.idx, self.logic_type, self.typ)
+
+    def _set_fail(self, obj: Slot, val: UserValue[T]) -> None:
+        raise AttributeError("write to read-only slot field")
+
+    if not TYPE_CHECKING:
+        __set__ = _set_fail
+
+    def __rich_repr__(self) -> rich.repr.Result:
+        yield self.logic_type
+        yield ReprAs(self.typ.__name__)
+
+
+class SlotFieldDescW[T: VarT = Any](SlotFieldDesc[T]):
+    @overload
+    def __get__(self, obj: None, objtype: type) -> Self: ...
+    @overload
+    def __get__(self, obj: Slot, objtype: type) -> SlotField[T]: ...
+    def __get__(self, obj: Slot | None, objtype: type):
+        if obj is None:
+            return self
+        assert self.logic_type is not None
+        _check_slot_index(obj, self.logic_type, write=False)
+        return SlotField(obj.device, obj.idx, self.logic_type, self.typ)
+
+    def __set__(self, obj: Slot, val: UserValue[T]) -> None:
+        assert self.logic_type is not None
+        _check_slot_index(obj, self.logic_type, write=True)
+        SlotField(obj.device, obj.idx, self.logic_type, self.typ).set(val)
+
+
+def mk_slot_field[T: VarT](typ: type[T]) -> SlotFieldDescW[T]:
+    return SlotFieldDescW(typ)
+
+
+def mk_slot_field_ro[T: VarT](typ: type[T]) -> SlotFieldDesc[T]:
+    return SlotFieldDesc(typ)
+
+
 ################################################################################
 
 
@@ -745,6 +1013,12 @@ class DeviceTyped(Device[str, Str | None]):
     _hash: int
     # for prefab names other than "Structure" + class name, e.g. "StopWatch"
     _prefab_name: str | None = None
+    # number of slots
+    _slot_count: int = 0
+    # LogicSlotType -> the slots that have it, for those that not every slot has
+    _slot_only: dict[str, tuple[int, ...]] = {}
+    # LogicSlotType -> the slots where it is writable
+    _slot_write: dict[str, tuple[int, ...]] = {}
 
     @classmethod
     def _device_type_from_cls_name(cls) -> str:
@@ -758,13 +1032,19 @@ class DeviceTyped(Device[str, Str | None]):
         *,
         default_batchmode: BatchMode = BatchMode.AVG,
         pin: PinSpec | None = None,
+        ref_id: Int | None = None,
     ):
+        """
+        The devices of this type, or those named `name`, through batch instructions (lb, lbn,
+        ...); or the device on `pin` (l, s, ...); or the device whose ReferenceId is `ref_id`
+        (ld, sd, ...).
+        """
         device_type = self._device_type_from_cls_name()
         assert crc32(device_type) == self._hash
 
         pin_ = _parse_pin(pin)
-        if pin_ is not None:
-            assert name is None
+        if (pin_ is not None) + (ref_id is not None) + (name is not None) > 1:
+            raise TypeError("give at most one of name, pin and ref_id")
 
         DeviceBase.__init__(
             self,
@@ -772,20 +1052,23 @@ class DeviceTyped(Device[str, Str | None]):
             _name=name,
             _default_batchmode=default_batchmode,
             _pin=pin_,
+            _ref_id=ref_id,
         )
 
     def __rich_repr__(self) -> rich.repr.Result:
         if self._pin is not None:
             yield "pin", self._pin
+        if self._ref_id is not None:
+            yield "ref_id", self._ref_id
         if self.name is not None:
             yield self.name
 
     def tree_flatten(self) -> Any:
-        return (self.name, self._pin), (self.default_batchmode,), None
+        return (self.name, self._pin, self._ref_id), (self.default_batchmode,), None
 
     @classmethod
     def tree_unflatten(cls, metadata: Any, children: Any) -> Self:
-        name, pin = children
+        name, pin, ref_id = children
         (default_batchmode,) = metadata
         ans = cls.__new__(cls)
         DeviceBase.__init__(
@@ -794,8 +1077,200 @@ class DeviceTyped(Device[str, Str | None]):
             _name=name,
             _default_batchmode=default_batchmode,
             _pin=pin,
+            _ref_id=ref_id,
         )
         return ans
+
+
+################################################################################
+# MEMORY
+################################################################################
+
+
+class DeviceGet[T: VarT](AsmInstrBase):
+    jumps = False
+
+    # get r? device address
+    def __init__(self, out_type: type[T]) -> None:
+        self.opcode = "get"
+        self.in_types = (PinType, int)
+        self.out_types = (out_type,)
+
+    reads_ = EffectExternal()
+
+
+class DeviceGetById[T: VarT](AsmInstrBase):
+    jumps = False
+
+    # getd r? referenceId address
+    def __init__(self, out_type: type[T]) -> None:
+        self.opcode = "getd"
+        self.in_types = (int, int)
+        self.out_types = (out_type,)
+
+    reads_ = EffectExternal()
+
+
+class DevicePut[T: VarT](AsmInstrBase):
+    jumps = False
+
+    # put device address value
+    def __init__(self, in_type: type[T]) -> None:
+        self.opcode = "put"
+        self.in_types = (PinType, int, in_type)
+        self.out_types = ()
+
+    writes_ = EffectExternal()
+
+
+class DevicePutById[T: VarT](AsmInstrBase):
+    jumps = False
+
+    # putd referenceId address value
+    def __init__(self, in_type: type[T]) -> None:
+        self.opcode = "putd"
+        self.in_types = (int, int, in_type)
+        self.out_types = ()
+
+    writes_ = EffectExternal()
+
+
+class DeviceClear(AsmInstrBase):
+    jumps = False
+    opcode = "clr"
+    in_types = (PinType,)
+    out_types = ()
+
+    writes_ = EffectExternal()
+
+
+class DeviceClearById(AsmInstrBase):
+    jumps = False
+    opcode = "clrd"
+    in_types = (int,)
+    out_types = ()
+
+    writes_ = EffectExternal()
+
+
+@optree_dataclass
+class _MemoryBase[T: VarT = Any]:
+    device: DeviceBase
+    typ: type[T] = optree_field(pytree_node=False)
+    # number of addresses; None when it depends on the device (a circuit housing's chip)
+    size: int | None = optree_field(pytree_node=False)
+
+    def _pin(self) -> UserValue[PinType] | None:
+        """The pin for get/put/clr; None to use getd/putd/clrd."""
+        if self.device._pin is None:
+            return None
+        if isinstance(self.device._pin, LiteralPin):
+            raise TypeError(
+                "the memory of db is this program's own stack; use stack_var or Pointer for it"
+            )
+        return self.device._pin_value()
+
+    def _check_address(self, address: Int) -> None:
+        if isinstance(address, int) and self.size is not None and not 0 <= address < self.size:
+            raise TypeError(f"address {address} is outside the memory, 0 to {self.size - 1}")
+
+
+@optree_dataclass
+class MemoryRead[T: VarT = Any](_MemoryBase[T]):
+    """`device.memory` of a device whose memory IC10 can read: `memory[address]` (get, getd)."""
+
+    def __getitem__(self, address: Int) -> VarRead[T]:
+        self._check_address(address)
+        if (pin := self._pin()) is not None:
+            return Function(DeviceGet(self.typ)).call(pin, address)
+        return Function(DeviceGetById(self.typ)).call(self.device._id_value(), address)
+
+
+@optree_dataclass
+class MemoryWrite[T: VarT = Any](_MemoryBase[T]):
+    """
+    `device.memory` of a device whose memory IC10 can write: `memory[address] = value` (put,
+    putd) and `memory.clear()` (clr, clrd).
+    """
+
+    def __setitem__(self, address: Int, value: UserValue[T]) -> None:
+        self._check_address(address)
+        typ = _get_type(value) if self.typ == AnyType else self.typ
+        if (pin := self._pin()) is not None:
+            return Function(DevicePut(typ)).call(pin, address, value)
+        Function(DevicePutById(typ)).call(self.device._id_value(), address, value)
+
+    def clear(self) -> None:
+        """Set every address to 0."""
+        if (pin := self._pin()) is not None:
+            return Function(DeviceClear()).call(pin)
+        Function(DeviceClearById()).call(self.device._id_value())
+
+    __transpile_setitem__ = transpile_setitem_default
+
+
+@optree_dataclass
+class MemoryReadWrite[T: VarT = Any](MemoryRead[T], MemoryWrite[T]):
+    """`device.memory`: `memory[address]`, `memory[address] = value` and `memory.clear()`."""
+
+
+################################################################################
+# DEVICE INSTRUCTIONS
+################################################################################
+
+
+def instr_pack(opcode: int, *fields: tuple[Bool | Int | Str, int, int, bool]) -> Int:
+    """
+    A memory word holding a device instruction: `opcode` in bits 0-7, and each field
+    (value, first bit, bit count, signed) above. A str is a hash. A compile-time value must fit
+    its field. A runtime value is truncated to its field, except in the topmost field, which
+    takes it whole: a negative value there sign-extends over the unused bits, as the game packs
+    its own words.
+    """
+    top = max((pos for _, pos, _, _ in fields), default=None)
+    const = opcode
+    runtime: list[VarRead[int]] = []
+    for val, pos, bits, signed in fields:
+        mask = (1 << bits) - 1
+        whole = pos == top
+        if isinstance(val, (bool, int, str)):
+            v = crc32(val) if isinstance(val, str) else int(val)
+            lo, hi = (-(1 << (bits - 1)), 1 << (bits - 1)) if signed else (0, 1 << bits)
+            if not lo <= v < hi:
+                kind = "a signed" if signed else "an unsigned"
+                raise TypeError(f"{val!r} does not fit in {kind} {bits}-bit field")
+            const |= (v if whole else v & mask) << pos
+        else:
+            # bool casts to int implicitly; a hash does not
+            v: Int = transmute(val, int) if _get_type(val) == str else cast_unchecked(val)
+            runtime.append(Function(LShift()).call(v if whole else and_(v, mask), pos))
+    word: Int = const
+    for part in runtime:
+        word = or_(word, part)
+    return word
+
+
+def instr_unpack[T: VarT](
+    word: Int, pos: int, bits: int, signed: bool, typ: type[T], *, whole: bool = False
+) -> VarRead[T]:
+    """
+    Field (first bit `pos`, `bits` bits) of a memory word holding a device instruction. `whole`:
+    the bits above the field copy its sign (signed) or are 0 (unsigned), so shifting suffices.
+    """
+    v = rshift_signed(word, pos)
+    if not whole:
+        v = and_(v, (1 << bits) - 1)
+        if signed:
+            sign = 1 << (bits - 1)
+            v = sub(xor(v, sign), sign)
+    if typ == bool:
+        return cast_unchecked(not_equal(v, 0))
+    return transmute(v, typ)
+
+
+def instr_opcode(word: Int) -> VarRead[int]:
+    """OP_CODE (bits 0-7) of a memory word holding a device instruction."""
+    return and_(word, 0xFF)
 
 
 ################################################################################

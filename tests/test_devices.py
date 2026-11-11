@@ -77,3 +77,12 @@ def test_field_types():
     pressure = Variable(VolumePump().Setting)
     LogicMemory("mem").Setting = "ItemIronIngot"
     comment("pressure:", pressure)
+
+
+@wrap_test
+@program
+def test_ref_id():
+    # a device addressed by its ReferenceId: ld and sd
+    dish = SatelliteDish(ref_id=Variable(SatelliteDish("dish").ReferenceId))
+    dish.Vertical = dish.Horizontal + 1
+    comment("signal:", dish.SignalID)

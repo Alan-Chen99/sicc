@@ -1,0 +1,21 @@
+l r0 d1 ContactSlotIndex
+sll r0 r0 16
+or r0 1285 r0
+put d1 4 r0
+move r0 -1301215609
+sll r0 r0 8
+or r0 13 r0
+put d1 5 r0
+get r1 d1 6
+and r0 r1 255
+seq r0 r0 7
+sra r2 r1 8
+and r2 r2 255
+sra r1 r1 16
+seq r1 r1 -1301215609
+# buy: r0 quantity: r2 iron: r1
+l r0 d2 Lock
+sll r0 r0 8
+or r0 6 r0
+put d2 0 r0
+# 20 lines total (not including this line)

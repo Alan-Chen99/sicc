@@ -8,7 +8,7 @@ lbn r5 321604921 2147338600 Open 0
 clrd r1
 putd r1 0 257
 lbn r4 321604921 246144565 Open 0
-bne r3 0 75
+bne r3 0 73
 move r2 4
 select r4 r4 1770757 1770758
 putd r1 4 r4
@@ -20,7 +20,6 @@ sra r5 r5 8
 sbn -815193061 1266255753 Setting r5
 getd r5 r1 2
 sra r6 r5 24
-and r6 r6 255
 sbn -815193061 1102875731 Setting r6
 sra r6 r5 16
 and r6 r6 255
@@ -33,36 +32,35 @@ sra r6 r5 8
 and r6 r6 65535
 sbn -815193061 1820037069 Setting r6
 sra r5 r5 24
-and r5 r5 65535
 sbn -815193061 1307562851 Setting r5
 move r5 r2
 move r7 1000000000
 move r8 -1
-ble 31 r5 49
+ble 31 r5 47
 add r5 r5 1
 getd r8 r1 r5
 and r6 r8 255
 sra r8 r8 16
-beq r6 7 49
-beq r6 8 49
-beq r6 10 49
-bne r6 12 39
+beq r6 7 47
+beq r6 8 47
+beq r6 10 47
+bne r6 12 37
 sbn -851746783 r7 Setting r8
 add r7 r7 1
-bne r7 1000000020 39
+bne r7 1000000020 37
 move r5 r2
 move r7 1000001000
 move r8 -1
-ble 31 r5 62
+ble 31 r5 60
 add r5 r5 1
 getd r8 r1 r5
 and r6 r8 255
 sra r8 r8 16
-beq r6 9 62
-bne r6 11 54
+beq r6 9 60
+bne r6 11 52
 sbn -851746783 r7 Setting r8
 add r7 r7 1
-bne r7 1000001011 54
+bne r7 1000001011 52
 beq r3 0 3
 lbn r3 -815193061 594962675 Setting 0
 bne r3 0 3
@@ -81,4 +79,4 @@ putd r1 4 r5
 select r4 r4 1705477 1705478
 putd r1 5 r4
 j 14
-# 83 lines total (not including this line)
+# 81 lines total (not including this line)

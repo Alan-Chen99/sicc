@@ -31,12 +31,15 @@ See [examples/explained.py](examples/explained.py) for how this works.
     - nested `def`s are trace-time helpers; apply `@transpile` to transpile them too
 - math functions
   - only a small subset is supported at the moment
-- Structures with pre-defined fields
-  - static typing and autocomplete (with pyright only)
+- Devices with pre-defined fields, generated from the game's data (`sicc.devices`)
+  - static typing and autocomplete (with pyright only); a field's type is what the game returns
+  - docstrings from the game's Stationpedia
+  - a device by name or type (batch instructions: `lbn`, ...), by pin (`LogicSorter(pin=0)`: `l`, ...) or by ReferenceId (`LogicSorter(ref_id=id)`: `ld`, ...)
+  - typed slots: `tray.slots[0].Mature`, `tank.slots[0].Open = True`
+  - device memory: `sorter.memory[0] = ...`, `sorter.memory.clear()`; `SorterInstruction`, `TraderInstruction`, ... build and read the instruction words that devices run from their memory ([example](examples/dish_trader.py))
 - embed raw asm code
   - in development
-  - [example](examples/dish_trader.py): satellite dish stack access with `getd`/`putd`/`clrd`
-- high level construct for other operations: slots, stack, etc
+- high level construct for other operations: stack, etc
   - in development
   - `stack_var(init, addr=N)` places a stack variable at address `N`, for a layout shared with other programs or chips; variables without `addr` avoid the fixed ones the program accesses
 - device names with chosen hashes
