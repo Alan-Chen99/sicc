@@ -2,14 +2,19 @@
 // tables of every ILogicable prefab as JSON to $SICC_DUMP_OUT, then quit.
 //
 // The tables are computed the way Stationpedia.PopulateThingPages does (AddLogicTypeInfo,
-// AddLogicSlotTypeInfo, AddSlotInfo, AddLogicModeInfo). The server builds Stationpedia pages too;
-// the computed tables are cross-checked against them, and any mismatch fails the run. The tables
-// are computed rather than read off the pages because hidden prefabs have no page.
+// AddLogicSlotTypeInfo, AddSlotInfo, AddLogicModeInfo, AddInstructionInfo). The server builds
+// Stationpedia pages too; the logic tables are cross-checked against them, and any mismatch fails
+// the run. The tables are computed rather than read off the pages because hidden prefabs have no
+// page.
+//
+// Text (names, descriptions, instruction formats) is written as the Stationpedia shows it: macros
+// such as {THING:...} expanded by Localization.ParseHelpText, TextMeshPro rich-text tags kept.
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using Assets.Scripts;
 using Assets.Scripts.Localization2;
@@ -61,10 +66,41 @@ public class SiccLogicDump : BaseUnityPlugin
     {
         public Thing Prefab;
         public bool Hidden;
+        public string Name;
+        public string Description;
         public List<KeyValuePair<string, string>> Logic = new List<KeyValuePair<string, string>>();
         public List<KeyValuePair<string, List<int>>> SlotLogic = new List<KeyValuePair<string, List<int>>>();
+        public List<KeyValuePair<string, List<int>>> SlotLogicWrite = new List<KeyValuePair<string, List<int>>>();
         public List<string> Modes = new List<string>();
+        // null: no IMemory
+        public Memory Memory;
     }
+
+    class Memory
+    {
+        // 0 when the size depends on the instance (a circuit housing's chip)
+        public int Size;
+        public string Access;
+        // the IInstructable enum name (a key of InstructionSets), or null
+        public string Instructions;
+    }
+
+    class Instruction
+    {
+        public string Name;
+        public int OpCode;
+        public string Format;
+    }
+
+    // IInstructable enum name -> instructions; devices that share an enum describe it identically
+    static readonly SortedDictionary<string, List<Instruction>> InstructionSets =
+        new SortedDictionary<string, List<Instruction>>(StringComparer.Ordinal);
+
+    // Structure.IsStructureCompleted gates Device.CanLogicWrite(LogicSlotType, int) even outside a
+    // running game, and a prefab sits at its first build state.
+    static readonly FieldInfo CurrentBuildState =
+        typeof(Structure).GetField("_currentBuildState", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new Exception("Structure._currentBuildState not found");
 
     static List<Entry> Collect()
     {
@@ -81,7 +117,13 @@ public class SiccLogicDump : BaseUnityPlugin
 
             bool hiddenOverride;
             Stationpedia.DataHandler.HiddenInPedia.TryGetValue(prefab.PrefabName, out hiddenOverride);
-            var e = new Entry { Prefab = prefab, Hidden = prefab.HideInStationpedia || hiddenOverride };
+            var e = new Entry
+            {
+                Prefab = prefab,
+                Hidden = prefab.HideInStationpedia || hiddenOverride,
+                Name = Localization.GetThingName(prefab.PrefabName),
+                Description = Localization.ParseHelpText(Localization.GetThingDescription(prefab.PrefabName)),
+            };
 
             DeviceInputOutput dio = logicable as DeviceInputOutput;
             if (dio != null)
@@ -110,7 +152,38 @@ public class SiccLogicDump : BaseUnityPlugin
                     if (idx.Count > 0)
                         e.SlotLogic.Add(new KeyValuePair<string, List<int>>(st.ToString(), idx));
                 }
+                ISlotWriteable slotWriteable = logicable as ISlotWriteable;
+                Structure structure = prefab as Structure;
+                if (slotWriteable != null)
+                {
+                    object buildState = structure != null ? CurrentBuildState.GetValue(structure) : null;
+                    if (structure != null)
+                        CurrentBuildState.SetValue(structure, structure.BuildStates.Count - 1);
+                    try
+                    {
+                        foreach (LogicSlotType st in Logicable.LogicSlotTypes)
+                        {
+                            var idx = new List<int>();
+                            for (int i = 0; i < prefab.Slots.Count; i++)
+                            {
+                                if (prefab.Slots[i] != null && slotWriteable.CanLogicWrite(st, i))
+                                    idx.Add(i);
+                            }
+                            if (idx.Count > 0)
+                                e.SlotLogicWrite.Add(new KeyValuePair<string, List<int>>(st.ToString(), idx));
+                        }
+                    }
+                    finally
+                    {
+                        if (structure != null)
+                            CurrentBuildState.SetValue(structure, buildState);
+                    }
+                }
             }
+
+            IMemory memory = prefab as IMemory;
+            if (memory != null)
+                e.Memory = CollectMemory(prefab, memory);
 
             if ((prefab is RocketAvionicsDevice || prefab.HasModeState) && !(prefab is LogicDial) && prefab.ModeStrings != null)
                 e.Modes.AddRange(prefab.ModeStrings);
@@ -118,6 +191,42 @@ public class SiccLogicDump : BaseUnityPlugin
             entries.Add(e);
         }
         return entries;
+    }
+
+    // as Stationpedia.AddInstructionInfo
+    static Memory CollectMemory(Thing prefab, IMemory memory)
+    {
+        bool r = memory is IMemoryReadable;
+        bool w = memory is IMemoryWritable;
+        var m = new Memory { Size = memory.GetStackSize(), Access = (r ? "R" : "") + (w ? "W" : "") };
+        IInstructable instructable = memory as IInstructable;
+        if (instructable == null)
+            return m;
+
+        IEnumCollection collection = instructable.GetInstructions();
+        m.Instructions = collection.GetEnumTypeName();
+        var instructions = new List<Instruction>();
+        // index 0 is None
+        for (int i = 1; i < collection.Length; i++)
+        {
+            instructions.Add(new Instruction
+            {
+                Name = collection.GetNameFromIndex(i),
+                OpCode = collection.GetIntFromIndex(i),
+                Format = instructable.GetInstructionDescription(i),
+            });
+        }
+        List<Instruction> known;
+        if (!InstructionSets.TryGetValue(m.Instructions, out known))
+            InstructionSets[m.Instructions] = instructions;
+        else if (!instructions.Select(Describe).SequenceEqual(known.Select(Describe)))
+            throw new Exception(prefab.PrefabName + " describes " + m.Instructions + " differently from another device");
+        return m;
+    }
+
+    static string Describe(Instruction i)
+    {
+        return i.Name + "=" + i.OpCode + "\n" + i.Format;
     }
 
     static void Write(string outPath, List<Entry> entries)
@@ -138,6 +247,38 @@ public class SiccLogicDump : BaseUnityPlugin
             WriteEnum<ColorType>(w, "ColorType");
             w.WriteEndObject();
 
+            w.WritePropertyName("docs");
+            w.WriteStartObject();
+            w.WritePropertyName("LogicType");
+            w.WriteStartObject();
+            foreach (LogicType lt in EnumCollections.LogicTypes.Values)
+            {
+                w.WritePropertyName(lt.ToString());
+                w.WriteValue(Localization.ParseHelpText(LogicBase.GetLogicDescription(lt)));
+            }
+            w.WriteEndObject();
+            w.WritePropertyName("LogicSlotType");
+            w.WriteStartObject();
+            foreach (LogicSlotType st in Logicable.LogicSlotTypes)
+            {
+                w.WritePropertyName(st.ToString());
+                w.WriteValue(Localization.ParseHelpText(LogicBase.GetLogicDescription(st)));
+            }
+            w.WriteEndObject();
+            w.WriteEndObject();
+
+            w.WritePropertyName("instruction_sets");
+            w.WriteStartObject();
+            foreach (var kv in InstructionSets)
+            {
+                w.WritePropertyName(kv.Key);
+                w.WriteStartArray();
+                foreach (Instruction i in kv.Value)
+                    w.WriteRawValue(JsonConvert.SerializeObject(new { name = i.Name, opcode = i.OpCode, format = i.Format }));
+                w.WriteEndArray();
+            }
+            w.WriteEndObject();
+
             w.WritePropertyName("prefabs");
             w.WriteStartArray();
             foreach (Entry e in entries)
@@ -151,6 +292,10 @@ public class SiccLogicDump : BaseUnityPlugin
                 w.WriteValue(e.Prefab.GetType().FullName);
                 w.WritePropertyName("hidden");
                 w.WriteValue(e.Hidden);
+                w.WritePropertyName("name");
+                w.WriteValue(e.Name);
+                w.WritePropertyName("description");
+                w.WriteValue(e.Description);
                 // CableNetwork.DataDeviceList (what batch instructions and pins address) is List<Device>
                 w.WritePropertyName("device");
                 w.WriteValue(e.Prefab is Device);
@@ -173,6 +318,15 @@ public class SiccLogicDump : BaseUnityPlugin
                 }
                 w.WriteEndObject();
 
+                w.WritePropertyName("slot_logic_write");
+                w.WriteStartObject();
+                foreach (var kv in e.SlotLogicWrite)
+                {
+                    w.WritePropertyName(kv.Key);
+                    w.WriteRawValue("[" + string.Join(", ", kv.Value) + "]");
+                }
+                w.WriteEndObject();
+
                 w.WritePropertyName("slots");
                 w.WriteStartArray();
                 if (e.Prefab.HasAnySlots)
@@ -184,6 +338,12 @@ public class SiccLogicDump : BaseUnityPlugin
 
                 w.WritePropertyName("modes");
                 w.WriteRawValue(JsonConvert.SerializeObject(e.Modes));
+
+                w.WritePropertyName("memory");
+                if (e.Memory == null)
+                    w.WriteNull();
+                else
+                    w.WriteRawValue(JsonConvert.SerializeObject(new { size = e.Memory.Size, access = e.Memory.Access, instructions = e.Memory.Instructions }));
 
                 w.WriteEndObject();
             }
