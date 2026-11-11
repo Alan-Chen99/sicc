@@ -743,9 +743,13 @@ class Device[D: Str = Str, N: Str | None = Str | None](DeviceBase[D, N]):
 
 class DeviceTyped(Device[str, Str | None]):
     _hash: int
+    # for prefab names other than "Structure" + class name, e.g. "StopWatch"
+    _prefab_name: str | None = None
 
     @classmethod
     def _device_type_from_cls_name(cls) -> str:
+        if cls._prefab_name is not None:
+            return cls._prefab_name
         return f"Structure{cls.__name__}"
 
     def __init__(
@@ -809,18 +813,32 @@ class GasPort:
     TotalMoles: DeviceLogicTypeRead[float]
 
     RatioCarbonDioxide: DeviceLogicTypeRead[float]
+    RatioHelium: DeviceLogicTypeRead[float]
+    RatioHydrazine: DeviceLogicTypeRead[float]
+    RatioHydrochloricAcid: DeviceLogicTypeRead[float]
+    RatioHydrogen: DeviceLogicTypeRead[float]
+    RatioLiquidAlcohol: DeviceLogicTypeRead[float]
     RatioLiquidCarbonDioxide: DeviceLogicTypeRead[float]
+    RatioLiquidHydrazine: DeviceLogicTypeRead[float]
+    RatioLiquidHydrochloricAcid: DeviceLogicTypeRead[float]
+    RatioLiquidHydrogen: DeviceLogicTypeRead[float]
+    RatioLiquidMethane: DeviceLogicTypeRead[float]
     RatioLiquidNitrogen: DeviceLogicTypeRead[float]
     RatioLiquidNitrousOxide: DeviceLogicTypeRead[float]
     RatioLiquidOxygen: DeviceLogicTypeRead[float]
+    RatioLiquidOzone: DeviceLogicTypeRead[float]
     RatioLiquidPollutant: DeviceLogicTypeRead[float]
-    RatioLiquidMethane: DeviceLogicTypeRead[float]
+    RatioLiquidSilanol: DeviceLogicTypeRead[float]
+    RatioLiquidSodiumChloride: DeviceLogicTypeRead[float]
+    RatioMethane: DeviceLogicTypeRead[float]
     RatioNitrogen: DeviceLogicTypeRead[float]
     RatioNitrousOxide: DeviceLogicTypeRead[float]
     RatioOxygen: DeviceLogicTypeRead[float]
+    RatioOzone: DeviceLogicTypeRead[float]
     RatioPollutant: DeviceLogicTypeRead[float]
+    RatioPollutedWater: DeviceLogicTypeRead[float]
+    RatioSilanol: DeviceLogicTypeRead[float]
     RatioSteam: DeviceLogicTypeRead[float]
-    RatioMethane: DeviceLogicTypeRead[float]
     RatioWater: DeviceLogicTypeRead[float]
 
     def __rich_repr__(self) -> rich.repr.Result:

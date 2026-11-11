@@ -23,6 +23,8 @@ This file is for AI coding agents working in this repository.
 - Coverage: `pytest --cov`
 - Format: `black .` and `isort .`
 - Type check: `basedpyright`
+- Regenerate `sicc/devices.py` from `scripts/game_data/stationeers_logic.json`: `python scripts/build_types.py`
+- Re-dump `stationeers_logic.json` from the game after a Stationeers update: see `scripts/game_data/dump.sh`
 
 ## Testing
 

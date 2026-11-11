@@ -1,0 +1,6 @@
+lb r0 -1527229051 Time 0
+# stopwatch: r0
+sbn -771036757 HASH("T1") Setting 100
+lbn r0 -348054045 -851557387 RatioHydrogenOutput 0
+# hydrogen: r0
+# 5 lines total (not including this line)

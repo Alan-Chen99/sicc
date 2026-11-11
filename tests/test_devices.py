@@ -48,3 +48,13 @@ def test_gas_ports():
     comment("input:", port_fn(filt.input))
     comment("output:", port_fn(filt.output))
     comment("output2:", port_fn(filt.output2))
+
+
+@wrap_test
+@program
+def test_prefab_names():
+    # prefab name without the "Structure" prefix
+    comment("stopwatch:", StopWatch().Time)
+    # prefab name that is not "Structure" + a Python identifier
+    TransformerMediumReversed("T1").Setting = 100
+    comment("hydrogen:", filt.output.RatioHydrogen)
