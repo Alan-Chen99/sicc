@@ -1,9 +1,8 @@
 sbn 439026183 -1637724277 On 1
-move r0 0
-move r11 4
-j 104
+move r11 3
+j 102
 move r1 0
-j 57
+j 56
 lbn r12 321604921 2147338600 Open 0
 select r12 r12 17 13
 sll r13 r6 8
@@ -11,119 +10,119 @@ or r12 r13 r12
 putd r3 0 r12
 select r11 r11 1966597 1966598
 putd r3 1 r11
-move r11 15
-j 108
+move r11 14
+j 107
 lbn r11 439026183 -1637724277 SignalID 0
 sbn -815193061 1312721744 Setting r11
-beq r6 0 24
-bne r0 0 24
-beq r11 r1 24
+beq r6 0 23
+bne r0 0 23
+beq r11 r1 23
 getd r6 r3 2
-beq r6 0 24
+beq r6 0 23
 move r0 r11
 move r1 r11
 move r12 1000000000
 move r13 1000001000
 move r6 0
-move r11 49
-ble 31 r6 108
+move r11 48
+ble 31 r6 107
 add r6 r6 1
 mod r14 r6 8
-move r11 33
-beq r14 0 108
+move r11 32
+beq r14 0 107
 getd r11 r3 r6
 and r14 r11 255
-beq r14 7 39
-beq r14 8 39
-beq r14 10 39
-bne r14 12 43
+beq r14 7 38
+beq r14 8 38
+beq r14 10 38
+bne r14 12 42
 sra r11 r11 16
 sbn -851746783 r12 Setting r11
 add r12 r12 1
-j 27
-beq r14 9 45
-bne r14 11 27
+j 26
+beq r14 9 44
+bne r14 11 26
 sra r11 r11 16
 sbn -851746783 r13 Setting r11
 add r13 r13 1
-j 27
-ble 1000000020 r12 53
+j 26
+ble 1000000020 r12 52
 sbn -851746783 r12 Setting -1
 add r12 r12 1
-blt r12 1000000020 50
-ble 1000001011 r13 57
+blt r12 1000000020 49
+ble 1000001011 r13 56
 sbn -851746783 r13 Setting -1
 add r13 r13 1
-blt r13 1000001011 54
+blt r13 1000001011 53
 lbn r3 439026183 -1637724277 ReferenceId 0
 lbn r6 -851746783 1194454930 Setting 0
 clrd r3
 lbn r11 321604921 246144565 Open 0
-bne r6 0 6
+bne r6 0 5
 select r11 r11 2031877 2031878
 putd r3 0 r11
-j 13
+j 12
 lbn r4 439026183 -1637724277 Horizontal 0
 add r4 r4 2
 mod r4 r4 360
 sbn 439026183 -1637724277 Horizontal r4
-jal 109
-beq r0 0 65
+jal 108
+beq r0 0 64
 sbn 439026183 -1637724277 BestContactFilter r0
-jal 111
+jal 110
 move r4 LogicType.Horizontal
 move r7 360
-jal 79
+jal 78
 move r4 LogicType.Vertical
 move r7 90
-move ra 95
+move ra 94
 move r2 ra
 move r9 -5
-jal 125
+jal 124
 move r5 r10
 sbn 439026183 -1637724277 r4 r10
-jal 111
+jal 110
 move r9 5
-jal 125
+jal 124
 sub r7 r10 r5
 mod r7 r7 360
 div r7 r7 2
 add r5 r5 r7
 mod r5 r5 360
 sbn 439026183 -1637724277 r4 r5
-jal 111
+jal 110
 j r2
-jal 109
+jal 108
 lbn r4 439026183 -1637724277 SignalID 0
-beq r4 -1 103
+beq r4 -1 102
 sbn 439026183 -1637724277 Setting 50000
 sbn 439026183 -1637724277 Activate 1
 lbn r4 439026183 -1637724277 InterrogationProgress 0
-blt r4 1 95
+blt r4 1 94
 sbn -693235651 966797163 SoundAlert 37
 move r0 0
 sbn 439026183 -1637724277 Vertical 60
 sbn 439026183 -1637724277 BestContactFilter -1
 sbn 439026183 -1637724277 Setting 500
-j 69
+j 68
 j ra
 yield
 j r11
 move r8 ra
-jal 109
+jal 108
 lbn r9 439026183 -1637724277 Idle 0
 bne r9 0 r8
-j 112
+j 111
 sbn 439026183 -1637724277 r4 ra
-jal 109
+jal 108
 lbn ra 439026183 -1637724277 SignalID 0
-beq ra -1 124
+beq ra -1 123
 lbn r10 439026183 -1637724277 r4 0
 add ra r10 r9
 mod ra ra 360
-ble ra r7 116
+ble ra r7 115
 j r8
 move r8 ra
 lbn r10 439026183 -1637724277 r4 0
-j 117
-# 128 lines total (not including this line)
+j 116
+# 127 lines total (not including this line)

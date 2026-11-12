@@ -232,10 +232,11 @@ def center(axis: UserValue[LogicType], limit: Int):
 
 @transpile(inline=True)
 def control(target: Static[Variable[int]]):
-    """Locates and interrogates `target` (see main), then clears it."""
+    """Repeatedly clears `target` (see main), roams until filtration sets it, then locates and
+    interrogates it."""
     DISH_M.On = True
-    target.value = 0
     while True:
+        target.value = 0
         # Roam until filtration sets a target.
         DISH_M.Vertical = 60
         DISH_M.BestContactFilter = -1
@@ -263,7 +264,6 @@ def control(target: Static[Variable[int]]):
             if DISH_M.InterrogationProgress >= 1:
                 TRANSMITTER["SoundAlert"] = 37
                 break
-        target.value = 0
 
 
 @program
