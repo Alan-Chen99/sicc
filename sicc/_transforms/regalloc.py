@@ -438,7 +438,7 @@ def regalloc(ctx: TransformCtx) -> None:
     )
 
     for c in colors.values():
-        if c > len(free_regs):
+        if c >= len(free_regs):
             err = mk_error("register spilling is not implemented")
             need = max(colors.values()) + 1
             err.note(f"{need} registers required; {len(free_regs)} is available")
