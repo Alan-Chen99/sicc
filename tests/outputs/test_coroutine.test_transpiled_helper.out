@@ -1,0 +1,11 @@
+move ra 8
+yield
+j ra
+add r0 r0 10
+jal 1
+lbn ra 1944485013 -723064940 On 0
+blt ra 1 3
+sbn -815193061 -1016313025 Setting r0
+move r0 0
+j 4
+# 10 lines total (not including this line)

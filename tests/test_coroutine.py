@@ -70,3 +70,33 @@ def test_return_value():
     with loop():
         yield_()
         task.step()
+
+
+display = ConsoleLED5("Display")
+
+
+@transpile
+async def ticks_until_on(step: Static[int]) -> Int:
+    # inlined into the coroutine awaiting it; `return` leaves this helper, not that coroutine
+    n = 0
+    while True:
+        await coro_yield()
+        if light1.On:
+            return n
+        n += step
+
+
+@transpile
+async def task_ticks():
+    while True:
+        display.Setting = await ticks_until_on(10)
+
+
+@wrap_test
+@program
+def test_transpiled_helper():
+    task = create_static_task(task_ticks())
+
+    with loop():
+        yield_()
+        task.step()

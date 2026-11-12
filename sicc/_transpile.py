@@ -44,6 +44,7 @@ from ._diagnostic import register_exclusion
 from ._diagnostic import track_caller
 from ._iterator import shared_generator
 from ._state import State
+from ._subr import inline_subr_async
 from ._subr import return_
 from ._subr import subr
 from ._tracing import label
@@ -63,7 +64,6 @@ from ._utils import Empty
 from ._utils import allow_curry
 from ._utils import empty
 from ._utils import get_id
-from ._utils import identity
 
 register_exclusion(__file__)
 
@@ -1088,7 +1088,7 @@ class Transpiled[**P, R](CallDescMixin):
 
         wrap_fn: Any
         if inspect.iscoroutinefunction(fn):
-            wrap_fn = identity
+            wrap_fn = inline_subr_async
         else:
             if static_params and not self.inline:
                 raise TypeError(

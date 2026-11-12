@@ -6,7 +6,9 @@ import inspect
 from dataclasses import dataclass
 from typing import Annotated
 from typing import Any
+from typing import Awaitable
 from typing import Callable
+from typing import Coroutine
 from typing import TypeVar
 from typing import cast
 from typing import get_args
@@ -79,6 +81,30 @@ def inline_subr[**P, R](fn: Callable[P, FunctionRet[R]]) -> Callable[P, R]:
             _RETURN_HOOK.bind(b.break_),
         ):
             ans = fn(*args, **kwargs)
+            assert not isinstance(ans, _Function)
+
+            if ans is not None:
+                b.break_(ans)
+            elif len(b._break_paths) == 0:
+                b.break_(None)  # pyright: ignore[reportArgumentType]
+
+        return b.value
+
+    return inner
+
+
+def inline_subr_async[**P, R](
+    fn: Callable[P, Awaitable[FunctionRet[R]]],
+) -> Callable[P, Coroutine[Any, Any, R]]:
+    """`inline_subr` for a coroutine function; its bindings stay active across awaits."""
+
+    async def inner(*args: P.args, **kwargs: P.kwargs) -> R:
+        with (
+            block(BlockRef[R]) as b,
+            clear_control_flow_hooks(),
+            _RETURN_HOOK.bind(b.break_),
+        ):
+            ans = await fn(*args, **kwargs)
             assert not isinstance(ans, _Function)
 
             if ans is not None:
