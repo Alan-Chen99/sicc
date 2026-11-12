@@ -34,6 +34,7 @@ from .control_flow import compute_label_provenance
 from .control_flow import external
 from .optimize_mvars import compute_mvar_lifetime
 from .utils import CachedFn
+from .utils import LoopingTransform
 from .utils import TransformCtx
 
 type LabelVar = Var[Label] | MVar[Label]
@@ -198,3 +199,39 @@ def build_label_context_graph(ctx: TransformCtx) -> LabelContextGraph:
             preds[s].append(n)
 
     return LabelContextGraph(succs=succs, preds=preds, nodes=nodes)
+
+
+@LoopingTransform
+def handle_context_deterministic_jump(ctx: TransformCtx) -> bool:
+    """
+    Replace %var in `j %var`, or a branch to %var, by the label %var holds if it is the same in
+    every context the instruction is reached in. handle_deterministic_jump replaces only a %var
+    that can hold a single label at all; a static coroutine's suspend jumps through a variable set
+    by whichever step is running, which holds one label per task.
+    """
+    f = ctx.frag
+    prov = compute_label_provenance.call_cached(ctx)
+
+    def targets(instr: BoundInstr) -> list[Var[Label]]:
+        return [t for t in instr.jumps_to() if isinstance(t, Var) and len(prov.reaches_label[t]) > 1]
+
+    if not any(targets(x) for b in f.blocks.values() for x in b.contents):
+        return False
+
+    graph = build_label_context_graph.call_cached(ctx)
+    changed = False
+
+    @f.map_instrs
+    def _(instr: BoundInstr):
+        nonlocal changed
+        for t in targets(instr):
+            values = {
+                None if isinstance(n, External) else dict(n[1]).get(t)
+                for n in graph.nodes.get(instr, [])
+            }
+            if len(values) == 1 and (label := values.pop()) is not None:
+                instr = instr.sub_val(t, label, inputs=True)
+                changed = True
+        return instr
+
+    return changed

@@ -1,0 +1,28 @@
+move r1 3
+move r0 12
+j 18
+move r3 10
+jal 21
+sbn 1944485013 -723064940 On 1
+jal 9
+sbn 1944485013 -723064940 On 0
+move ra 3
+move r1 ra
+move r4 17
+j r0
+jal 17
+move r3 20
+jal 21
+sbn 1944485013 1307555374 On 1
+move ra 12
+move r0 ra
+yield
+move r4 9
+j r1
+move r2 ra
+sbn -815193061 -1016313025 Setting r3
+jal r4
+add r3 r3 1
+sbn -815193061 -1016313025 Setting r3
+j r2
+# 27 lines total (not including this line)

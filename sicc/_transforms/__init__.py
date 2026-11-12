@@ -27,6 +27,7 @@ from .forward_full_block import forward_remove_full_block
 from .fuse_blocks import fuse_blocks_all
 from .fuse_blocks import fuse_blocks_trivial_jumps
 from .fuse_blocks import remove_trivial_blocks
+from .label_contexts import handle_context_deterministic_jump
 from .jump_threading import thread_branch_edges
 from .link_bundles import pack_call
 from .link_bundles import pack_cond_call
@@ -75,6 +76,8 @@ GLOBAL_FRAG_OPTS: list[Callable[[Fragment], bool | None]] = FRAG_OPTS + [
     # edge would be threaded through
     thread_branch_edges,
     forward_remove_full_block,
+    # last: builds the label context graph, which is slow
+    handle_context_deterministic_jump,
 ]
 
 FINAL_OPTS: list[Callable[[Fragment], bool | None]] = GLOBAL_FRAG_OPTS + [

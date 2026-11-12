@@ -121,3 +121,42 @@ def test_live_across_different_yields():
     with loop():
         yield_()
         task.step()
+
+
+@static_coroutine
+async def show_twice(x: Float):
+    display.Setting = x
+    await coro_yield()
+    display.Setting = x + 1
+
+
+async def task_show_a():
+    with loop():
+        await show_twice(10)
+        light1.On = True
+        await coro_yield()
+        light1.On = False
+        await coro_yield()
+
+
+async def task_show_b():
+    with loop():
+        await coro_yield()
+        await show_twice(20)
+        light2.On = True
+        await coro_yield()
+
+
+@wrap_test
+@program
+def test_subroutine_from_two_tasks():
+    # show_twice is awaited from both tasks, never by both at once: A is inside it from its step
+    # in tick 3k+1 to tick 3k+2, B from tick 3k+2 to 3k+3. Its suspend returns to whichever step
+    # is running, while the suspends in each task's own code jump straight back to its step.
+    task_a = create_static_task(task_show_a())
+    task_b = create_static_task(task_show_b())
+
+    with loop():
+        yield_()
+        task_a.step()
+        task_b.step()
