@@ -2,12 +2,11 @@
 Trader filtration and Dish Control on one IC: the program `filtration` of dish_trader.py and
 dish_control.py in one program, on the Medium Satellite Dish DISH_M.
 
-Dish Control is the main program and steps once per tick, as dish_control.py does. Filtration
-runs as a static coroutine that tick() resumes after each yield_(). It yields after writing its
-request, after every 8 stack addresses it reads back and before clearing the Logic Memories left
-over, so each part fits in one tick with Dish Control's step: a round takes 5 ticks, and Dish
-Control still steps every tick. Filtration hands the signal ID to locate to Dish Control in the
-variable `target`.
+Filtration and Dish Control are two static tasks, so either can run alone or beside other tasks;
+main steps each once per tick, the rate dish_control.py runs at. Filtration yields after writing
+its request, after every 8 stack addresses it reads back and before clearing the Logic Memories
+left over, so each part fits in one tick with Dish Control's step: a round takes 5 ticks.
+Filtration hands the signal ID to locate to Dish Control in the variable `target`.
 
 Filtration (see dish_trader.py, which describes the devices to build and label): each round
 writes a request for the strongest contact's cargo into the dish's stack, filtered by
@@ -175,35 +174,27 @@ async def filtration(target: Static[Variable[int]]):
 ################################################################################
 # Dish Control
 
-# The filtration task; created by main.
-filtration_task: StaticTask
 
-
+@static_coroutine
 @transpile
-def tick():
-    """Wait one tick, then run filtration until it yields."""
-    yield_()
-    filtration_task.step()
-
-
-@transpile
-def settle():
+async def settle():
     """Tick until the dish is idle; called after aiming it."""
     while True:
-        tick()
+        await coro_yield()
         if DISH_M.Idle != 0:
             break
 
 
+@static_coroutine
 @transpile
-def sweep(axis: UserValue[LogicType], step: Int, limit: Int) -> Float:
+async def sweep(axis: UserValue[LogicType], step: Int, limit: Int) -> Float:
     """
     Turn the dish `step` degrees along `axis` per tick while it sees the signal and the next
     angle is within 0 to `limit`. Returns the last angle at which it saw the signal.
     """
     seen = DISH_M[axis].get(typ=float)
     while True:
-        tick()
+        await coro_yield()
         if DISH_M.SignalID == -1:
             break
         seen = DISH_M[axis].get(typ=float)
@@ -214,24 +205,25 @@ def sweep(axis: UserValue[LogicType], step: Int, limit: Int) -> Float:
     return seen
 
 
+@static_coroutine
 @transpile
-def center(axis: UserValue[LogicType], limit: Int):
+async def center(axis: UserValue[LogicType], limit: Int):
     """
     Find both edges of the signal along `axis` and aim the dish at the middle. `limit` is the
     largest angle of `axis`: horizontal angles wrap around 360; vertical ones stay within 0-90,
     and a step below 0 wraps to above `limit` too.
     """
-    low = sweep(axis, -5, limit)
+    low = await sweep(axis, -5, limit)
     DISH_M[axis] = low
-    settle()
-    high = sweep(axis, 5, limit)
+    await settle()
+    high = await sweep(axis, 5, limit)
     # the upward sweep can wrap past 360 to a smaller angle
     DISH_M[axis] = (low + (high - low) % 360 / 2) % 360
-    settle()
+    await settle()
 
 
-@transpile(inline=True)
-def control(target: Static[Variable[int]]):
+@transpile
+async def control(target: Static[Variable[int]]):
     """Repeatedly clears `target` (see main), roams until filtration sets it, then locates and
     interrogates it."""
     DISH_M.On = True
@@ -242,21 +234,21 @@ def control(target: Static[Variable[int]]):
         DISH_M.BestContactFilter = -1
         DISH_M.Setting = 500
         while True:
-            tick()
+            await coro_yield()
             if target != 0:
                 break
             DISH_M.Horizontal = (DISH_M.Horizontal + 2) % 360
 
         DISH_M.BestContactFilter = target
-        settle()
+        await settle()
         # If the dish does not see the target here, each sweep ends at once, the dish stays put
         # and the interrogation below ends on its first check.
-        center(DISH_M.Horizontal.logic_type, 360)
-        center(DISH_M.Vertical.logic_type, 90)
+        await center(DISH_M.Horizontal.logic_type, 360)
+        await center(DISH_M.Vertical.logic_type, 90)
 
         # Interrogate until done or the dish loses the signal.
         while True:
-            tick()
+            await coro_yield()
             if DISH_M.SignalID == -1:
                 break
             DISH_M.Setting = 50000
@@ -268,12 +260,16 @@ def control(target: Static[Variable[int]]):
 
 @program
 def main():
-    global filtration_task
     # The signal ID of the trader to locate and interrogate, 0 for none: set by filtration while
     # it is 0, cleared by Dish Control.
     target = Variable(int)
     filtration_task = create_static_task(filtration(target))
-    control(target)
+    control_task = create_static_task(control(target))
+    # Within a tick filtration runs first, so Dish Control sees a target set in the same tick.
+    with loop():
+        control_task.step()
+        yield_()
+        filtration_task.step()
 
 
 if __name__ == "__main__":
