@@ -85,9 +85,9 @@ class Register(Enum):
     R13 = "r13"
     R14 = "r14"
     R15 = "r15"
-    R16 = "r16"
 
     RA = "ra"
+    # r16 in IC10
     SP = "sp"
 
     def _mk_var[T: VarT](self, typ: type[T]) -> Var[T]:
