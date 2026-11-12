@@ -116,7 +116,8 @@ class CliTied:
 
         try:
             self.cmd.call(prog, self.config)
-        except CompilerError:
+        except CompilerError as e:
+            _show_error(e)
             exit(1)
 
         exit(0)
@@ -176,10 +177,18 @@ class Cli:
 
         try:
             self.cmd.call(prog, self.config)
-        except CompilerError:
+        except CompilerError as e:
+            _show_error(e)
             exit(1)
 
         exit(0)
+
+
+def _show_error(e: CompilerError) -> None:
+    # Reports raised after tracing (optimize, regalloc) are not shown by Program.trace, and an
+    # internal compiler error's report is never pending.
+    show_pending_diagnostics()
+    e.report.show()
 
 
 def _iter_wrapped(obj: Any) -> Iterable[Any]:
