@@ -239,6 +239,8 @@ def trace_program() -> Iterator[Cell[TracedProgram]]:
 
     with (
         PROGRAM_EXIT_TO.bind(exit),
+        # labels are equal by name: two programs (or two traces of one) may emit the same one
+        _EXISTING_EMITTED_LABELS.bind(set()),
         trace_to_fragment() as (_, res),
     ):
         label(start)

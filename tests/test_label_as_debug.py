@@ -46,3 +46,15 @@ def test_refer_unreachable_label():
     live = label("live")
     l = cond(ConsoleLED5().On, dead, live)
     comment("l:", l)
+
+
+@wrap_test
+@program
+def test_label_name_in_two_programs_1():
+    comment("l:", label("shared_name"))
+
+
+@wrap_test
+@program
+def test_label_name_in_two_programs_2():
+    comment("l:", label("shared_name"))
