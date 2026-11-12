@@ -122,6 +122,7 @@ from ._diagnostic import show_pending_diagnostics as show_pending_diagnostics
 from ._diagnostic import suppress_warnings as suppress_warnings
 
 # coroutine (experimental)
+from ._coroutine import StaticTask as StaticTask
 from ._coroutine import coro_yield as coro_yield
 from ._coroutine import create_static_task as create_static_task
 from ._coroutine import static_coroutine as static_coroutine
