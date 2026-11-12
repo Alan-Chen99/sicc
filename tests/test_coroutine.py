@@ -49,3 +49,24 @@ def test_concur():
         yield_()
         task1.step()
         task2.step()
+
+
+@static_coroutine
+async def color_next_tick():
+    await coro_yield()
+    return light1.Color
+
+
+async def task_copy():
+    with loop():
+        light2.Color = await color_next_tick()
+
+
+@wrap_test
+@program
+def test_return_value():
+    task = create_static_task(task_copy())
+
+    with loop():
+        yield_()
+        task.step()

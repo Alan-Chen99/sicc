@@ -10,6 +10,7 @@ from typing import Generator
 from typing import Generic
 from typing import Never
 from typing import TypeVar
+from typing import cast
 
 from ._api import ValLabelLike
 from ._api import Variable
@@ -133,12 +134,15 @@ def _static_coroutine[**P, R](
         g = fn(*args, **kwargs).__await__()
 
         try:
+            sent: Any = None
             while True:
-                item = next(g)
+                item = g.send(sent)
                 if isinstance(item, CoroYield):
                     _suspend()
+                    sent = None
                 elif isinstance(item, StaticCoro):
-                    item.handler(*item.args, **item.kwargs)
+                    coro = cast(StaticCoro[Any], item)
+                    sent = coro.handler(*coro.args, **coro.kwargs)
                 else:
                     raise TypeError(item)
 
