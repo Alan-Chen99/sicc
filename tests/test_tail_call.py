@@ -11,7 +11,8 @@ d = Autolathe()
 
 @subr()
 def inner():
-    return
+    # an effect, so the calls stay: a call to an empty subroutine jumps straight to its return
+    d.On = True
 
 
 @subr()

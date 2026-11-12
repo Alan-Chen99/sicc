@@ -51,6 +51,19 @@ def test_concur():
         task2.step()
 
 
+@wrap_test
+@program
+def test_step_before_yield():
+    # task1's state holds only its start label on entry, so the program starts in task_1 directly
+    task1 = create_static_task(task_1())
+    task2 = create_static_task(task_2())
+
+    with loop():
+        task1.step()
+        yield_()
+        task2.step()
+
+
 @static_coroutine
 async def color_next_tick():
     await coro_yield()

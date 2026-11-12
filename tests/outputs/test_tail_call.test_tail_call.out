@@ -1,8 +1,9 @@
-move ra 6
+move ra 7
 move r0 ra
 jal 5
 jal 5
 j r0
+sb 336213101 On 1
 j ra
 jal 1
-# 7 lines total (not including this line)
+# 8 lines total (not including this line)

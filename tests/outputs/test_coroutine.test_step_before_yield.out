@@ -1,0 +1,17 @@
+move r1 8
+sbn 1944485013 -723064940 Color 4
+jal 5
+sbn 1944485013 -723064940 Color 2
+move ra 1
+move r0 ra
+yield
+j r1
+sbn 1944485013 1307555374 Color 0
+jal 14
+sbn 1944485013 1307555374 Color 3
+jal 14
+sbn 1944485013 1307555374 Color 1
+move ra 8
+move r1 ra
+j r0
+# 16 lines total (not including this line)
