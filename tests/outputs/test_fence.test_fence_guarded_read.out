@@ -1,0 +1,6 @@
+lbn r0 439026183 -1786934088 ReferenceId 0
+move r1 0
+bnan r0 4
+ld r1 r0 Horizontal
+s d1 Setting r1
+# 5 lines total (not including this line)

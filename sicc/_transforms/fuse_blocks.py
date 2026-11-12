@@ -13,6 +13,7 @@ from .._instructions import Branch
 from .._instructions import CondJump
 from .._instructions import EmitLabel
 from .._instructions import EndPlaceholder
+from .._instructions import Fence
 from .._instructions import Jump
 from .._instructions import PredBranch
 from .._instructions import PredCondJump
@@ -31,7 +32,7 @@ def _try_remove_trivial_blocks_one(ctx: TransformCtx, b: Block) -> bool:
 
     if not (
         #
-        len(b.contents) == 2
+        all(x.isinst(Fence) for x in b.body)
         and index.labels[b.label].private
         and (instr := b.end.isinst(Jump))
         and (instr.inputs_[0] != b.label)
@@ -40,7 +41,16 @@ def _try_remove_trivial_blocks_one(ctx: TransformCtx, b: Block) -> bool:
 
     (jump_to,) = instr.inputs_
 
-    if isinstance(jump_to, Var):
+    if b.body:
+        # A fence takes no line, but a block holding one would keep its jump. The fences go to
+        # the start of the block jumped to: still on this path, and on that block's other
+        # entries a fence only keeps reads in place.
+        if not (isinstance(jump_to, Label) and jump_to in f.blocks):
+            return False
+        target = f.blocks[jump_to]
+        target.contents = [target.label_instr, *b.body, *target.contents[1:]]
+
+    elif isinstance(jump_to, Var):
         # this is probably "tail call"
 
         # we may attempt to do tail call opt: in
@@ -84,7 +94,7 @@ def _try_remove_trivial_blocks_one(ctx: TransformCtx, b: Block) -> bool:
 @LoopingTransform
 def remove_trivial_blocks(ctx: TransformCtx) -> bool:
     """
-    remove block that is just a jump
+    remove block that is just a jump, after any fences
     """
     f = ctx.frag
 

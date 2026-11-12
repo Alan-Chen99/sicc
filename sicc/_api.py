@@ -56,6 +56,7 @@ from ._instructions import Ceil
 from ._instructions import DivF
 from ._instructions import EffectExternal
 from ._instructions import EffectPhantomLoc
+from ._instructions import Fence
 from ._instructions import Floor
 from ._instructions import Jump
 from ._instructions import LShift
@@ -520,6 +521,21 @@ def unreachable_unchecked() -> None:
 
 def black_box[T: VarT](v: UserValue[T]) -> VarRead[T]:
     return Function(BlackBox(_get_type(v))).call(v)
+
+
+def fence() -> None:
+    """
+    takes no line. Reads of devices and of memory stay on their side of the fence: a read after
+    it is not merged with the same read before it, and is not moved to before it.
+
+    `yield_()` and `sleep` also keep device reads in place, but take a line each. Without any of
+    these, the read in this loop's condition is merged with `start`, and the loop never exits:
+
+        start = Variable(float, d0.Setting)
+        with while_(lambda: d0.Setting == start):
+            fence()
+    """
+    Function(Fence()).call()
 
 
 def transmute[O: VarT](v: UserValue, out_type: type[O] = AnyType) -> VarRead[O]:

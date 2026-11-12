@@ -358,6 +358,29 @@ class BlackBox[T: VarT](AsmInstrBase):
         return EffectExternal()
 
 
+class Fence(InstrBase):
+    """
+    emits no line. Reads of devices and of memory stay on their side of it, as other chips and
+    devices may change what they read.
+    """
+
+    in_types = ()
+    out_types = ()
+    jumps = False
+
+    @override
+    def reads(self, instr: BoundInstr[Self]) -> EffectRes:
+        return [EffectExternal(), EffectStack()]
+
+    @override
+    def writes(self, instr: BoundInstr[Self]) -> EffectRes:
+        return [EffectExternal(), EffectStack()]
+
+    @override
+    def lower(self, instr: BoundInstr[Self]) -> Iterable[BoundInstr]:
+        return ()
+
+
 ################################################################################
 
 

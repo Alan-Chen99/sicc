@@ -103,6 +103,7 @@ from ._stack import Pointer as Pointer
 from ._stack import stack_var as stack_var
 
 # functions
+from ._api import fence as fence
 from ._api import undef as undef
 from ._comment import comment as comment
 from ._control_flow import select as select

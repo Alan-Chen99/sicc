@@ -37,6 +37,8 @@ See [examples/explained.py](examples/explained.py) for how this works.
   - a device by name or type (batch instructions: `lbn`, ...), by pin (`LogicSorter(pin=0)`: `l`, ...) or by ReferenceId (`LogicSorter(ref_id=id)`: `ld`, ...)
   - typed slots: `tray.slots[0].Mature`, `tank.slots[0].Open = True`
   - device memory: `sorter.memory[0] = ...`, `sorter.memory.clear()`; `SorterInstruction`, `TraderInstruction`, ... build and read the instruction words that devices run from their memory ([example](examples/dish_trader.py))
+  - `x = d0.Setting` reads nothing yet: each use of `x` is a read of the device; `x = Variable(float, d0.Setting)` reads it there, once
+  - `fence()` takes no line; a read after it is neither merged with the same read before it nor moved to before it, e.g. in a loop that waits for a device to change without `yield_()`
 - embed raw asm code
   - in development
 - high level construct for other operations: stack, etc
