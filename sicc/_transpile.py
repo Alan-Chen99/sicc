@@ -145,6 +145,7 @@ class _Place:
 class _AttrProxy:
     _obj: Any
     _name: str
+    _obj_refs_places: bool  # whether the expression of `_obj` references a place
 
     @property
     def value(self) -> Any:
@@ -155,11 +156,15 @@ class _AttrProxy:
         if (setfn := getattr(self._obj, "__transpile_setattr__", None)) is not None:
             setfn(self._name, val)
             return
+        if not self._obj_refs_places and self._name == "value" and isinstance(self._obj, Variable):
+            # `Variable.value` reads as a read-only view; its setter copies `val`, so cannot alias
+            cast(Variable[Any], self._obj).value = val
+            return
         tree_write(self.value, val)
 
 
-def _attr(obj: Any, name: str) -> _AttrProxy:
-    return _AttrProxy(obj, name)
+def _attr(obj: Any, name: str, obj_refs_places: bool) -> _AttrProxy:
+    return _AttrProxy(obj, name, obj_refs_places)
 
 
 @dataclass
@@ -659,7 +664,12 @@ class _TranspileBodyTransformer(ast.NodeTransformer):
         if not self._needs_store_proxy(node, before):
             return node
 
-        place = _embed_call(_attr, node.value, ast.Constant(value=node.attr))
+        place = _embed_call(
+            _attr,
+            node.value,
+            ast.Constant(value=node.attr),
+            ast.Constant(value=self._place_refs != before),
+        )
         expr = ast.Attribute(value=place, attr="value", ctx=node.ctx)
         return expr  # no copy_location: have diagnostic show the containing statement
 

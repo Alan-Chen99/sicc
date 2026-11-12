@@ -1,0 +1,4 @@
+lb r0 336213101 ExportCount 0
+add r0 r0 r0
+# counter: r0
+# 3 lines total (not including this line)

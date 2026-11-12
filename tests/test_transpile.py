@@ -297,6 +297,21 @@ def test_mutation():
     comment("x:", x)
 
 
+_counter = Variable(int)
+
+
+@wrap_test
+@program
+@transpile
+def test_store_local_to_variable():
+    # a local on the right sends the store through `_attr`, where `.value` of a Variable that is
+    # not a local is written through its setter, as when no local is involved
+    x = d.ExportCount.get(typ=int)
+    _counter.value = x
+    _counter.value += x
+    comment("counter:", _counter)
+
+
 @dataclass
 class Data:
     x: Float
