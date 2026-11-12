@@ -1,39 +1,39 @@
 yield
-l r2 d0 Activate
-bne r2 0 29
+l r0 d0 Activate
+bne r0 0 29
 yield
-move r3 26
+move r2 26
 jal 8
 sleep 10
 j 0
-move r2 ra
+move r1 ra
 move r4 -2045627372
-jal r3
+jal r2
 move r4 -1554349863
-jal r3
+jal r2
 move r4 -539224550
-jal r3
+jal r2
 move r4 1968102968
-jal r3
+jal r2
 move r4 930865127
-jal r3
+jal r2
 move r4 -1545574413
-jal r3
+jal r2
 move r4 1697196770
-jal r3
+jal r2
 move r4 -934345724
-jal r3
-j r2
+jal r2
+j r1
 sb r4 Horizontal 270
 sb r4 Vertical 0
 j ra
 l r0 d0 Horizontal
 l r1 d0 Vertical
-sub r1 90 r1
+sub r3 90 r1
 move ra 0
-move r3 35
+move r2 35
 j 8
 sb r4 Horizontal r0
-sb r4 Vertical r1
+sb r4 Vertical r3
 j ra
 # 38 lines total (not including this line)

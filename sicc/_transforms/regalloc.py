@@ -35,7 +35,6 @@ from .._tracing import mk_mvar
 from .._tracing import mk_var
 from .._utils import ByIdMixin
 from .._utils import Cell
-from .._utils import cast_unchecked_val
 from .._utils import disjoint_union
 from .._utils import get_id
 from .._utils import in_typed
@@ -46,7 +45,9 @@ from .basic import get_index
 from .basic import map_mvars
 from .basic import map_vars
 from .control_flow import CfgNode
-from .control_flow import build_control_flow_graph
+from .label_contexts import CtxNode
+from .label_contexts import build_label_context_graph
+from .label_contexts import ctx_node_instr
 from .optimize_mvars import MvarLifetimeRes
 from .optimize_mvars import compute_mvar_lifetime
 from .utils import CachedFn
@@ -76,33 +77,45 @@ class RegallocLifetimeRes:
 
 @CachedFn
 def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
+    """
+    Lifetimes are sets of nodes of the label context graph: a variable live after one call of a
+    subroutine, or at one resume point of a static coroutine, is live only in the contexts that
+    return there.
+    """
     f = ctx.frag
     index = get_index.call_cached(ctx, AlwaysUnpack())
     index_nounpack = get_index.call_cached(ctx, NeverUnpack())
-    graph = build_control_flow_graph.call_cached(ctx, out_unpack=AlwaysUnpack())
+    graph = build_label_context_graph.call_cached(ctx)
 
-    lifetimes: dict[AnyVar, OrderedSet[CfgNode]] = {}
+    ctx_lifetimes: dict[AnyVar, OrderedSet[CtxNode]] = {}
 
-    def handle_one(info: VarInfo | MVarInfo, reachable: set[CfgNode]) -> Iterator[CfgNode]:
-        for instr in info.defs:
-            yield instr
+    def handle_one(info: VarInfo | MVarInfo, hidden: set[BoundInstr]) -> Iterator[CtxNode]:
+        # nodes from which a use is reachable without passing a node of `hidden`
+        reachable: OrderedSet[CtxNode] = OrderedSet(graph.nodes_of(info.uses))
+        work = list(reachable)
+        while work:
+            for p in graph.preds[work.pop()]:
+                if p not in reachable and ctx_node_instr(p) not in hidden:
+                    reachable.add(p)
+                    work.append(p)
+
+        yield from graph.nodes_of(info.defs)
 
         for instr in info.uses:
-            if isinstance(info.v, Var) and RegallocExtend(info.v) in instr.regalloc_prefs():
-                yield instr
-            elif any(suc in reachable for suc in graph.successors(instr)):
-                yield instr
+            extend = isinstance(info.v, Var) and RegallocExtend(info.v) in instr.regalloc_prefs()
+            for n in graph.nodes.get(instr, []):
+                if extend or any(suc in reachable for suc in graph.succs[n]):
+                    yield n
 
-        for instr in reachable:
-            if instr not in info.uses:
-                yield instr
+        for n in reachable:
+            if ctx_node_instr(n) not in info.uses:
+                yield n
 
     mvar_lifetimes: dict[MVar, MvarLifetimeRes] = {}
 
     for mv in index.mvars.values():
-        res = compute_mvar_lifetime.call_cached(ctx, mv.v, AlwaysUnpack())
-        mvar_lifetimes[mv.v] = res
-        lifetimes[mv.v] = OrderedSet(handle_one(mv, set(res.reachable)))
+        mvar_lifetimes[mv.v] = compute_mvar_lifetime.call_cached(ctx, mv.v, AlwaysUnpack())
+        ctx_lifetimes[mv.v] = OrderedSet(handle_one(mv, set(mv.defs - mv.uses)))
 
     for v in index.vars.values():
         v_nounpack = index_nounpack.vars[v.v]
@@ -111,18 +124,23 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
         ):
             continue
 
-        hide_defs = cast_unchecked_val(graph)(
-            nx.restricted_view(  # pyright: ignore[reportUnknownMemberType]
-                graph, [v.def_instr], []
-            ),
-        )
-        reachable: set[CfgNode] = set()
-        for use in v.uses:
-            reachable.add(use)
-            reachable |= nx.ancestors(hide_defs, use)  # pyright: ignore[reportUnknownMemberType]
-
         # note: vars are never live at "external" due to their invariant
-        lifetimes[v.v] = OrderedSet(handle_one(v, set(reachable)))
+        ctx_lifetimes[v.v] = OrderedSet(handle_one(v, {v.def_instr}))
+
+    lifetimes: dict[AnyVar, OrderedSet[CfgNode]] = {
+        x: OrderedSet(ctx_node_instr(n) for n in ns) for x, ns in ctx_lifetimes.items()
+    }
+
+    live_at: dict[CtxNode, list[AnyVar]] = {}
+    for x, ns in ctx_lifetimes.items():
+        for n in ns:
+            live_at.setdefault(n, []).append(x)
+    live_together: set[tuple[AnyVar, AnyVar]] = set()
+    for xs in live_at.values():
+        for x in xs:
+            for y in xs:
+                if x < y:
+                    live_together.add((x, y))
 
     def transmute_source(v: Var[Any]) -> Var[Any]:
         while (t := index.vars[v].def_instr.isinst(Transmute)) and isinstance(t.inputs_[0], Var):
@@ -130,9 +148,11 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
         return v
 
     def may_conflict(x: AnyVar, y: AnyVar) -> bool:
-        conflicts = lifetimes[x] & lifetimes[y]
-        if len(conflicts) == 0:
+        if (x, y) not in live_together:
             return False
+        # instructions where both are live in the same context
+        together = OrderedSet(ctx_node_instr(n) for n in ctx_lifetimes[x] & ctx_lifetimes[y])
+        conflicts = OrderedSet(c for c in lifetimes[x] if c in together)
 
         if isinstance(x, MVar) and isinstance(y, MVar):
             return True

@@ -1,0 +1,14 @@
+move ra 2
+j 11
+lbn r0 -815193061 -1016313025 Setting 0
+jal 11
+slt ra 1 r0
+sbn 1944485013 -723064940 On ra
+lbn r0 -815193061 -1016313025 Setting 0
+jal 11
+slt ra 2 r0
+sbn 1944485013 1307555374 On ra
+j 2
+yield
+j ra
+# 13 lines total (not including this line)

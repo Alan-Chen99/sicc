@@ -100,3 +100,24 @@ def test_transpiled_helper():
     with loop():
         yield_()
         task.step()
+
+
+async def task_two_values():
+    with loop():
+        a = Variable(float, display.Setting)
+        await coro_yield()
+        light1.On = a > 1
+        b = Variable(float, display.Setting)
+        await coro_yield()
+        light2.On = b > 2
+
+
+@wrap_test
+@program
+def test_live_across_different_yields():
+    # `a` is live across the first yield and `b` across the second: they can share a register
+    task = create_static_task(task_two_values())
+
+    with loop():
+        yield_()
+        task.step()

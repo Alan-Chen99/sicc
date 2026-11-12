@@ -1,0 +1,12 @@
+lb r0 336213101 ImportCount 0
+jal 9
+slt ra 1 r0
+sb 336213101 On ra
+lb r0 336213101 ExportCount 0
+jal 9
+slt ra 2 r0
+sb 336213101 On ra
+j 0
+yield
+j ra
+# 11 lines total (not including this line)

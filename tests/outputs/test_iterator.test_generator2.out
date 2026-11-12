@@ -2,22 +2,22 @@ move r4 10
 move ra 21
 move r1 4
 j 18
-# i1: r5
+# i1: r2
 j ra
-# i2: r5
+# i2: r2
 j ra
-add r2 r2 1
-move r5 r2
+add r3 r3 1
+move r2 r3
 move ra 8
-blt r2 r4 r1
+blt r3 r4 r1
 move r3 0
-move r5 r3
+move r2 r3
 jal r1
 add r3 r3 1
 beq r3 10 r0
 j 13
 move r0 ra
-move r2 0
+move r3 0
 j 9
 move r1 6
 move r4 5

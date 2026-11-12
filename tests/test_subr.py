@@ -68,3 +68,21 @@ def test_subr_in_subr() -> FunctionRet[None]:
 
     d.On = False
     return_()
+
+
+@subr
+def tick():
+    yield_()
+
+
+@wrap_test
+@program
+def test_live_across_different_calls():
+    # `a` is live across the first call and `b` across the second: they can share a register
+    with loop():
+        a = Variable(int, d.ImportCount)
+        tick()
+        d.On = a > 1
+        b = Variable(int, d.ExportCount)
+        tick()
+        d.On = b > 2

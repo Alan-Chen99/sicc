@@ -1,78 +1,78 @@
 sbn 439026183 -1637724277 On 1
-move r11 3
+move r10 3
 j 77
 move r1 0
 j 59
-move r8 1
-lbn r12 321604921 2147338600 Open 0
-select r12 r12 17 13
-sll r13 r10 8
-or r12 r13 r12
-putd r5 0 r12
-select r11 r11 1966597 1966598
-putd r5 1 r11
-move r11 20
-lbn r12 -815193061 594962675 Setting 0
-bne r12 r0 77
-lbn r12 439026183 -1637724277 Idle 0
-bne r12 0 ra
+move r3 1
+lbn r11 321604921 2147338600 Open 0
+select r11 r11 17 13
+sll r12 r4 8
+or r11 r12 r11
+putd r2 0 r11
+select r10 r10 1966597 1966598
+putd r2 1 r10
+move r10 20
+lbn r11 -815193061 594962675 Setting 0
+bne r11 r0 77
+lbn r11 439026183 -1637724277 Idle 0
+bne r11 0 ra
 yield
-j r11
-lbn r11 439026183 -1637724277 SignalID 0
-sbn -815193061 1312721744 Setting r11
-move r12 r8
-move r14 1000000000
-move r15 -1
-ble 31 r12 34
-add r12 r12 1
-getd r15 r5 r12
-and r13 r15 255
-sra r15 r15 16
-beq r13 7 34
-beq r13 8 34
-beq r13 10 34
-bne r13 12 24
-sbn -851746783 r14 Setting r15
-add r14 r14 1
-bne r14 1000000020 24
-move r12 r8
-move r14 1000001000
-move r15 -1
-ble 31 r12 47
-add r12 r12 1
-getd r15 r5 r12
-and r13 r15 255
-sra r15 r15 16
-beq r13 9 47
-bne r13 11 39
-sbn -851746783 r14 Setting r15
-add r14 r14 1
-bne r14 1000001011 39
-beq r10 0 59
-lbn r10 -815193061 594962675 Setting 0
-bne r10 0 59
-beq r11 r1 59
-add r8 r8 1
-getd r5 r5 r8
-beq r5 0 59
-sbn -815193061 594962675 Setting r11
-move r1 r11
-lbn r5 439026183 -1637724277 ReferenceId 0
-lbn r10 -851746783 1194454930 Setting 0
-clrd r5
-lbn r11 321604921 246144565 Open 0
-bne r10 0 5
-move r8 0
-select r11 r11 2031877 2031878
-putd r5 0 r11
+j r10
+lbn r10 439026183 -1637724277 SignalID 0
+sbn -815193061 1312721744 Setting r10
+move r11 r3
+move r13 1000000000
+move r14 -1
+ble 31 r11 34
+add r11 r11 1
+getd r14 r2 r11
+and r12 r14 255
+sra r14 r14 16
+beq r12 7 34
+beq r12 8 34
+beq r12 10 34
+bne r12 12 24
+sbn -851746783 r13 Setting r14
+add r13 r13 1
+bne r13 1000000020 24
+move r11 r3
+move r13 1000001000
+move r14 -1
+ble 31 r11 47
+add r11 r11 1
+getd r14 r2 r11
+and r12 r14 255
+sra r14 r14 16
+beq r12 9 47
+bne r12 11 39
+sbn -851746783 r13 Setting r14
+add r13 r13 1
+bne r13 1000001011 39
+beq r4 0 59
+lbn r4 -815193061 594962675 Setting 0
+bne r4 0 59
+beq r10 r1 59
+add r3 r3 1
+getd r2 r2 r3
+beq r2 0 59
+sbn -815193061 594962675 Setting r10
+move r1 r10
+lbn r2 439026183 -1637724277 ReferenceId 0
+lbn r4 -851746783 1194454930 Setting 0
+clrd r2
+lbn r10 321604921 246144565 Open 0
+bne r4 0 5
+move r3 0
+select r10 r10 2031877 2031878
+putd r2 0 r10
 j 13
 jal 125
-lbn ra 439026183 -1637724277 SignalID 0
-beq ra -1 76
+lbn r5 439026183 -1637724277 SignalID 0
+beq r5 -1 76
 sbn 439026183 -1637724277 Setting 50000
 sbn 439026183 -1637724277 Activate 1
-lbn ra 439026183 -1637724277 InterrogationProgress 0
-blt ra 1 68
+lbn r5 439026183 -1637724277 InterrogationProgress 0
+blt r5 1 68
 sbn -693235651 966797163 SoundAlert 37
 sbn -815193061 594962675 Setting 0
 lbn r0 -815193061 594962675 Setting 0
@@ -81,47 +81,47 @@ sbn 439026183 -1637724277 Vertical 60
 sbn 439026183 -1637724277 BestContactFilter -1
 sbn 439026183 -1637724277 Setting 500
 jal 125
-lbn ra 439026183 -1637724277 Horizontal 0
-add ra ra 2
-mod ra ra 360
-sbn 439026183 -1637724277 Horizontal ra
+lbn r5 439026183 -1637724277 Horizontal 0
+add r5 r5 2
+mod r5 r5 360
+sbn 439026183 -1637724277 Horizontal r5
 j 82
 sbn 439026183 -1637724277 BestContactFilter r0
 jal 125
-lbn ra 439026183 -1637724277 SignalID 0
-beq ra -1 89
-move r3 LogicType.Horizontal
-move r2 360
+lbn r5 439026183 -1637724277 SignalID 0
+beq r5 -1 89
+move r5 LogicType.Horizontal
+move r7 360
 jal 98
-move r3 LogicType.Vertical
-move r2 90
+move r5 LogicType.Vertical
+move r7 90
 move ra 68
-move r4 ra
-lbn r6 439026183 -1637724277 r3 0
-sbn 439026183 -1637724277 r3 r6
+move r6 ra
+lbn r8 439026183 -1637724277 r5 0
+sbn 439026183 -1637724277 r5 r8
 jal 125
-lbn ra 439026183 -1637724277 SignalID 0
-beq ra -1 107
-add r6 r6 -5
-mod r6 r6 360
-ble r6 r2 100
-add r7 r6 5
-mod r7 r7 360
-move r9 r7
-sbn 439026183 -1637724277 r3 r9
+lbn r9 439026183 -1637724277 SignalID 0
+beq r9 -1 107
+add r8 r8 -5
+mod r8 r8 360
+ble r8 r7 100
+add r8 r8 5
+mod r8 r8 360
+move r9 r8
+sbn 439026183 -1637724277 r5 r9
 jal 125
 lbn ra 439026183 -1637724277 SignalID 0
 beq ra -1 117
 add r9 r9 5
 mod r9 r9 360
-ble r9 r2 110
-sub ra r9 5
-sub ra ra r7
-mod ra ra 360
-div ra ra 2
-add ra r7 ra
-mod ra ra 360
-sbn 439026183 -1637724277 r3 ra
-j r4
+ble r9 r7 110
+sub r7 r9 5
+sub r7 r7 r8
+mod r7 r7 360
+div r7 r7 2
+add r7 r8 r7
+mod r7 r7 360
+sbn 439026183 -1637724277 r5 r7
+j r6
 j 18
 # 126 lines total (not including this line)

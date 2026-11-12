@@ -1,103 +1,101 @@
 j 4
 yield
-lbn r7 -815193061 594962675 Setting 0
-beq r7 r6 ra
+lbn r3 -815193061 594962675 Setting 0
+beq r3 r0 ra
 sbn 439026183 -1637724277 Vertical 60
 sbn 439026183 -1637724277 BestContactFilter -1
 sbn 439026183 -1637724277 Setting 500
 sbn 439026183 -1637724277 On 1
 yield
-lbn r6 -815193061 594962675 Setting 0
-beq r6 0 81
-sbn 439026183 -1637724277 BestContactFilter r6
+lbn r0 -815193061 594962675 Setting 0
+beq r0 0 79
+sbn 439026183 -1637724277 BestContactFilter r0
 sbn 439026183 -1637724277 On 1
 jal 1
-lbn r7 439026183 -1637724277 SignalID 0
-beq r7 -1 13
-lbn r4 439026183 -1637724277 Horizontal 0
+lbn r1 439026183 -1637724277 SignalID 0
+beq r1 -1 13
+lbn r1 439026183 -1637724277 Horizontal 0
 jal 1
-lbn r7 439026183 -1637724277 SignalID 0
-bne r7 -1 86
-move r0 r4
-sbn 439026183 -1637724277 Horizontal r4
+lbn r2 439026183 -1637724277 SignalID 0
+bne r2 -1 84
+sbn 439026183 -1637724277 Horizontal r1
 jal 1
-lbn r7 439026183 -1637724277 Idle 0
-beq r7 0 22
-lbn r5 439026183 -1637724277 Horizontal 0
+lbn r2 439026183 -1637724277 Idle 0
+beq r2 0 21
+lbn r2 439026183 -1637724277 Horizontal 0
 jal 1
-lbn r7 439026183 -1637724277 SignalID 0
-bne r7 -1 91
-move ra 360
-blt r5 r0 32
-move ra 0
-add r7 r0 r5
-add r7 r7 ra
-div r7 r7 2
-mod r7 r7 360
-sbn 439026183 -1637724277 Horizontal r7
+lbn r3 439026183 -1637724277 SignalID 0
+bne r3 -1 89
+move r3 360
+blt r2 r1 31
+move r3 0
+add r1 r1 r2
+add r1 r1 r3
+div r1 r1 2
+mod r1 r1 360
+sbn 439026183 -1637724277 Horizontal r1
 sbn 439026183 -1637724277 On 1
-sbn 439026183 -1637724277 Horizontal r7
+sbn 439026183 -1637724277 Horizontal r1
 jal 1
-lbn r7 439026183 -1637724277 Idle 0
-beq r7 0 39
+lbn r1 439026183 -1637724277 Idle 0
+beq r1 0 38
+lbn r1 439026183 -1637724277 Vertical 0
+jal 1
+lbn r2 439026183 -1637724277 SignalID 0
+beq r2 -1 47
+lbn r1 439026183 -1637724277 Vertical 0
+blt r1 89.9 94
+sbn 439026183 -1637724277 Vertical r1
+jal 1
+lbn r2 439026183 -1637724277 Idle 0
+beq r2 0 48
 lbn r2 439026183 -1637724277 Vertical 0
 jal 1
-lbn r7 439026183 -1637724277 SignalID 0
-beq r7 -1 48
+lbn r3 439026183 -1637724277 SignalID 0
+beq r3 -1 57
 lbn r2 439026183 -1637724277 Vertical 0
-blt r2 89.9 96
-move r1 r2
-sbn 439026183 -1637724277 Vertical r2
+blt 0.1 r2 97
+add r1 r2 r1
+div r1 r1 2
+sbn 439026183 -1637724277 Vertical r1
+sbn 439026183 -1637724277 Vertical r1
 jal 1
-lbn r7 439026183 -1637724277 Idle 0
-beq r7 0 50
-lbn r3 439026183 -1637724277 Vertical 0
+lbn r1 439026183 -1637724277 Idle 0
+beq r1 0 61
 jal 1
-lbn r7 439026183 -1637724277 SignalID 0
-beq r7 -1 59
-lbn r3 439026183 -1637724277 Vertical 0
-blt 0.1 r3 99
-add r7 r3 r1
-div r7 r7 2
-sbn 439026183 -1637724277 Vertical r7
-sbn 439026183 -1637724277 Vertical r7
+lbn r1 439026183 -1637724277 SignalID 0
+beq r1 -1 77
 jal 1
-lbn r7 439026183 -1637724277 Idle 0
-beq r7 0 63
-jal 1
-lbn r7 439026183 -1637724277 SignalID 0
-beq r7 -1 79
-jal 1
-lbn r7 439026183 -1637724277 Idle 0
-beq r7 0 69
-sbn 439026183 -1637724277 BestContactFilter r6
+lbn r1 439026183 -1637724277 Idle 0
+beq r1 0 67
+sbn 439026183 -1637724277 BestContactFilter r0
 sbn 439026183 -1637724277 Setting 50000
 sbn 439026183 -1637724277 Activate 1
-lbn r7 439026183 -1637724277 InterrogationProgress 0
-blt r7 1 66
+lbn r1 439026183 -1637724277 InterrogationProgress 0
+blt r1 1 64
 sleep 2
 sbn -693235651 966797163 SoundAlert 37
 sbn -815193061 594962675 Setting 0
 j 4
-lbn r6 439026183 -1637724277 Horizontal 0
-add r6 r6 2
-mod r6 r6 360
-sbn 439026183 -1637724277 Horizontal r6
+lbn r0 439026183 -1637724277 Horizontal 0
+add r0 r0 2
+mod r0 r0 360
+sbn 439026183 -1637724277 Horizontal r0
 j 8
-lbn r4 439026183 -1637724277 Horizontal 0
-add r7 r4 -5
-mod r7 r7 360
-sbn 439026183 -1637724277 Horizontal r7
+lbn r1 439026183 -1637724277 Horizontal 0
+add r2 r1 -5
+mod r2 r2 360
+sbn 439026183 -1637724277 Horizontal r2
 j 17
-lbn r5 439026183 -1637724277 Horizontal 0
-add r7 r5 5
-mod r7 r7 360
-sbn 439026183 -1637724277 Horizontal r7
-j 26
-add r7 r2 5
-sbn 439026183 -1637724277 Vertical r7
-j 43
-add r7 r3 -5
-sbn 439026183 -1637724277 Vertical r7
-j 54
-# 102 lines total (not including this line)
+lbn r2 439026183 -1637724277 Horizontal 0
+add r3 r2 5
+mod r3 r3 360
+sbn 439026183 -1637724277 Horizontal r3
+j 25
+add r2 r1 5
+sbn 439026183 -1637724277 Vertical r2
+j 42
+add r3 r2 -5
+sbn 439026183 -1637724277 Vertical r3
+j 52
+# 100 lines total (not including this line)
