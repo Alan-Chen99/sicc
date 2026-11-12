@@ -147,6 +147,62 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
             v = cast(Var[Any], t.inputs_[0])
         return v
 
+    def copied_value(d: BoundInstr) -> tuple[MVar, Var[Any]] | None:
+        """(mv, v) if d is `_ := v` with v read from mv"""
+        if (w := d.isinst(WriteMVar)) and isinstance(v := w.inputs_[0], Var):
+            if r := index.vars[v].def_instr.isinst(ReadMVar):
+                return r.instr.s, cast(Var[Any], v)
+        return None
+
+    def changed_while_live(mv: MVar, v: AnyVar) -> bool:
+        keep = preserving_writes(mv)
+        return any(w not in keep and in_typed(w, lifetimes[v]) for w in index.mvars[mv].defs)
+
+    preserving: dict[MVar, set[BoundInstr]] = {}
+
+    def preserving_writes(mv: MVar) -> set[BoundInstr]:
+        """
+        Writes `mv := v` that keep the value of mv: v is read from mv, and no other write
+        changes mv while v is live. (mvars are written back after each read)
+        """
+        if (ans := preserving.get(mv)) is not None:
+            return ans
+        cand: dict[BoundInstr, Var[Any]] = {}
+        for d in index.mvars[mv].defs:
+            if (c := copied_value(d)) and c[0] == mv:
+                cand[d] = c[1]
+        changed = True
+        while changed:
+            changed = False
+            for d, v in list(cand.items()):
+                if any(w not in cand and in_typed(w, lifetimes[v]) for w in index.mvars[mv].defs):
+                    del cand[d]
+                    changed = True
+        preserving[mv] = set(cand)
+        return preserving[mv]
+
+    copies: dict[tuple[MVar, MVar], bool] = {}
+
+    def copy_of(y: MVar, x: MVar) -> bool:
+        if (ans := copies.get((y, x))) is None:
+            ans = copies[(y, x)] = _copy_of(y, x)
+        return ans
+
+    def _copy_of(y: MVar, x: MVar) -> bool:
+        """
+        Whether y, wherever it is live, holds the current value of x: each write of y stores a
+        value read from x, or keeps the value of y, with no write changing x since the read, and
+        no write changes x while y is live. Arguments of a subroutine are copies of the caller's
+        variables.
+        """
+        for d in index.mvars[y].defs:
+            c = copied_value(d)
+            if c is None or not (c[0] == x or d in preserving_writes(y)):
+                return False
+            if changed_while_live(x, c[1]):
+                return False
+        return not changed_while_live(x, y)
+
     def may_conflict(x: AnyVar, y: AnyVar) -> bool:
         if (x, y) not in live_together:
             return False
@@ -155,7 +211,7 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
         conflicts = OrderedSet(c for c in lifetimes[x] if c in together)
 
         if isinstance(x, MVar) and isinstance(y, MVar):
-            return True
+            return not (copy_of(x, y) or copy_of(y, x))
         elif isinstance(x, Var) and isinstance(y, Var):
             # vars never change, and a transmute has the value of its input, so a var and its
             # transmutes can share a register
@@ -174,6 +230,15 @@ def compute_lifetimes_all(ctx: TransformCtx) -> RegallocLifetimeRes:
                 if in_typed(mv_write, lifetimes[v]):
                     if not ((w := mv_write.isinst(WriteMVar)) and w.inputs_[0] == v):
                         return True
+            return False
+
+        # v is read from a copy of mv, or mv is a copy of what v is read from, and neither
+        # changes while v is live?
+        if (
+            i
+            and (copy_of(i.instr.s, mv) or copy_of(mv, i.instr.s))
+            and not (changed_while_live(mv, v) or changed_while_live(i.instr.s, v))
+        ):
             return False
 
         # mv contains a read of v?
