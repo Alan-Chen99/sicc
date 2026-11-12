@@ -53,7 +53,7 @@ See [examples/explained.py](examples/explained.py) for how this works.
   - SICC does not use `push` and `pop`; instead it moves `ra` to a different register if needed, saving lines
   - arguments and return value can be `tuple`, `list`, `dict`, or [classes](examples/classes.py)
 - Static coroutines (experimental)
-  - `task = create_static_task(coro())` and `task.step()` run an `async def` alongside the program: each step resumes it until its next `await coro_yield()` ([example](examples/dish_combined.py): trader filtration stepped from Dish Control's wait)
+  - `task = create_static_task(coro())` and `task.step()` run an `async def` alongside the program: each step resumes it until its next `await coro_yield()` ([example](examples/dish_combined.py): trader filtration stepped from Dish Control's tick)
   - `@static_coroutine` makes an `async def` a subroutine that can await `coro_yield()`; a plain `@transpile async def` is inlined into the coroutine awaiting it
 
 ## Install (more options will be supported later)

@@ -2,41 +2,46 @@
 Trader filtration and Dish Control on one IC: the program `filtration` of dish_trader.py and
 dish_control.py in one program, on the Medium Satellite Dish DISH_M.
 
-Dish Control is the main program. Filtration runs as a static coroutine: wait() steps it after
-each yield_(), and it hands control back once it has written its next request. The two talk
-through the LED LED_LOCKED_SIGID, as the separate programs do. Reading the cargo back scans the
-dish's stack twice, a few hundred lines, while an IC runs at most 128 lines per tick; so each
-wait() takes a few ticks, and Dish Control steps that much slower than dish_control.py.
+Dish Control is the main program and steps once per tick, as dish_control.py does. Filtration
+runs as a static coroutine that tick() resumes after each yield_(). It yields after writing its
+request, after every 8 stack addresses it reads back and before clearing the Logic Memories left
+over, so each part fits in one tick with Dish Control's step: a round takes 5 ticks, and Dish
+Control still steps every tick. Filtration hands the signal ID to locate to Dish Control in the
+variable `target`.
 
 Filtration (see dish_trader.py, which describes the devices to build and label): each round
 writes a request for the strongest contact's cargo into the dish's stack, filtered by
-SLM_ITEM_FILTER if set, and reads the cargo back the next tick onto the Logic Memories named in
-ITEM_MEMORIES and GAS_MEMORIES. With a filter set, the signal ID of a trader with matching
-cargo is written to LED_LOCKED_SIGID; nothing is written while the LED is set, nor for the
-signal ID written last.
+SLM_ITEM_FILTER if set, and reads the cargo back onto the Logic Memories named in ITEM_MEMORIES
+and GAS_MEMORIES. With a filter set, while Dish Control roams, a contact with matching cargo
+becomes the target, unless it was the target last time, whether or not that attempt succeeded.
+This check comes before the cargo is shown, so Dish Control turns to the trader a few ticks
+sooner than it would after the display.
 
-Dish Control (see dish_control.py): while LED_LOCKED_SIGID reads 0, the dish roams at vertical
-60, turning 2 degrees per step. When the LED shows a signal ID, the dish finds both horizontal
-edges of the signal, then both vertical edges, aims at the middle and interrogates the signal.
-On completion the transmitter sounds an alert and the LED is cleared; the LED is cleared too if
-the dish loses the signal during the interrogation. Changing the LED abandons the search. Each
-step waits for the dish to be idle.
+Dish Control (see dish_control.py): with no target, the dish roams at vertical 60, turning 2
+degrees per tick. With a target, the dish settles, finds both horizontal edges of the signal,
+then both vertical edges, aims at the middle and interrogates the signal. On completion the
+transmitter sounds an alert and the target is cleared; the target is cleared too if the dish
+loses the signal during the interrogation, or does not see it once it settles after roaming
+(the sweeps then end at once and the dish stays put; dish_control.py waits for the signal, which
+only the LED below could cancel).
 
 Dropped to fit in 128 lines:
+- the LED LED_LOCKED_SIGID: filtration and Dish Control share `target` instead, so a target can
+  no longer be set or cleared by hand
 - filtration: the contact's metadata on the LEDs LED_CON_TYPE_ID, LED_TIER, LED_SHUTTLE_TYPE,
   LED_WATT_TO_RESOLVE, LED_CONTACTED and LED_LIFETIME (LED_SIGID still shows the contact)
 - filtration: waiting for a dish named as DISH_M to exist; without one, the IC stops with an
   error
 - Dish Control: the optional scan and comm dishes (DISH_S, DISH_L), as DISH_M does both; the
   2 s sleep before the alert, which would stall filtration too
+- Dish Control: the vertical sweeps go down first, as the horizontal ones do, and stop a step
+  short of 0 and 90 rather than at them
 
 Every device is addressed by name over the data network, so the IC housing needs no pins set.
 """
 
-from typing import Any
-from typing import Callable
-
 from sicc import *
+from sicc import functions as f
 from sicc.devices import *
 
 ################################################################################
@@ -68,9 +73,6 @@ LED_SIGID = ConsoleLED5("LED_SIGID")
 # The filter: a prefab hash, or gas bitflags when FILTER_GAS_SWITCH is open. 0 for none.
 ITEM_FILTER = LogicMemory("SLM_ITEM_FILTER")
 FILTER_GAS_SWITCH = LogicSwitch2("FILTER_GAS_SWITCH")
-# The signal ID of a trader to locate and interrogate, 0 for none: written by filtration (or by
-# hand), cleared by Dish Control when an interrogation ends.
-LED_LOCKED_SIGID = ConsoleLED5("LED_LOCKED_SIGID")
 # Plays sound alert 37 when an interrogation completes.
 TRANSMITTER = Device("StructureLogicTransmitter", "Hardsuit LT 1")
 
@@ -103,41 +105,10 @@ def cargo_request(at: int, buy: Bool) -> Int:
 
 
 @transpile
-async def filtration():
-    # The signal ID written to LED_LOCKED_SIGID last.
+async def filtration(target: Static[Variable[int]]):
+    """Sets `target` (see main) to the signal ID of a contact with matching cargo."""
+    # The signal ID made the target last.
     last_locked = 0.0
-    # The dish stack address read last.
-    addr = 0
-
-    # The helpers below read `dish` and `request_at`, set by the main loop.
-
-    @transpile(inline=True)
-    def next_cargo(ops: Static[tuple[int, ...]], field: Static[Callable[[Int], VarRead[Any]]]) -> Int:
-        """`field` of the next entry after `addr` with an opcode in `ops`; -1 past the last."""
-        nonlocal addr
-        while addr < STACK_END - 1:
-            addr += 1
-            entry = dish.memory[addr]
-            op = T.opcode(entry)
-            for wanted in ops:
-                if op == wanted:
-                    # a number, as is the -1
-                    return field(entry).transmute(int)
-        return -1
-
-    @transpile(inline=True)
-    def show_cargo(
-        first_hash: Static[int],
-        count: Static[int],
-        ops: Static[tuple[int, ...]],
-        field: Static[Callable[[Int], VarRead[Any]]],
-    ):
-        """Show `field` of the cargo entries with an opcode in `ops` on the `count` Logic Memories
-        whose name hashes start at `first_hash`, in order; -1 on those left over."""
-        nonlocal addr
-        addr = request_at
-        for name in range_(first_hash, first_hash + count):
-            LogicMemory(name.transmute(str)).Setting = next_cargo(ops, field)
 
     while True:
         dish = SatelliteDish(ref_id=DISH_M.ReferenceId)
@@ -147,11 +118,9 @@ async def filtration():
         dish.memory.clear()
         buy = SELL_BUY_SWITCH.Open
         if filt == 0:
-            request_at = 0
             dish.memory[0] = cargo_request(0, buy)
         else:
             # The dish lists only the cargo that matches the filter.
-            request_at = 1
             # the two filters differ only in opcode: the filter goes in bits 8-39 of both
             op = select(
                 FILTER_GAS_SWITCH.Open, T.FilterGasContains.OP_CODE, T.FilterPrefabHashEquals.OP_CODE
@@ -162,99 +131,131 @@ async def filtration():
 
         signal = DISH_M.SignalID
         LED_SIGID.Setting = signal
-        show_cargo(ITEM_HASH, len(ITEM_MEMORIES), ITEM_DATA, T.TraderBuyThingData.prefab_hash)
-        show_cargo(GAS_HASH, len(GAS_MEMORIES), GAS_DATA, T.TraderBuyGasData.gas_types_bitflag)
-
-        if filt != 0 and LED_LOCKED_SIGID.Setting == 0 and signal != last_locked:
+        if filt != 0 and target == 0 and signal != last_locked:
             # The dish lists only matching cargo, so any entry after the request is a match.
-            if dish.memory[request_at + 1] != 0:
-                LED_LOCKED_SIGID.Setting = signal
+            if dish.memory[2] != 0:
+                target.value = signal
                 last_locked = signal
+
+        # The n-th item entry goes to the item memory named with hash ITEM_HASH + n, and so on;
+        # the request and the filter before the entries have other opcodes. Entries past the
+        # last memory go to hashes that name no device.
+        item_name = ITEM_HASH
+        gas_name = GAS_HASH
+        addr = 0
+        while addr < STACK_END - 1:
+            addr += 1
+            # 8 entries take about 110 lines, and an IC runs at most 128 lines per tick
+            if addr % 8 == 0:
+                await coro_yield()
+            entry = dish.memory[addr]
+            op = T.opcode(entry)
+            if op == ITEM_DATA[0] or op == ITEM_DATA[1] or op == ITEM_DATA[2] or op == ITEM_DATA[3]:
+                LogicMemory(f.transmute(item_name, str)).Setting = T.TraderBuyThingData.prefab_hash(entry)
+                item_name += 1
+            elif op == GAS_DATA[0] or op == GAS_DATA[1]:
+                LogicMemory(f.transmute(gas_name, str)).Setting = T.TraderBuyGasData.gas_types_bitflag(entry)
+                gas_name += 1
+        # -1 on the memories left over: up to 31 writes, so a part of their own
+        await coro_yield()
+        if item_name < ITEM_HASH + len(ITEM_MEMORIES):
+            while True:
+                LogicMemory(f.transmute(item_name, str)).Setting = -1
+                item_name += 1
+                if item_name >= ITEM_HASH + len(ITEM_MEMORIES):
+                    break
+        if gas_name < GAS_HASH + len(GAS_MEMORIES):
+            while True:
+                LogicMemory(f.transmute(gas_name, str)).Setting = -1
+                gas_name += 1
+                if gas_name >= GAS_HASH + len(GAS_MEMORIES):
+                    break
 
 
 ################################################################################
 # Dish Control
 
-# The signal ID being searched for; set by control, read by wait().
-target = Variable(int)
-# Start of control's main loop; wait() jumps here to abandon a search.
-RESTART = label_ref("restart")
 # The filtration task; created by main.
 filtration_task: StaticTask
 
 
 @transpile
-def wait():
-    """
-    Tick, stepping filtration, until the dish is idle. If LED_LOCKED_SIGID no longer shows
-    `target`, the search is over: jump to RESTART instead of returning.
-    """
+def tick():
+    """Wait one tick, then run filtration until it yields."""
+    yield_()
+    filtration_task.step()
+
+
+@transpile
+def settle():
+    """Tick until the dish is idle; called after aiming it."""
     while True:
-        yield_()
-        filtration_task.step()
-        if LED_LOCKED_SIGID.Setting != target:
-            jump(RESTART)
+        tick()
         if DISH_M.Idle != 0:
             break
 
 
-@transpile(inline=True)
-def sweep(axis: UserValue[LogicType], start: Float, step: Static[int], limit: Int) -> Float:
+@transpile
+def sweep(axis: UserValue[LogicType], step: Int, limit: Int) -> Float:
     """
-    Aim the dish's `axis` at `start`, then `step` degrees further each wait() while it sees the
-    signal. Returns the first angle, mod 360, at which it does not or that exceeds `limit`.
+    Turn the dish `step` degrees along `axis` per tick while it sees the signal and the next
+    angle is within 0 to `limit`. Returns the last angle at which it saw the signal.
     """
-    pos = start
+    seen = DISH_M[axis].get(typ=float)
     while True:
-        DISH_M[axis] = pos
-        wait()
+        tick()
         if DISH_M.SignalID == -1:
             break
-        pos = (pos + step) % 360
-        if pos > limit:
+        seen = DISH_M[axis].get(typ=float)
+        nxt = (seen + step) % 360
+        if nxt > limit:
             break
-    return pos
+        DISH_M[axis] = nxt
+    return seen
 
 
 @transpile
 def center(axis: UserValue[LogicType], limit: Int):
     """
     Find both edges of the signal along `axis` and aim the dish at the middle. `limit` is the
-    largest angle of `axis`: horizontal angles wrap around 360, vertical ones stay within 0-90,
-    where a step below 0 wraps to above `limit` too.
+    largest angle of `axis`: horizontal angles wrap around 360; vertical ones stay within 0-90,
+    and a step below 0 wraps to above `limit` too.
     """
-    # Each sweep returns one step past an edge.
-    low = (sweep(axis, DISH_M[axis].get(typ=float), -5, limit) + 5) % 360
-    high = sweep(axis, low, 5, limit) - 5
+    low = sweep(axis, -5, limit)
+    DISH_M[axis] = low
+    settle()
+    high = sweep(axis, 5, limit)
     # the upward sweep can wrap past 360 to a smaller angle
     DISH_M[axis] = (low + (high - low) % 360 / 2) % 360
+    settle()
 
 
 @transpile(inline=True)
-def control():
+def control(target: Static[Variable[int]]):
+    """Locates and interrogates `target` (see main), then clears it."""
     DISH_M.On = True
+    target.value = 0
     while True:
-        label(RESTART)
-        target.value = LED_LOCKED_SIGID.Setting
-        if target == 0:
-            DISH_M.Vertical = 60
-            DISH_M.BestContactFilter = -1
-            DISH_M.Setting = 500
-            while True:
-                wait()
-                DISH_M.Horizontal = (DISH_M.Horizontal + 2) % 360
+        # Roam until filtration sets a target.
+        DISH_M.Vertical = 60
+        DISH_M.BestContactFilter = -1
+        DISH_M.Setting = 500
+        while True:
+            tick()
+            if target != 0:
+                break
+            DISH_M.Horizontal = (DISH_M.Horizontal + 2) % 360
 
         DISH_M.BestContactFilter = target
-        while True:
-            wait()
-            if DISH_M.SignalID != -1:
-                break
+        settle()
+        # If the dish does not see the target here, each sweep ends at once, the dish stays put
+        # and the interrogation below ends on its first check.
         center(DISH_M.Horizontal.logic_type, 360)
         center(DISH_M.Vertical.logic_type, 90)
 
         # Interrogate until done or the dish loses the signal.
         while True:
-            wait()
+            tick()
             if DISH_M.SignalID == -1:
                 break
             DISH_M.Setting = 50000
@@ -262,14 +263,17 @@ def control():
             if DISH_M.InterrogationProgress >= 1:
                 TRANSMITTER["SoundAlert"] = 37
                 break
-        LED_LOCKED_SIGID.Setting = 0
+        target.value = 0
 
 
 @program
 def main():
     global filtration_task
-    filtration_task = create_static_task(filtration())
-    control()
+    # The signal ID of the trader to locate and interrogate, 0 for none: set by filtration while
+    # it is 0, cleared by Dish Control.
+    target = Variable(int)
+    filtration_task = create_static_task(filtration(target))
+    control(target)
 
 
 if __name__ == "__main__":
